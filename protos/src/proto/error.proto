@@ -1,0 +1,93 @@
+syntax = "proto3";
+package error;
+
+// When HttpStatusCode is not ok (200), the response `content` contains a serialized `ErrorResponse`
+// with the relevant ErrorCode and `message`
+message ErrorResponse {
+
+  // The error message containing a generic description of the error condition in English.
+  // It is intended for a human audience only and should not be parsed to extract any information
+  // programmatically. Client-side code may use it for logging only.
+  string message = 1;
+
+  // The error code uniquely identifying an error condition.
+  // It is meant to be read and understood programmatically by code that detects/handles errors by
+  // type.
+  //
+  // **Caution**: If a new type of `error_code` is introduced in oneof, `error_code` field will be unset.
+  // If unset, it should be treated as `UnknownError`, it will not be set as `UnknownError`.
+  oneof error_code {
+    // Will neve be used as `error_code` by server.
+    UnknownError unknown_error = 2;
+
+    // Used in the following cases:
+    //   - The request was missing a required argument.
+    //   - The specified argument was invalid, incomplete or in the wrong format.
+    //   - The request body of api cannot be deserialized into corresponding protobuf object.
+    //   - The request does not follow api contract.
+    InvalidRequestError invalid_request_error = 3;
+
+    // Used when authentication fails or in case of an unauthorized request.
+    AuthError auth_error = 4;
+
+    // Used to represent an Error while doing Lightning operation. Contains `LightningErrorCode` for further details.
+    LightningError lightning_error = 5;
+
+    // Used when an internal server error occurred, client is probably at no fault and can safely retry
+    // this error with exponential backoff.
+    InternalServerError internal_server_error = 6;
+  }
+}
+
+// Will neve be used as `error_code` by server.
+message UnknownError {}
+
+// Used in the following cases:
+//   - The request was missing a required argument.
+//   - The specified argument was invalid, incomplete or in the wrong format.
+//   - The request body of api cannot be deserialized into corresponding protobuf object.
+//   - The request does not follow api contract.
+message InvalidRequestError {}
+
+// Used when authentication fails or in case of an unauthorized request.
+message AuthError {}
+
+// Used to represent an Error while doing Lightning operation. Contains `LightningErrorCode` for further details.
+message LightningError {
+  LightningErrorCode lightning_error_code = 1;
+}
+
+// Used when an internal server error occurred, client is probably at no fault and can safely retry
+// this error with exponential backoff.
+message InternalServerError {}
+
+enum LightningErrorCode {
+  // Default protobuf Enum value. Will not be used as `LightningErrorCode` by server.
+  // **Caution**: If a new Enum value is introduced, it will be seen as `UNKNOWN_LIGHTNING_ERROR` by code using earlier
+  // versions of protobuf definition for deserialization.
+  UNKNOWN_LIGHTNING_ERROR = 0;
+
+  // The requested operation failed, such as invoice creation failed, refund creation failed etc.
+  OPERATION_FAILED = 1;
+
+  // There was a timeout during the requested operation.
+  OPERATION_TIMED_OUT = 2;
+
+  // Sending a payment has failed.
+  PAYMENT_SENDING_FAILED = 3;
+
+  // The available funds are insufficient to complete the given operation.
+  INSUFFICIENT_FUNDS = 4;
+
+  // A payment failed since it has already been initiated.
+  DUPLICATE_PAYMENT = 5;
+
+  // A liquidity request operation failed.
+  LIQUIDITY_REQUEST_FAILED = 6;
+
+  // The given operation failed due to the required liquidity source being unavailable.
+  LIQUIDITY_SOURCE_UNAVAILABLE = 7;
+
+  // The given operation failed due to the LSP's required opening fee being too high.
+  LIQUIDITY_FEE_HIGH = 8;
+}
