@@ -51,5 +51,5 @@ cargo run --bin ldk-server ./ldk-server/ldk-server.config
 
 Interact with the node using CLI:
 ```
-./target/debug/ldk-server-cli -b localhost:3000 onchain-receive
+./target/debug/ldk-server-cli -b localhost:3002 onchain-receive
 ```
