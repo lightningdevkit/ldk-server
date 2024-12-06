@@ -25,6 +25,7 @@ use crate::api::open_channel::{handle_open_channel, OPEN_CHANNEL_PATH};
 use crate::api::update_channel_config::{
 	handle_update_channel_config_request, UPDATE_CHANNEL_CONFIG_PATH,
 };
+use crate::io::paginated_kv_store::PaginatedKVStore;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -35,13 +36,14 @@ pub struct NodeService {
 }
 
 impl NodeService {
-	pub(crate) fn new(node: Arc<Node>) -> Self {
-		Self { context: Arc::new(Context { node }) }
+	pub(crate) fn new(node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>) -> Self {
+		Self { context: Arc::new(Context { node, paginated_kv_store }) }
 	}
 }
 
 pub(crate) struct Context {
 	pub(crate) node: Arc<Node>,
+	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore>,
 }
 
 impl Service<Request<Incoming>> for NodeService {
