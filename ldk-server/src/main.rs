@@ -1,10 +1,12 @@
 mod api;
+mod args;
 mod io;
 mod service;
 mod util;
 
 use crate::service::NodeService;
 
+use clap::Parser;
 use ldk_node::{Builder, Event, LogLevel};
 
 use tokio::net::TcpListener;
@@ -18,16 +20,18 @@ use ldk_node::config::Config;
 use std::path::Path;
 use std::sync::Arc;
 
+use args::Cli;
+
 fn main() {
-	let args: Vec<String> = std::env::args().collect();
+	let args = Cli::parse();
 
-	if args.len() < 2 {
-		eprintln!("Usage: {} config_path", args[0]);
-		std::process::exit(-1);
-	}
-
+	#[allow(deprecated)]
+	let config_file = args.config.unwrap_or_else(|| {
+		// FIXME: change this with a better default path
+		std::env::home_dir().unwrap().join("ldk-server.config").to_str().unwrap().to_string()
+	});
 	let mut ldk_node_config = Config::default();
-	let config_file = load_config(Path::new(&args[1])).expect("Invalid configuration file.");
+	let config_file = load_config(Path::new(&config_file)).expect("Invalid configuration file.");
 
 	ldk_node_config.log_level = LogLevel::Trace;
 	ldk_node_config.storage_dir_path = config_file.storage_dir_path;
