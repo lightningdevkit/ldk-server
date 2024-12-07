@@ -29,6 +29,7 @@ pub(crate) fn handle_update_channel_config_request(
 
 	let counterparty_node_id = PublicKey::from_str(&request.counterparty_node_id)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
+
 	context
 		.node
 		.update_channel_config(
