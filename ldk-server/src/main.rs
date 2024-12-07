@@ -13,10 +13,21 @@ use tokio::signal::unix::SignalKind;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 
+use crate::io::paginated_kv_store::PaginatedKVStore;
+use crate::io::sqlite_store::SqliteStore;
+use crate::io::{
+	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
+	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+};
 use crate::util::config::load_config;
+use crate::util::proto_adapter::forwarded_payment_to_proto;
+use hex::DisplayHex;
 use ldk_node::config::Config;
-use std::path::Path;
+use prost::Message;
+use rand::random;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
 	let args: Vec<String> = std::env::args().collect();
@@ -30,7 +41,7 @@ fn main() {
 	let config_file = load_config(Path::new(&args[1])).expect("Invalid configuration file.");
 
 	ldk_node_config.log_level = LogLevel::Trace;
-	ldk_node_config.storage_dir_path = config_file.storage_dir_path;
+	ldk_node_config.storage_dir_path = config_file.storage_dir_path.clone();
 	ldk_node_config.listening_addresses = Some(vec![config_file.listening_addr]);
 	ldk_node_config.network = config_file.network;
 
@@ -60,6 +71,9 @@ fn main() {
 			std::process::exit(-1);
 		},
 	};
+
+	let paginated_store =
+		SqliteStore::new(PathBuf::from(config_file.storage_dir_path), None, None).unwrap();
 
 	println!("Starting up...");
 	match node.start_with_runtime(Arc::clone(&runtime)) {
@@ -97,28 +111,68 @@ fn main() {
 								"CHANNEL_PENDING: {} from counterparty {}",
 								channel_id, counterparty_node_id
 							);
+							event_node.event_handled();
 						},
 						Event::ChannelReady { channel_id, counterparty_node_id, .. } => {
 							println!(
 								"CHANNEL_READY: {} from counterparty {:?}",
 								channel_id, counterparty_node_id
 							);
+							event_node.event_handled();
 						},
 						Event::PaymentReceived { payment_id, payment_hash, amount_msat } => {
 							println!(
 								"PAYMENT_RECEIVED: with id {:?}, hash {}, amount_msat {}",
 								payment_id, payment_hash, amount_msat
 							);
+							event_node.event_handled();
 						},
-						_ => {},
+						payment_forwarded_event @ Event::PaymentForwarded {prev_channel_id,
+							next_channel_id,
+							prev_user_channel_id,
+							next_user_channel_id,
+							total_fee_earned_msat,
+							skimmed_fee_msat,
+							claim_from_onchain_tx,
+							outbound_amount_forwarded_msat} => {
+
+							println!("PAYMENT_FORWARDED: with outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound channel: {}, outbound channel: {}",
+								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
+							);
+
+							let forwarded_payment = forwarded_payment_to_proto(payment_forwarded_event);
+
+							// We don't expose this payment-id to the user, it is a temporary measure to generate
+							// some unique identifiers until we have forwarded-payment-id available in ldk.
+							// Currently, this is the expected user handling behaviour for forwarded payments.
+							let forwarded_payment_id:[u8;32] = random();
+
+							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
+
+							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+								&forwarded_payment_id.to_lower_hex_string(),
+								forwarded_payment_creation_time,
+								&forwarded_payment.encode_to_vec(),
+							) {
+								Ok(_) => {
+										event_node.event_handled();
+								}
+								Err(e) => {
+										println!("Failed to write forwarded payment to persistence: {}", e);
+								}
+							}
+						},
+						_ => {
+							event_node.event_handled();
+						},
 					}
-					event_node.event_handled();
+
 				},
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
 							let io_stream = TokioIo::new(stream);
-							let node_service = NodeService::new(Arc::clone(&node));
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store));
 							runtime.spawn(async move {
 								if let Err(err) = http1::Builder::new().serve_connection(io_stream, node_service).await {
 									eprintln!("Failed to serve connection: {}", err);
