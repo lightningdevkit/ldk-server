@@ -939,6 +939,7 @@ name = "ldk-server"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "clap",
  "hex-conservative",
  "http-body-util",
  "hyper 1.4.1",
