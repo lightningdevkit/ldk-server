@@ -1,0 +1,33 @@
+refresh_rate = "30 seconds"
+
+[appenders.rolling_file_appender]
+kind = "rolling_file"
+path = "logs/ldk-server.log"
+encoder.pattern = "{d(%Y-%m-%d %H:%M:%S)} [{t}] {l} {M} - {m}{n}"
+
+[appenders.rolling_file_appender.policy]
+kind = "compound"
+
+[appenders.rolling_file_appender.policy.trigger]
+kind = "size"
+limit = 10485760  # 10 MB
+
+[appenders.rolling_file_appender.policy.roller]
+kind = "fixed_window"
+pattern = "logs/ldk-server.{}.log"
+base = 1
+count = 5
+
+[root]
+level = "info"
+appenders = ["rolling_file_appender"]
+
+[loggers.ldk-server]
+level = "info"
+appenders = ["rolling_file_appender"]
+additive = false
+
+[loggers.ldk-node]
+level = "debug"
+appenders = ["rolling_file_appender"]
+additive = false

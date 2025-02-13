@@ -36,6 +36,8 @@ const USAGE_GUIDE: &str = "Usage: ldk-server <config_path>";
 fn main() {
 	let args: Vec<String> = std::env::args().collect();
 
+	log4rs::init_file("./ldk-server/log4rs.toml", Default::default()).unwrap();
+
 	if args.len() < 2 {
 		eprintln!("{USAGE_GUIDE}");
 		std::process::exit(-1);
