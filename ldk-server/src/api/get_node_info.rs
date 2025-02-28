@@ -23,6 +23,8 @@ pub(crate) fn handle_get_node_info_request(
 		latest_rgs_snapshot_timestamp: node_status.latest_rgs_snapshot_timestamp,
 		latest_node_announcement_broadcast_timestamp: node_status
 			.latest_node_announcement_broadcast_timestamp,
+		node_alias: Some(context.node.node_alias().unwrap().to_string()),
+		network: Some(context.node.config().network.to_string()),
 	};
 	Ok(response)
 }
