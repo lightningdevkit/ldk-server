@@ -5,6 +5,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::service::Service;
 use hyper::{Request, Response, StatusCode};
 
+use metrics_exporter_prometheus::PrometheusHandle;
 use prost::Message;
 
 use crate::api::bolt11_receive::{handle_bolt11_receive_request, BOLT11_RECEIVE_PATH};
@@ -24,6 +25,7 @@ use crate::api::list_forwarded_payments::{
 	handle_list_forwarded_payments_request, LIST_FORWARDED_PAYMENTS_PATH,
 };
 use crate::api::list_payments::{handle_list_payments_request, LIST_PAYMENTS_PATH};
+use crate::api::metrics::{handle_metrics_request, GET_METRICS};
 use crate::api::onchain_receive::{handle_onchain_receive_request, ONCHAIN_RECEIVE_PATH};
 use crate::api::onchain_send::{handle_onchain_send_request, ONCHAIN_SEND_PATH};
 use crate::api::open_channel::{handle_open_channel, OPEN_CHANNEL_PATH};
@@ -40,19 +42,22 @@ use std::sync::Arc;
 pub struct NodeService {
 	node: Arc<Node>,
 	paginated_kv_store: Arc<dyn PaginatedKVStore + Send + Sync>,
+	prometheus_handle: Arc<PrometheusHandle>,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore + Send + Sync>,
+		prometheus_handle: Arc<PrometheusHandle>,
 	) -> Self {
-		Self { node, paginated_kv_store }
+		Self { node, paginated_kv_store, prometheus_handle }
 	}
 }
 
 pub(crate) struct Context {
 	pub(crate) node: Arc<Node>,
 	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore + Send + Sync>,
+	pub(crate) prometheus_handle: Arc<PrometheusHandle>,
 }
 
 impl Service<Request<Incoming>> for NodeService {
@@ -64,6 +69,7 @@ impl Service<Request<Incoming>> for NodeService {
 		let context = Context {
 			node: Arc::clone(&self.node),
 			paginated_kv_store: Arc::clone(&self.paginated_kv_store),
+			prometheus_handle: Arc::clone(&self.prometheus_handle),
 		};
 		// Exclude '/' from path pattern matching.
 		match &req.uri().path()[1..] {
@@ -102,6 +108,7 @@ impl Service<Request<Incoming>> for NodeService {
 			LIST_FORWARDED_PAYMENTS_PATH => {
 				Box::pin(handle_request(context, req, handle_list_forwarded_payments_request))
 			},
+			GET_METRICS => Box::pin(handle_request(context, req, handle_metrics_request)),
 			path => {
 				let error = format!("Unknown request: {}", path).into_bytes();
 				Box::pin(async {

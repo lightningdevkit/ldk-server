@@ -452,3 +452,14 @@ pub struct GetBalancesResponse {
 	pub pending_balances_from_channel_closures:
 		::prost::alloc::vec::Vec<super::types::PendingSweepBalance>,
 }
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetMetricsRequest {}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetMetricsResponse {
+	#[prost(string, tag = "1")]
+	pub metrics: String,
+}

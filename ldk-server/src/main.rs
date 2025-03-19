@@ -1,12 +1,15 @@
 mod api;
 mod io;
 mod service;
+mod telemetry;
 mod util;
 
 use crate::service::NodeService;
 
 use ldk_node::{Builder, Event, Node};
 
+use metrics::counter;
+use telemetry::{collect_node_metrics, setup_prometheus};
 use tokio::net::TcpListener;
 use tokio::signal::unix::SignalKind;
 
@@ -103,6 +106,8 @@ fn main() {
 
 	let event_publisher: Arc<dyn EventPublisher> = Arc::new(NoopEventPublisher);
 
+	let prometheus_handle = setup_prometheus();
+
 	println!("Starting up...");
 	match node.start_with_runtime(Arc::clone(&runtime)) {
 		Ok(()) => {},
@@ -135,6 +140,7 @@ fn main() {
 				event = event_node.next_event_async() => {
 					match event {
 						Event::ChannelPending { channel_id, counterparty_node_id, .. } => {
+							counter!("channel_pending").increment(1);
 							println!(
 								"CHANNEL_PENDING: {} from counterparty {}",
 								channel_id, counterparty_node_id
@@ -142,6 +148,7 @@ fn main() {
 							event_node.event_handled();
 						},
 						Event::ChannelReady { channel_id, counterparty_node_id, .. } => {
+							counter!("channel_ready").increment(1);
 							println!(
 								"CHANNEL_READY: {} from counterparty {:?}",
 								channel_id, counterparty_node_id
@@ -149,6 +156,7 @@ fn main() {
 							event_node.event_handled();
 						},
 						Event::PaymentReceived { payment_id, payment_hash, amount_msat, .. } => {
+							counter!("payment_received").increment(1);
 							println!(
 								"PAYMENT_RECEIVED: with id {:?}, hash {}, amount_msat {}",
 								payment_id, payment_hash, amount_msat
@@ -157,14 +165,17 @@ fn main() {
 							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
+							counter!("payment_successful").increment(1);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
 						},
 						Event::PaymentFailed {payment_id, ..} => {
+							counter!("payment_failed").increment(1);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
+							counter!("payment_claimable").increment(1);
 							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
 						},
 						Event::PaymentForwarded {
@@ -179,6 +190,8 @@ fn main() {
 							claim_from_onchain_tx,
 							outbound_amount_forwarded_msat
 						} => {
+
+							counter!("payment_forwarded").increment(1);
 
 							println!("PAYMENT_FORWARDED: with outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound channel: {}, outbound channel: {}",
 								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
@@ -240,7 +253,7 @@ fn main() {
 					match res {
 						Ok((stream, _)) => {
 							let io_stream = TokioIo::new(stream);
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore + Send + Sync>);
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore + Send + Sync>, Arc::new(prometheus_handle.clone()));
 							runtime.spawn(async move {
 								if let Err(err) = http1::Builder::new().serve_connection(io_stream, node_service).await {
 									eprintln!("Failed to serve connection: {}", err);
@@ -250,6 +263,7 @@ fn main() {
 						Err(e) => eprintln!("Failed to accept connection: {}", e),
 					}
 				}
+				_ = collect_node_metrics(Arc::clone(&node)) => {}
 				_ = tokio::signal::ctrl_c() => {
 					println!("Received CTRL-C, shutting down..");
 					break;

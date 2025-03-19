@@ -18,3 +18,5 @@ hex = { package = "hex-conservative", version = "0.2.1", default-features = fals
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 rand = { version = "0.8.5", default-features = false }
 async-trait = { version = "0.1.85", default-features = false }
+metrics = "0.24.1"
+metrics-exporter-prometheus = "0.16.2"
