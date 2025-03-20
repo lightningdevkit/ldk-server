@@ -17,6 +17,9 @@ use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 
 use crate::io::events::event_publisher::{EventPublisher, NoopEventPublisher};
+use crate::io::events::get_event_name;
+#[cfg(feature = "events-rabbitmq")]
+use crate::io::events::rabbitmq::{RabbitMqConfig, RabbitMqEventPublisher};
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
@@ -32,12 +35,14 @@ use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::logger::LogLevel;
 use ldk_server_protos::events;
 use ldk_server_protos::events::{event_envelope, EventEnvelope};
+use ldk_server_protos::types::Payment;
 use prost::Message;
 use rand::Rng;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::select;
 
 const USAGE_GUIDE: &str = "Usage: ldk-server <config_path>";
 
@@ -95,7 +100,7 @@ fn main() {
 		},
 	};
 
-	let paginated_store =
+	let paginated_store: Arc<dyn PaginatedKVStore> =
 		Arc::new(match SqliteStore::new(PathBuf::from(config_file.storage_dir_path), None, None) {
 			Ok(store) => store,
 			Err(e) => {
@@ -106,7 +111,16 @@ fn main() {
 
 	let event_publisher: Arc<dyn EventPublisher> = Arc::new(NoopEventPublisher);
 
-	let prometheus_handle = setup_prometheus();
+    let prometheus_handle = setup_prometheus();
+
+	#[cfg(feature = "events-rabbitmq")]
+	let event_publisher: Arc<dyn EventPublisher> = {
+		let rabbitmq_config = RabbitMqConfig {
+			connection_string: config_file.rabbitmq_connection_string,
+			exchange_name: config_file.rabbitmq_exchange_name,
+		};
+		Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
+	};
 
 	println!("Starting up...");
 	match node.start_with_runtime(Arc::clone(&runtime)) {
@@ -129,14 +143,14 @@ fn main() {
 			Err(e) => {
 				println!("Failed to register for SIGTERM stream: {}", e);
 				std::process::exit(-1);
-			},
+			}
 		};
 		let event_node = Arc::clone(&node);
 		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
 			.await
 			.expect("Failed to bind listening port");
 		loop {
-			tokio::select! {
+			select! {
 				event = event_node.next_event_async() => {
 					match event {
 						Event::ChannelPending { channel_id, counterparty_node_id, .. } => {
@@ -162,21 +176,47 @@ fn main() {
 								payment_id, payment_hash, amount_msat
 							);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
-							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
+
+							publish_event_and_upsert_payment(&payment_id,
+								|payment_ref| event_envelope::Event::PaymentReceived(events::PaymentReceived {
+									payment: Some(payment_ref.clone()),
+								}),
+								&event_node,
+								Arc::clone(&event_publisher),
+								Arc::clone(&paginated_store)).await;
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
 							counter!("payment_successful").increment(1);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
-							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
+
+							publish_event_and_upsert_payment(&payment_id,
+								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
+									payment: Some(payment_ref.clone()),
+								}),
+								&event_node,
+								Arc::clone(&event_publisher),
+								Arc::clone(&paginated_store)).await;
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							counter!("payment_failed").increment(1);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
-							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
+
+							publish_event_and_upsert_payment(&payment_id,
+								|payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
+									payment: Some(payment_ref.clone()),
+								}),
+								&event_node,
+								Arc::clone(&event_publisher),
+								Arc::clone(&paginated_store)).await;
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
-							counter!("payment_claimable").increment(1);
-							upsert_payment_details(&event_node, Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore>, &payment_id);
+                            counter!("payment_claimable").increment(1);
+							if let Some(payment_details) = event_node.payment(&payment_id) {
+								let payment = payment_to_proto(payment_details);
+								upsert_payment_details(&event_node, Arc::clone(&paginated_store), &payment);
+							} else {
+								eprintln!("Unable to find payment with paymentId: {}", payment_id.to_string());
+							}
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
@@ -247,13 +287,12 @@ fn main() {
 							event_node.event_handled();
 						},
 					}
-
 				},
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
 							let io_stream = TokioIo::new(stream);
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store) as Arc<dyn PaginatedKVStore + Send + Sync>, Arc::new(prometheus_handle.clone()));
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), Arc::new(prometheus_handle.clone()));
 							runtime.spawn(async move {
 								if let Err(err) = http1::Builder::new().serve_connection(io_stream, node_service).await {
 									eprintln!("Failed to serve connection: {}", err);
@@ -280,30 +319,48 @@ fn main() {
 	println!("Shutdown complete..");
 }
 
-fn upsert_payment_details(
-	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment_id: &PaymentId,
+async fn publish_event_and_upsert_payment(
+	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> event_envelope::Event,
+	event_node: &Node, event_publisher: Arc<dyn EventPublisher>,
+	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	if let Some(payment_details) = event_node.payment(payment_id) {
 		let payment = payment_to_proto(payment_details);
-		let time =
-			SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs()
-				as i64;
 
-		match paginated_store.write(
-			PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-			PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-			&payment_id.0.to_lower_hex_string(),
-			time,
-			&payment.encode_to_vec(),
-		) {
-			Ok(_) => {
-				event_node.event_handled();
-			},
+		let event = payment_to_event(&payment);
+		let event_name = get_event_name(&event);
+		match event_publisher.publish(EventEnvelope { event: Some(event) }).await {
+			Ok(_) => {},
 			Err(e) => {
-				eprintln!("Failed to write payment to persistence: {}", e);
+				println!("Failed to publish '{}' event, : {}", event_name, e);
+				return;
 			},
-		}
+		};
+
+		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
 	} else {
-		eprintln!("Unable to find payment with paymentId: {}", payment_id.0.to_lower_hex_string());
+		eprintln!("Unable to find payment with paymentId: {}", payment_id);
+	}
+}
+
+fn upsert_payment_details(
+	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment: &Payment,
+) {
+	let time =
+		SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
+
+	match paginated_store.write(
+		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
+		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+		&payment.id,
+		time,
+		&payment.encode_to_vec(),
+	) {
+		Ok(_) => {
+			event_node.event_handled();
+		},
+		Err(e) => {
+			eprintln!("Failed to write payment to persistence: {}", e);
+		},
 	}
 }
