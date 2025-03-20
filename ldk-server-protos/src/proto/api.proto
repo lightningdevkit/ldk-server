@@ -424,3 +424,13 @@ message GetBalancesResponse {
   // might not already be accounted for in `total_onchain_balance_sats`.
   repeated types.PendingSweepBalance pending_balances_from_channel_closures = 6;
 }
+
+// Retrieve the ldk-server's metrics.
+message GetMetricsRequest {}
+
+// The response `content` for the `GetMetricsRequest` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message GetMetricsResponse {
+  // Prometheus metrics payload as its exposition format.
+  string metrics = 1;
+}

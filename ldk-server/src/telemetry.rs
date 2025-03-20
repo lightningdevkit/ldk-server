@@ -55,7 +55,7 @@ pub fn setup_prometheus() -> PrometheusHandle {
 }
 
 pub async fn collect_node_metrics(node: Arc<Node>) -> io::Result<()> {
-	println!("collect_node_metrics...");
+	println!("[DEBUG] Collecting Node Metrics...");
 	let BalanceDetails {
 		total_onchain_balance_sats,
 		spendable_onchain_balance_sats,
