@@ -57,7 +57,7 @@ impl NodeService {
 pub(crate) struct Context {
 	pub(crate) node: Arc<Node>,
 	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore>,
-    pub(crate) prometheus_handle: Arc<PrometheusHandle>,
+	pub(crate) prometheus_handle: Arc<PrometheusHandle>,
 }
 
 impl Service<Request<Incoming>> for NodeService {

@@ -111,7 +111,7 @@ fn main() {
 
 	let event_publisher: Arc<dyn EventPublisher> = Arc::new(NoopEventPublisher);
 
-    let prometheus_handle = setup_prometheus();
+	let prometheus_handle = setup_prometheus();
 
 	#[cfg(feature = "events-rabbitmq")]
 	let event_publisher: Arc<dyn EventPublisher> = {
