@@ -108,7 +108,21 @@ impl Service<Request<Incoming>> for NodeService {
 			LIST_FORWARDED_PAYMENTS_PATH => {
 				Box::pin(handle_request(context, req, handle_list_forwarded_payments_request))
 			},
-			GET_METRICS => Box::pin(handle_request(context, req, handle_metrics_request)),
+			GET_METRICS => Box::pin(async {
+				match handle_metrics_request(context, req) {
+					Ok(metrics) => Ok(Response::builder()
+						.header("Content-Type", "text/plain")
+						.body(Full::new(Bytes::from(metrics)))
+						.unwrap()),
+					Err(e) => {
+						let (error_response, status_code) = to_error_response(e);
+						Ok(Response::builder()
+							.status(status_code)
+							.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+							.unwrap())
+					},
+				}
+			}),
 			path => {
 				let error = format!("Unknown request: {}", path).into_bytes();
 				Box::pin(async {

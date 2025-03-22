@@ -1,12 +1,14 @@
+use hyper::body::Incoming;
+use hyper::Request;
+
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use ldk_server_protos::api::{GetMetricsRequest, GetMetricsResponse};
 
 pub(crate) const GET_METRICS: &str = "metrics";
 
 pub(crate) fn handle_metrics_request(
-	context: Context, _request: GetMetricsRequest,
-) -> Result<GetMetricsResponse, LdkServerError> {
+	context: Context, _request: Request<Incoming>,
+) -> Result<String, LdkServerError> {
 	let metrics = context.prometheus_handle.render();
-	Ok(GetMetricsResponse { metrics })
+	Ok(metrics)
 }
