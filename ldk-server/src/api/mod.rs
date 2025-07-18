@@ -10,6 +10,7 @@ pub(crate) mod get_payment_details;
 pub(crate) mod list_channels;
 pub(crate) mod list_forwarded_payments;
 pub(crate) mod list_payments;
+pub(crate) mod metrics;
 pub(crate) mod onchain_receive;
 pub(crate) mod onchain_send;
 pub(crate) mod open_channel;

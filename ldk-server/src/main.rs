@@ -1,12 +1,14 @@
 mod api;
 mod io;
 mod service;
+mod telemetry;
 mod util;
 
 use crate::service::NodeService;
 
 use ldk_node::{Builder, Event, Node};
 
+use telemetry::setup_prometheus;
 use tokio::net::TcpListener;
 use tokio::signal::unix::SignalKind;
 
@@ -121,6 +123,8 @@ fn main() {
 
 	let event_publisher: Arc<dyn EventPublisher> = Arc::new(NoopEventPublisher);
 
+	let prometheus_handle = setup_prometheus();
+
 	#[cfg(feature = "events-rabbitmq")]
 	let event_publisher: Arc<dyn EventPublisher> = {
 		let rabbitmq_config = RabbitMqConfig {
@@ -232,7 +236,6 @@ fn main() {
 							claim_from_onchain_tx,
 							outbound_amount_forwarded_msat
 						} => {
-
 							println!("PAYMENT_FORWARDED: with outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound channel: {}, outbound channel: {}",
 								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
 							);
@@ -292,7 +295,7 @@ fn main() {
 					match res {
 						Ok((stream, _)) => {
 							let io_stream = TokioIo::new(stream);
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store));
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), Arc::new(prometheus_handle.clone()));
 							runtime.spawn(async move {
 								if let Err(err) = http1::Builder::new().serve_connection(io_stream, node_service).await {
 									eprintln!("Failed to serve connection: {}", err);
