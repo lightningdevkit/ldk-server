@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [ "ldk-server-cli", "ldk-server-client", "ldk-server-protos", "ldk-server"]
+package.version = "0.1.0"
 
 [profile.release]
 panic = "abort"
