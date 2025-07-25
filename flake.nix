@@ -29,8 +29,7 @@
         inputs.treefmt-nix.flakeModule
         ./nix/modules/flake-module.nix
         ./nix/checks/flake-module.nix
-        ./nix/pkgs.nix
-        ./nix/apps.nix
+        ./nix/crane.nix
         ./nix/shells.nix
         ./nix/treefmt.nix
       ];

@@ -10,3 +10,6 @@ lto = true
 
 [profile.dev]
 panic = "abort"
+
+[workspace.metadata.crane]
+name = "ldk-server-workspace"
