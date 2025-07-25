@@ -54,3 +54,21 @@ Interact with the node using CLI:
 ./target/debug/ldk-server-cli -b localhost:3002 onchain-receive # To generate onchain-receive address.
 ./target/debug/ldk-server-cli -b localhost:3002 help # To print help/available commands.
 ```
+
+### Nix
+Enter development shell:
+```
+nix develop
+```
+Run all the tests:
+```
+nix flake check
+```
+Build a project:
+```
+nix build .#ldk-server-cli
+```
+Run an app:
+```
+nix run .#ldk-server -- ./ldk-server/ldk-server-config.toml
+```

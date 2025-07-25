@@ -14,8 +14,8 @@ use ldk_server_protos::api::{
 	OpenChannelRequest, OpenChannelResponse,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
-use reqwest::header::CONTENT_TYPE;
 use reqwest::Client;
+use reqwest::header::CONTENT_TYPE;
 
 const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
 
