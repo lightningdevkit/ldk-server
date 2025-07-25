@@ -1,8 +1,8 @@
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
-use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
+use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_server_protos::api::{
 	CloseChannelRequest, CloseChannelResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
 };

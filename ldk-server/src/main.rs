@@ -32,7 +32,7 @@ use ldk_node::lightning::ln::channelmanager::PaymentId;
 #[cfg(feature = "experimental-lsps2-support")]
 use ldk_node::liquidity::LSPS2ServiceConfig;
 use ldk_server_protos::events;
-use ldk_server_protos::events::{event_envelope, EventEnvelope};
+use ldk_server_protos::events::{EventEnvelope, event_envelope};
 use ldk_server_protos::types::Payment;
 use prost::Message;
 use rand::Rng;

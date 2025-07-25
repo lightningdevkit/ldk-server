@@ -27,7 +27,7 @@ use ldk_server_protos::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
 use ldk_server_protos::types::{
-	bolt11_invoice_description, Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment,
+	Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment, bolt11_invoice_description,
 };
 
 pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {

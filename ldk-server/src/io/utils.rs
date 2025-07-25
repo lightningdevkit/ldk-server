@@ -20,8 +20,11 @@ pub(crate) fn check_namespace_key_validity(
 
 		if primary_namespace.is_empty() && !secondary_namespace.is_empty() {
 			let msg = format!(
-				"Failed to {} {}/{}/{}: primary namespace may not be empty if a non-empty secondary namespace is given.", operation,
-				PrintableString(primary_namespace), PrintableString(secondary_namespace), PrintableString(key)
+				"Failed to {} {}/{}/{}: primary namespace may not be empty if a non-empty secondary namespace is given.",
+				operation,
+				PrintableString(primary_namespace),
+				PrintableString(secondary_namespace),
+				PrintableString(key)
 			);
 			return Err(std::io::Error::new(std::io::ErrorKind::Other, msg));
 		}
@@ -43,7 +46,9 @@ pub(crate) fn check_namespace_key_validity(
 		if primary_namespace.is_empty() && !secondary_namespace.is_empty() {
 			let msg = format!(
 				"Failed to {} {}/{}: primary namespace may not be empty if a non-empty secondary namespace is given.",
-				operation, PrintableString(primary_namespace), PrintableString(secondary_namespace)
+				operation,
+				PrintableString(primary_namespace),
+				PrintableString(secondary_namespace)
 			);
 			return Err(std::io::Error::new(std::io::ErrorKind::Other, msg));
 		}

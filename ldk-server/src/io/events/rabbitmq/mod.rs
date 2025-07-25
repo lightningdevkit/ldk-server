@@ -148,12 +148,12 @@ impl EventPublisher for RabbitMqEventPublisher {
 mod integration_tests_events_rabbitmq {
 	use super::*;
 	use lapin::{
+		Channel, Connection,
 		options::{BasicAckOptions, BasicConsumeOptions, QueueBindOptions, QueueDeclareOptions},
 		types::FieldTable,
-		Channel, Connection,
 	};
-	use ldk_server_protos::events::event_envelope::Event;
 	use ldk_server_protos::events::PaymentForwarded;
+	use ldk_server_protos::events::event_envelope::Event;
 	use std::io;
 	use std::time::Duration;
 	use tokio;

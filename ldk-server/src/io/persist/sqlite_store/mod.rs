@@ -1,7 +1,7 @@
 use crate::io::persist::paginated_kv_store::{ListResponse, PaginatedKVStore};
 use crate::io::utils::check_namespace_key_validity;
 use ldk_node::lightning::types::string::PrintableString;
-use rusqlite::{named_params, Connection};
+use rusqlite::{Connection, named_params};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::{fs, io};
@@ -123,9 +123,10 @@ impl SqliteStore {
 		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "read")?;
 
 		let locked_conn = self.connection.lock().unwrap();
-		let sql =
-			format!("SELECT value FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
-							kv_table_name);
+		let sql = format!(
+			"SELECT value FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
+			kv_table_name
+		);
 
 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
 			let msg = format!("Failed to prepare statement: {}", e);
@@ -172,7 +173,10 @@ impl SqliteStore {
 
 		let locked_conn = self.connection.lock().unwrap();
 
-		let sql = format!("DELETE FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;", kv_table_name);
+		let sql = format!(
+			"DELETE FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
+			kv_table_name
+		);
 
 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
 			let msg = format!("Failed to prepare statement: {}", e);
@@ -330,7 +334,7 @@ mod tests {
 	use super::*;
 	use ldk_node::lightning::util::persist::KVSTORE_NAMESPACE_KEY_MAX_LEN;
 	use rand::distributions::Alphanumeric;
-	use rand::{thread_rng, Rng};
+	use rand::{Rng, thread_rng};
 	use std::panic::RefUnwindSafe;
 
 	impl Drop for SqliteStore {
