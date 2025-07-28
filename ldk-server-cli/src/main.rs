@@ -11,7 +11,7 @@ use ldk_server_client::ldk_server_protos::api::{
 	OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_protos::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription, PageToken, Payment,
+	Bolt11InvoiceDescription, PageToken, Payment, bolt11_invoice_description,
 };
 use std::fmt::Debug;
 

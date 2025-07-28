@@ -1,9 +1,9 @@
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use crate::service::Context;
+use ldk_node::UserChannelId;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
-use ldk_node::UserChannelId;
 use ldk_server_protos::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
 use ldk_server_protos::types::channel_config::MaxDustHtlcExposure;
 use std::str::FromStr;
