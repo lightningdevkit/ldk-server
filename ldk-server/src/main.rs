@@ -13,6 +13,8 @@ use tokio::signal::unix::SignalKind;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 
+use clap::Parser;
+
 use crate::io::events::event_publisher::{EventPublisher, NoopEventPublisher};
 use crate::io::events::get_event_name;
 #[cfg(feature = "events-rabbitmq")]
@@ -24,7 +26,7 @@ use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE, PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
-use crate::util::config::load_config;
+use crate::util::config::{load_config, ArgsConfig};
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use hex::DisplayHex;
 use ldk_node::config::Config;
@@ -36,38 +38,19 @@ use ldk_server_protos::events::{event_envelope, EventEnvelope};
 use ldk_server_protos::types::Payment;
 use prost::Message;
 use rand::Rng;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::select;
 
-const USAGE_GUIDE: &str = "Usage: ldk-server <config_path>";
-
 fn main() {
-	let args: Vec<String> = std::env::args().collect();
-
-	if args.len() < 2 {
-		eprintln!("{USAGE_GUIDE}");
-		std::process::exit(-1);
-	}
-
-	let arg = args[1].as_str();
-	if arg == "-h" || arg == "--help" {
-		println!("{}", USAGE_GUIDE);
-		std::process::exit(0);
-	}
-
-	if fs::File::open(arg).is_err() {
-		eprintln!("Unable to access configuration file.");
-		std::process::exit(-1);
-	}
+	let args_config = ArgsConfig::parse();
 
 	let mut ldk_node_config = Config::default();
-	let config_file = match load_config(Path::new(arg)) {
+	let config_file = match load_config(&args_config) {
 		Ok(config) => config,
 		Err(e) => {
-			eprintln!("Invalid configuration file: {}", e);
+			eprintln!("Invalid configuration: {}", e);
 			std::process::exit(-1);
 		},
 	};

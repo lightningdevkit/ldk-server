@@ -1698,6 +1698,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "clap",
  "futures-util",
  "hex-conservative 0.2.1",
  "http-body-util",
