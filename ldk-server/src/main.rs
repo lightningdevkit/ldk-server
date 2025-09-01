@@ -62,11 +62,9 @@ fn main() {
 	let mut builder = Builder::from_config(ldk_node_config);
 	builder.set_log_facade_logger();
 
-	let bitcoind_rpc_addr = config_file.bitcoind_rpc_addr;
-
 	builder.set_chain_source_bitcoind_rpc(
-		bitcoind_rpc_addr.ip().to_string(),
-		bitcoind_rpc_addr.port(),
+		config_file.bitcoind_rpc_host,
+		config_file.bitcoind_rpc_port,
 		config_file.bitcoind_rpc_user,
 		config_file.bitcoind_rpc_password,
 	);

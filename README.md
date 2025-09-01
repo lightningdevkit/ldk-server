@@ -58,7 +58,8 @@ export LDK_SERVER_NODE_NETWORK=regtest
 export LDK_SERVER_NODE_LISTENING_ADDRESS=localhost:3001
 export LDK_SERVER_NODE_REST_SERVICE_ADDRESS=127.0.0.1:3002
 export LDK_SERVER_NODE_ALIAS=LDK-Server
-export LDK_SERVER_BITCOIND_RPC_ADDRESS=127.0.0.1:18443
+export LDK_SERVER_BITCOIND_RPC_HOST=127.0.0.1
+export LDK_SERVER_BITCOIND_RPC_PORT=18443
 export LDK_SERVER_BITCOIND_RPC_USER=your-rpc-user
 export LDK_SERVER_BITCOIND_RPC_PASSWORD=your-rpc-password
 export LDK_SERVER_STORAGE_DIR_PATH=/path/to/storage
@@ -72,7 +73,8 @@ cargo run --bin ldk-server -- \
   --node-listening-address localhost:3001 \
   --node-rest-service-address 127.0.0.1:3002 \
   --node-alias LDK-Server \
-  --bitcoind-rpc-address 127.0.0.1:18443 \
+  --bitcoind-rpc-host 127.0.0.1 \
+  --bitcoind-rpc-port 18443 \
   --bitcoind-rpc-user your-rpc-user \
   --bitcoind-rpc-password your-rpc-password \
   --storage-dir-path /path/to/storage

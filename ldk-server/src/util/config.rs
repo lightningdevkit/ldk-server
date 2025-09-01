@@ -16,7 +16,8 @@ pub struct Config {
 	pub network: Network,
 	pub rest_service_addr: SocketAddr,
 	pub storage_dir_path: String,
-	pub bitcoind_rpc_addr: SocketAddr,
+	pub bitcoind_rpc_host: String,
+	pub bitcoind_rpc_port: u16,
 	pub bitcoind_rpc_user: String,
 	pub bitcoind_rpc_password: String,
 	pub rabbitmq_connection_string: String,
@@ -54,7 +55,8 @@ struct DiskConfig {
 
 #[derive(Deserialize, Serialize)]
 struct BitcoindConfig {
-	rpc_address: Option<String>,
+	rpc_host: Option<String>,
+	rpc_port: Option<u16>,
 	rpc_user: Option<String>,
 	rpc_password: Option<String>,
 }
@@ -129,8 +131,11 @@ pub struct ArgsConfig {
 	#[arg(long, env = "LDK_SERVER_NODE_ALIAS")]
 	node_alias: Option<String>,
 
-	#[arg(long, env = "LDK_SERVER_BITCOIND_RPC_ADDRESS")]
-	bitcoind_rpc_address: Option<String>,
+	#[arg(long, env = "LDK_SERVER_BITCOIND_RPC_HOST")]
+	bitcoind_rpc_host: Option<String>,
+
+	#[arg(long, env = "LDK_SERVER_BITCOIND_RPC_PORT")]
+	bitcoind_rpc_port: Option<u16>,
 
 	#[arg(long, env = "LDK_SERVER_BITCOIND_RPC_USER")]
 	bitcoind_rpc_user: Option<String>,
@@ -241,17 +246,18 @@ pub fn load_config(args_config: &ArgsConfig) -> io::Result<Config> {
 
 	// Bitcoind
 	let bitcoind = toml_config.as_ref().and_then(|t| t.bitcoind.as_ref());
-	let bitcoind_rpc_addr_str = match args_config
-		.bitcoind_rpc_address
+	let bitcoind_rpc_host = args_config
+		.bitcoind_rpc_host
 		.as_deref()
-		.or(bitcoind.and_then(|b| b.rpc_address.as_deref()))
-	{
-		Some(addr) => addr,
-		None => return Err(missing_field_err("bitcoind_rpc_address")),
-	};
-	let bitcoind_rpc_addr = SocketAddr::from_str(bitcoind_rpc_addr_str).map_err(|e| {
-		io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid bitcoind_rpc_address: {}", e))
-	})?;
+		.or_else(|| bitcoind.and_then(|b| b.rpc_host.as_deref()))
+		.ok_or_else(|| missing_field_err("bitcoind_rpc_host"))?
+		.to_string();
+
+	let bitcoind_rpc_port = args_config
+		.bitcoind_rpc_port
+		.or_else(|| bitcoind.and_then(|b| b.rpc_port))
+		.ok_or_else(|| missing_field_err("bitcoind_rpc_port"))?;
+
 	let bitcoind_rpc_user = args_config
 		.bitcoind_rpc_user
 		.as_deref()
@@ -281,7 +287,8 @@ pub fn load_config(args_config: &ArgsConfig) -> io::Result<Config> {
 		network,
 		rest_service_addr,
 		storage_dir_path,
-		bitcoind_rpc_addr,
+		bitcoind_rpc_host,
+		bitcoind_rpc_port,
 		bitcoind_rpc_user,
 		bitcoind_rpc_password,
 		rabbitmq_connection_string,
@@ -350,7 +357,8 @@ mod tests {
 				dir_path = "/tmp"
 
 				[bitcoind]
-				rpc_address = "127.0.0.1:8332"
+				rpc_host = "127.0.0.1"
+				rpc_port = 8332
 				rpc_user = "bitcoind-testuser"
 				rpc_password = "bitcoind-testpassword"
 
@@ -375,7 +383,8 @@ mod tests {
 			node_network: Some(Network::Regtest),
 			node_listening_address: Some(String::from("localhost:3008")),
 			node_rest_service_address: Some(String::from("127.0.0.1:3009")),
-			bitcoind_rpc_address: Some(String::from("127.0.1.9:18443")),
+			bitcoind_rpc_host: Some(String::from("127.0.1.9")),
+			bitcoind_rpc_port: Some(18443),
 			bitcoind_rpc_user: Some(String::from("bitcoind-testuser_cli")),
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
 			storage_dir_path: Some(String::from("/tmp_cli")),
@@ -408,7 +417,8 @@ mod tests {
 			node_network: None,
 			node_listening_address: None,
 			node_rest_service_address: None,
-			bitcoind_rpc_address: None,
+			bitcoind_rpc_host: None,
+			bitcoind_rpc_port: None,
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
@@ -424,7 +434,8 @@ mod tests {
 			network: Network::Regtest,
 			rest_service_addr: SocketAddr::from_str("127.0.0.1:3002").unwrap(),
 			storage_dir_path: "/tmp".to_string(),
-			bitcoind_rpc_addr: SocketAddr::from_str("127.0.0.1:8332").unwrap(),
+			bitcoind_rpc_host: "127.0.0.1".to_string(),
+			bitcoind_rpc_port: 8332,
 			bitcoind_rpc_user: "bitcoind-testuser".to_string(),
 			bitcoind_rpc_password: "bitcoind-testpassword".to_string(),
 			rabbitmq_connection_string: "rabbitmq_connection_string".to_string(),
@@ -446,7 +457,8 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
-		assert_eq!(config.bitcoind_rpc_addr, expected.bitcoind_rpc_addr);
+		assert_eq!(config.bitcoind_rpc_host, expected.bitcoind_rpc_host);
+		assert_eq!(config.bitcoind_rpc_port, expected.bitcoind_rpc_port);
 		assert_eq!(config.bitcoind_rpc_user, expected.bitcoind_rpc_user);
 		assert_eq!(config.bitcoind_rpc_password, expected.bitcoind_rpc_password);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
@@ -465,7 +477,8 @@ mod tests {
 			node_network: None,
 			node_listening_address: None,
 			node_rest_service_address: None,
-			bitcoind_rpc_address: None,
+			bitcoind_rpc_host: None,
+			bitcoind_rpc_port: None,
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
@@ -505,7 +518,8 @@ mod tests {
 		// The order here is important: it is the reverse of the validation order in `load_config`
 		validate_missing!("rpc_password", missing_field_msg("bitcoind_rpc_password"));
 		validate_missing!("rpc_user", missing_field_msg("bitcoind_rpc_user"));
-		validate_missing!("rpc_address", missing_field_msg("bitcoind_rpc_address"));
+		validate_missing!("rpc_port", missing_field_msg("bitcoind_rpc_port"));
+		validate_missing!("rpc_host", missing_field_msg("bitcoind_rpc_host"));
 		validate_missing!("dir_path", missing_field_msg("storage_dir_path"));
 		validate_missing!("rest_service_address", missing_field_msg("rest_service_address"));
 		validate_missing!("listening_address", missing_field_msg("node_listening_address"));
@@ -538,10 +552,8 @@ mod tests {
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap())),
 			storage_dir_path: args_config.storage_dir_path.unwrap(),
-			bitcoind_rpc_addr: SocketAddr::from_str(
-				args_config.bitcoind_rpc_address.as_deref().unwrap(),
-			)
-			.unwrap(),
+			bitcoind_rpc_host: args_config.bitcoind_rpc_host.unwrap(),
+			bitcoind_rpc_port: args_config.bitcoind_rpc_port.unwrap(),
 			bitcoind_rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 			bitcoind_rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			rabbitmq_connection_string: String::new(),
@@ -553,7 +565,8 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
-		assert_eq!(config.bitcoind_rpc_addr, expected.bitcoind_rpc_addr);
+		assert_eq!(config.bitcoind_rpc_host, expected.bitcoind_rpc_host);
+		assert_eq!(config.bitcoind_rpc_port, expected.bitcoind_rpc_port);
 		assert_eq!(config.bitcoind_rpc_user, expected.bitcoind_rpc_user);
 		assert_eq!(config.bitcoind_rpc_password, expected.bitcoind_rpc_password);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
@@ -580,7 +593,8 @@ mod tests {
 		// The order here is important: it is the reverse of the validation order in `load_config`
 		validate_missing!(bitcoind_rpc_password, missing_field_msg("bitcoind_rpc_password"));
 		validate_missing!(bitcoind_rpc_user, missing_field_msg("bitcoind_rpc_user"));
-		validate_missing!(bitcoind_rpc_address, missing_field_msg("bitcoind_rpc_address"));
+		validate_missing!(bitcoind_rpc_port, missing_field_msg("bitcoind_rpc_port"));
+		validate_missing!(bitcoind_rpc_host, missing_field_msg("bitcoind_rpc_host"));
 		validate_missing!(storage_dir_path, missing_field_msg("storage_dir_path"));
 		validate_missing!(node_rest_service_address, missing_field_msg("rest_service_address"));
 		validate_missing!(node_listening_address, missing_field_msg("node_listening_address"));
@@ -610,10 +624,8 @@ mod tests {
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap())),
 			storage_dir_path: args_config.storage_dir_path.unwrap(),
-			bitcoind_rpc_addr: SocketAddr::from_str(
-				args_config.bitcoind_rpc_address.as_deref().unwrap(),
-			)
-			.unwrap(),
+			bitcoind_rpc_host: args_config.bitcoind_rpc_host.unwrap(),
+			bitcoind_rpc_port: args_config.bitcoind_rpc_port.unwrap(),
 			bitcoind_rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 			bitcoind_rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			rabbitmq_connection_string: "rabbitmq_connection_string".to_string(),
@@ -635,7 +647,8 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
-		assert_eq!(config.bitcoind_rpc_addr, expected.bitcoind_rpc_addr);
+		assert_eq!(config.bitcoind_rpc_host, expected.bitcoind_rpc_host);
+		assert_eq!(config.bitcoind_rpc_port, expected.bitcoind_rpc_port);
 		assert_eq!(config.bitcoind_rpc_user, expected.bitcoind_rpc_user);
 		assert_eq!(config.bitcoind_rpc_password, expected.bitcoind_rpc_password);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
