@@ -57,3 +57,5 @@ max_payment_size_msat = 25000000000       # 0.25 BTC
 ## A token we may require to be sent by the clients.
 ## If set, only requests matching this token will be accepted. (uncomment and set if required)
 # require_token = ""
+
+client_trusts_lsp = false
