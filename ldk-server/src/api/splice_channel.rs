@@ -44,16 +44,15 @@ pub(crate) fn handle_splice_out_request(
 				"Address is not valid for LdkServer's configured network.".to_string(),
 			)
 		})?;
-	let address_str = address.to_string();
 
 	context.node.splice_out(
 		&user_channel_id,
 		counterparty_node_id,
-		address,
+		&address,
 		request.splice_amount_sats,
 	)?;
 
-	Ok(SpliceOutResponse { address: address_str })
+	Ok(SpliceOutResponse { address: address.to_string() })
 }
 
 fn parse_user_channel_id(id: &str) -> Result<UserChannelId, LdkServerError> {
