@@ -872,14 +872,14 @@ dependencies = [
 [[package]]
 name = "esplora-client"
 version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0af349d96a5d9ad77ba59f1437aa6f348b03c5865d4f7d6e7a662d60aedce39"
+source = "git+https://github.com/acidbunny21/rust-esplora-client.git?branch=submit-tx-pkg-clients#d2f0c6206649123c7a91a788e2f735ff282d8974"
 dependencies = [
  "bitcoin",
  "hex-conservative 0.2.1",
  "log",
  "reqwest 0.12.24",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -1670,7 +1670,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-node"
 version = "0.7.0+git"
-source = "git+https://github.com/lightningdevkit/ldk-node.git?tag=v0.7.0-rc.0#3ed1d13451239c54616e9f3fe75fa1f748807b15"
+source = "git+https://github.com/tankyleo/ldk-node.git?branch=25-10-0fc-channel-config#d4a2a04579f5af3629e248578493527bb73cbea8"
 dependencies = [
  "base64 0.22.1",
  "bdk_chain",
