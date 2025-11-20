@@ -189,6 +189,7 @@ struct LSPS2ServiceTomlConfig {
 	min_payment_size_msat: u64,
 	max_payment_size_msat: u64,
 	require_token: Option<String>,
+	client_trusts_lsp: bool,
 }
 
 impl Into<LSPS2ServiceConfig> for LSPS2ServiceTomlConfig {
@@ -204,6 +205,7 @@ impl Into<LSPS2ServiceConfig> for LSPS2ServiceTomlConfig {
 				min_payment_size_msat,
 				max_payment_size_msat,
 				require_token,
+				client_trusts_lsp,
 			} => LSPS2ServiceConfig {
 				advertise_service,
 				channel_opening_fee_ppm,
@@ -214,6 +216,7 @@ impl Into<LSPS2ServiceConfig> for LSPS2ServiceTomlConfig {
 				max_client_to_self_delay,
 				max_payment_size_msat,
 				require_token,
+				client_trusts_lsp,
 			},
 		}
 	}
@@ -274,6 +277,7 @@ mod tests {
 			max_client_to_self_delay = 1440           # ~10 days
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -304,6 +308,7 @@ mod tests {
 				max_client_to_self_delay: 1440,
 				min_payment_size_msat: 10000000,
 				max_payment_size_msat: 25000000000,
+				client_trusts_lsp: false,
 			}),
 		};
 
@@ -353,6 +358,7 @@ mod tests {
 			max_client_to_self_delay = 1440           # ~10 days
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -399,6 +405,7 @@ mod tests {
 			max_client_to_self_delay = 1440           # ~10 days
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();

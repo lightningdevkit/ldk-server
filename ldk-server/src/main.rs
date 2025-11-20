@@ -31,6 +31,7 @@ use ldk_node::config::Config;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 #[cfg(feature = "experimental-lsps2-support")]
 use ldk_node::liquidity::LSPS2ServiceConfig;
+use ldk_node::logger::LogLevel;
 use ldk_server_protos::events;
 use ldk_server_protos::events::{event_envelope, EventEnvelope};
 use ldk_server_protos::types::Payment;
@@ -63,7 +64,6 @@ fn main() {
 		std::process::exit(-1);
 	}
 
-	let mut ldk_node_config = Config::default();
 	let config_file = match load_config(Path::new(arg)) {
 		Ok(config) => config,
 		Err(e) => {
@@ -72,12 +72,13 @@ fn main() {
 		},
 	};
 
+	let mut ldk_node_config = Config::default();
 	ldk_node_config.storage_dir_path = config_file.storage_dir_path.clone();
 	ldk_node_config.listening_addresses = Some(vec![config_file.listening_addr]);
 	ldk_node_config.network = config_file.network;
 
 	let mut builder = Builder::from_config(ldk_node_config);
-	builder.set_log_facade_logger();
+	builder.set_filesystem_logger(None, Some(LogLevel::Trace));
 
 	match config_file.chain_source {
 		ChainSource::Rpc { rpc_address, rpc_user, rpc_password } => {
@@ -106,6 +107,8 @@ fn main() {
 			std::process::exit(-1);
 		},
 	};
+
+	builder.set_runtime(runtime.handle().clone());
 
 	let node = match builder.build() {
 		Ok(node) => Arc::new(node),
@@ -136,7 +139,7 @@ fn main() {
 	};
 
 	println!("Starting up...");
-	match node.start_with_runtime(Arc::clone(&runtime)) {
+	match node.start() {
 		Ok(()) => {},
 		Err(e) => {
 			eprintln!("Failed to start up LDK Node: {}", e);
