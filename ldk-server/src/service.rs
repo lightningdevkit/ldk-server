@@ -30,6 +30,9 @@ use crate::api::list_payments::{handle_list_payments_request, LIST_PAYMENTS_PATH
 use crate::api::onchain_receive::{handle_onchain_receive_request, ONCHAIN_RECEIVE_PATH};
 use crate::api::onchain_send::{handle_onchain_send_request, ONCHAIN_SEND_PATH};
 use crate::api::open_channel::{handle_open_channel, OPEN_CHANNEL_PATH};
+use crate::api::splice_channel::{
+	handle_splice_in_request, handle_splice_out_request, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+};
 use crate::api::update_channel_config::{
 	handle_update_channel_config_request, UPDATE_CHANNEL_CONFIG_PATH,
 };
@@ -85,6 +88,8 @@ impl Service<Request<Incoming>> for NodeService {
 			},
 			BOLT12_SEND_PATH => Box::pin(handle_request(context, req, handle_bolt12_send_request)),
 			OPEN_CHANNEL_PATH => Box::pin(handle_request(context, req, handle_open_channel)),
+			SPLICE_IN_PATH => Box::pin(handle_request(context, req, handle_splice_in_request)),
+			SPLICE_OUT_PATH => Box::pin(handle_request(context, req, handle_splice_out_request)),
 			CLOSE_CHANNEL_PATH => {
 				Box::pin(handle_request(context, req, handle_close_channel_request))
 			},

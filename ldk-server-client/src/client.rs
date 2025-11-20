@@ -11,7 +11,8 @@ use ldk_server_protos::api::{
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
 	ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse,
+	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use reqwest::header::CONTENT_TYPE;
@@ -28,6 +29,8 @@ const BOLT11_SEND_PATH: &str = "Bolt11Send";
 const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
 const BOLT12_SEND_PATH: &str = "Bolt12Send";
 const OPEN_CHANNEL_PATH: &str = "OpenChannel";
+const SPLICE_IN_CHANNEL_PATH: &str = "SpliceIn";
+const SPLICE_OUT_CHANNEL_PATH: &str = "SpliceOut";
 const CLOSE_CHANNEL_PATH: &str = "CloseChannel";
 const FORCE_CLOSE_CHANNEL_PATH: &str = "ForceCloseChannel";
 const LIST_CHANNELS_PATH: &str = "ListChannels";
@@ -124,6 +127,24 @@ impl LdkServerClient {
 		&self, request: OpenChannelRequest,
 	) -> Result<OpenChannelResponse, LdkServerError> {
 		let url = format!("http://{}/{OPEN_CHANNEL_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Splices funds into the channel specified by given request.
+	/// For API contract/usage, refer to docs for [`SpliceInRequest`] and [`SpliceInResponse`].
+	pub async fn splice_in_channel(
+		&self, request: SpliceInRequest,
+	) -> Result<SpliceInResponse, LdkServerError> {
+		let url = format!("http://{}/{SPLICE_IN_CHANNEL_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Splices funds out of the channel specified by given request.
+	/// For API contract/usage, refer to docs for [`SpliceOutRequest`] and [`SpliceOutResponse`].
+	pub async fn splice_out_channel(
+		&self, request: SpliceOutRequest,
+	) -> Result<SpliceOutResponse, LdkServerError> {
+		let url = format!("http://{}/{SPLICE_OUT_CHANNEL_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 
