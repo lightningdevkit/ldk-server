@@ -33,7 +33,7 @@ pub(crate) fn handle_onchain_send_request(
 			return Err(LdkServerError::new(
 				InvalidRequestError,
 				"Must specify either `send_all` or `amount_sats`, but not both or neither",
-			))
+			));
 		},
 	};
 	let response = OnchainSendResponse { txid: txid.to_string() };

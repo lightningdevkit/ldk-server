@@ -3,43 +3,19 @@ name: Continuous Integration Checks
 on: [ push, pull_request ]
 
 jobs:
-  build:
+  check-flake:
+    name: Check Nix Flake
+    runs-on: ubuntu-latest
     strategy:
-      matrix:
-        platform: [
-          ubuntu-latest,
-          macos-latest,
-          ]
-        toolchain: 
-          [ stable,
-            beta,
-            1.75.0, # MSRV
-          ]
-        include:
-          - toolchain: stable
-            check-fmt: true
-          - toolchain: 1.75.0
-            msrv: true
-    runs-on: ${{ matrix.platform }}
+      fail-fast: true
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-      - name: Install Rust ${{ matrix.toolchain }} toolchain
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal --default-toolchain ${{ matrix.toolchain }}
-          rustup override set ${{ matrix.toolchain }}
-      - name: Check formatting
-        if: matrix.check-fmt
-        run: rustup component add rustfmt && cargo fmt --all -- --check
-      - name: Pin packages to allow for MSRV
-        if: matrix.msrv
-        run: |
-          cargo update -p home --precise "0.5.9" --verbose # home v0.5.11 requires rustc 1.81 or newer
-      - name: Build on Rust ${{ matrix.toolchain }}
-        run: cargo build --verbose --color always
-      - name: Test on Rust ${{ matrix.toolchain }}
-        run: cargo test
-      - name: Cargo check release on Rust ${{ matrix.toolchain }}
-        run: cargo check --release
-      - name: Cargo check doc on Rust ${{ matrix.toolchain }}
-        run: cargo doc --release
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check Nix flake inputs
+        uses: DeterminateSystems/flake-checker-action@v8
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-25.05
+      - name: Check flake
+        run: nix flake check
