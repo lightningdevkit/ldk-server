@@ -7,11 +7,11 @@ use ldk_server_client::error::LdkServerErrorCode::{
 use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest, Bolt12SendRequest,
 	CloseChannelRequest, ForceCloseChannelRequest, GetBalancesRequest, GetNodeInfoRequest,
-	ListChannelsRequest, ListPaymentsRequest, OnchainReceiveRequest, OnchainSendRequest,
-	OpenChannelRequest,
+	ListChannelsRequest, ListPaymentsRequest, ListPaymentsResponse, OnchainReceiveRequest,
+	OnchainSendRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_protos::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription, PageToken, Payment,
+	bolt11_invoice_description, Bolt11InvoiceDescription, PageToken,
 };
 use std::fmt::Debug;
 
@@ -106,9 +106,15 @@ enum Commands {
 	ListPayments {
 		#[arg(short, long)]
 		#[arg(
-			help = "Minimum number of payments to return. If not provided, only the first page of the paginated list is returned."
+			help = "Fetch at least this many payments by iterating through multiple pages. Returns combined results with the last page token. If not provided, returns only a single page."
 		)]
 		number_of_payments: Option<u64>,
+		#[arg(long)]
+		#[arg(help = "Page token value to continue from a previous page")]
+		page_token_value: Option<String>,
+		#[arg(long)]
+		#[arg(help = "Page token index to continue from a previous page")]
+		page_token_index: Option<i64>,
 	},
 }
 
@@ -230,30 +236,64 @@ async fn main() {
 		Commands::ListChannels => {
 			handle_response_result(client.list_channels(ListChannelsRequest {}).await);
 		},
-		Commands::ListPayments { number_of_payments } => {
-			handle_response_result(list_n_payments(client, number_of_payments).await);
+		Commands::ListPayments { number_of_payments, page_token_value, page_token_index } => {
+			handle_response_result(
+				handle_list_payments(
+					client,
+					number_of_payments,
+					page_token_value,
+					page_token_index,
+				)
+				.await,
+			);
 		},
 	}
 }
 
+async fn handle_list_payments(
+	client: LdkServerClient, number_of_payments: Option<u64>, page_token_value: Option<String>,
+	page_token_index: Option<i64>,
+) -> Result<ListPaymentsResponse, LdkServerError> {
+	if page_token_value.is_some() != page_token_index.is_some() {
+		return Err(LdkServerError::new(
+			InternalError,
+			"Both --page-token-value and --page-token-index must be provided together".to_string(),
+		));
+	}
+
+	let initial_page_token = match (page_token_value, page_token_index) {
+		(Some(token), Some(index)) => Some(PageToken { token, index }),
+		_ => None,
+	};
+
+	if let Some(count) = number_of_payments {
+		list_n_payments(client, count, initial_page_token).await
+	} else {
+		// Fetch single page
+		client.list_payments(ListPaymentsRequest { page_token: initial_page_token }).await
+	}
+}
+
 async fn list_n_payments(
-	client: LdkServerClient, number_of_payments: Option<u64>,
-) -> Result<Vec<Payment>, LdkServerError> {
-	let mut payments = Vec::new();
-	let mut page_token: Option<PageToken> = None;
-	// If no count is specified, just list the first page.
-	let target_count = number_of_payments.unwrap_or(0);
+	client: LdkServerClient, target_count: u64, initial_page_token: Option<PageToken>,
+) -> Result<ListPaymentsResponse, LdkServerError> {
+	let mut payments = Vec::with_capacity(target_count as usize);
+	let mut page_token = initial_page_token;
+	let mut next_page_token;
 
 	loop {
 		let response = client.list_payments(ListPaymentsRequest { page_token }).await?;
 
 		payments.extend(response.payments);
-		if payments.len() >= target_count as usize || response.next_page_token.is_none() {
+		next_page_token = response.next_page_token;
+
+		if payments.len() >= target_count as usize || next_page_token.is_none() {
 			break;
 		}
-		page_token = response.next_page_token;
+		page_token = next_page_token.clone();
 	}
-	Ok(payments)
+
+	Ok(ListPaymentsResponse { payments, next_page_token })
 }
 
 fn handle_response_result<Rs: Debug>(response: Result<Rs, LdkServerError>) {
