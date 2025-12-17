@@ -29,12 +29,10 @@ impl fmt::Display for LdkServerError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum LdkServerErrorCode {
 	/// Please refer to [`protos::error::ErrorCode::InvalidRequestError`].
 	InvalidRequestError,
-
-	/// Please refer to [`protos::error::ErrorCode::AuthError`].
-	AuthError,
 
 	/// Please refer to [`protos::error::ErrorCode::LightningError`].
 	LightningError,
@@ -47,7 +45,6 @@ impl fmt::Display for LdkServerErrorCode {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			LdkServerErrorCode::InvalidRequestError => write!(f, "InvalidRequestError"),
-			LdkServerErrorCode::AuthError => write!(f, "AuthError"),
 			LdkServerErrorCode::LightningError => write!(f, "LightningError"),
 			LdkServerErrorCode::InternalServerError => write!(f, "InternalServerError"),
 		}
