@@ -32,6 +32,13 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+	pub auth_config: BasicAuthConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicAuthConfig {
+	pub username: String,
+	pub password: String,
 }
 
 #[derive(Debug)]
@@ -139,6 +146,16 @@ impl TryFrom<TomlConfig> for Config {
 			))?
 			.into());
 
+		let auth_config = toml_config
+			.auth
+			.ok_or_else(|| {
+				io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`auth` section with `username` and `password` is required in config file",
+				)
+			})
+			.map(|auth| BasicAuthConfig { username: auth.username, password: auth.password })?;
+
 		Ok(Config {
 			listening_addr,
 			network: toml_config.node.network,
@@ -151,6 +168,7 @@ impl TryFrom<TomlConfig> for Config {
 			lsps2_service_config,
 			log_level,
 			log_file_path: toml_config.log.and_then(|l| l.file),
+			auth_config,
 		})
 	}
 }
@@ -165,6 +183,7 @@ pub struct TomlConfig {
 	rabbitmq: Option<RabbitmqConfig>,
 	liquidity: Option<LiquidityConfig>,
 	log: Option<LogConfig>,
+	auth: Option<AuthConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -207,6 +226,12 @@ struct LogConfig {
 struct RabbitmqConfig {
 	connection_string: String,
 	exchange_name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct AuthConfig {
+	username: String,
+	password: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -293,17 +318,21 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			username = "testuser"
+			password = "testpass"
+
 			[esplora]
 			server_url = "https://mempool.space/api"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
@@ -352,6 +381,10 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			auth_config: BasicAuthConfig {
+				username: "testuser".to_string(),
+				password: "testpass".to_string(),
+			},
 		};
 
 		assert_eq!(config.listening_addr, expected.listening_addr);
@@ -378,19 +411,23 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			username = "testuser"
+			password = "testpass"
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"    # RPC endpoint
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
@@ -426,22 +463,26 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			username = "testuser"
+			password = "testpass"
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"    # RPC endpoint
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-			
+
 			[esplora]
 			server_url = "https://mempool.space/api"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
