@@ -21,36 +21,42 @@ a Lightning node while exposing a robust, language-agnostic API via [Protocol Bu
     - Built on top of LDK-Node, leveraging the modular, reliable, and high-performance architecture of LDK.
 
 - **Effortless Integration**:
-    - Ideal for embedding Lightning functionality into payment processors, self-hosted nodes, custodial wallets, or other Lightning-enabled
+    - Ideal for embedding Lightning functionality into payment processors, self-hosted nodes, custodial wallets, or
+      other Lightning-enabled
       applications.
 
 ### Project Status
 
 🚧 **Work in Progress**:
+
 - **APIs Under Development**: Expect breaking changes as the project evolves.
 - **Potential Bugs and Inconsistencies**: While progress is being made toward stability, unexpected behavior may occur.
-- **Improved Logging and Error Handling Coming Soon**: Current error handling is rudimentary (specially for CLI), and usability improvements are actively being worked on.
+- **Improved Logging and Error Handling Coming Soon**: Current error handling is rudimentary (specially for CLI), and
+  usability improvements are actively being worked on.
 - **Pending Testing**: Not tested, hence don't use it for production!
 
 We welcome your feedback and contributions to help shape the future of LDK Server!
 
-
 ### Configuration
+
 Refer `./ldk-server/ldk-server-config.toml` to see available configuration options.
 
 ### Building
+
 ```
 git clone https://github.com/lightningdevkit/ldk-server.git
 cargo build
 ```
 
 ### Running
+
 ```
 cargo run --bin ldk-server ./ldk-server/ldk-server-config.toml
 ```
 
 Interact with the node using CLI:
+
 ```
-./target/debug/ldk-server-cli -b localhost:3002 onchain-receive # To generate onchain-receive address.
-./target/debug/ldk-server-cli -b localhost:3002 help # To print help/available commands.
+./target/debug/ldk-server-cli -b localhost:3002 -u user -p pass onchain-receive # To generate onchain-receive address.
+./target/debug/ldk-server-cli -b localhost:3002 -u user -p pass help # To print help/available commands.
 ```

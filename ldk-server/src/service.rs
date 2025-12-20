@@ -7,10 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use ldk_node::bitcoin::base64::{self, Engine};
 use ldk_node::Node;
 
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
+use hyper::header::AUTHORIZATION;
 use hyper::service::Service;
 use hyper::{Request, Response, StatusCode};
 
@@ -30,7 +32,7 @@ use crate::api::bolt12_receive::handle_bolt12_receive_request;
 use crate::api::bolt12_send::handle_bolt12_send_request;
 use crate::api::close_channel::{handle_close_channel_request, handle_force_close_channel_request};
 use crate::api::error::LdkServerError;
-use crate::api::error::LdkServerErrorCode::InvalidRequestError;
+use crate::api::error::LdkServerErrorCode::{AuthError, InvalidRequestError};
 use crate::api::get_balances::handle_get_balances_request;
 use crate::api::get_node_info::handle_get_node_info_request;
 use crate::api::get_payment_details::handle_get_payment_details_request;
@@ -43,6 +45,7 @@ use crate::api::open_channel::handle_open_channel;
 use crate::api::splice_channel::{handle_splice_in_request, handle_splice_out_request};
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+use crate::util::config::BasicAuthConfig;
 use crate::util::proto_adapter::to_error_response;
 use std::future::Future;
 use std::pin::Pin;
@@ -56,11 +59,44 @@ const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 pub struct NodeService {
 	node: Arc<Node>,
 	paginated_kv_store: Arc<dyn PaginatedKVStore>,
+	auth_config: BasicAuthConfig,
 }
 
 impl NodeService {
-	pub(crate) fn new(node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>) -> Self {
-		Self { node, paginated_kv_store }
+	pub(crate) fn new(
+		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>,
+		auth_config: BasicAuthConfig,
+	) -> Self {
+		Self { node, paginated_kv_store, auth_config }
+	}
+}
+
+fn validate_auth<B>(req: &Request<B>, auth_config: &BasicAuthConfig) -> Result<(), LdkServerError> {
+	let auth_header = req
+		.headers()
+		.get(AUTHORIZATION)
+		.and_then(|v| v.to_str().ok())
+		.ok_or_else(|| LdkServerError::new(AuthError, "Missing Authorization header"))?;
+
+	let encoded = auth_header
+		.strip_prefix("Basic ")
+		.ok_or_else(|| LdkServerError::new(AuthError, "Invalid Authorization header format"))?;
+
+	let decoded = base64::engine::general_purpose::STANDARD
+		.decode(encoded)
+		.map_err(|_| LdkServerError::new(AuthError, "Invalid base64 encoding"))?;
+
+	let credentials = std::str::from_utf8(&decoded)
+		.map_err(|_| LdkServerError::new(AuthError, "Invalid credentials format"))?;
+
+	let (username, password) = credentials
+		.split_once(':')
+		.ok_or_else(|| LdkServerError::new(AuthError, "Invalid credentials format"))?;
+
+	if username == auth_config.username && password == auth_config.password {
+		Ok(())
+	} else {
+		Err(LdkServerError::new(AuthError, "Invalid credentials"))
 	}
 }
 
@@ -75,6 +111,18 @@ impl Service<Request<Incoming>> for NodeService {
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
+		// Validate authentication
+		if let Err(e) = validate_auth(&req, &self.auth_config) {
+			let (error_response, status_code) = to_error_response(e);
+			return Box::pin(async move {
+				Ok(Response::builder()
+					.status(status_code)
+					.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+					// unwrap safety: body only errors when previous chained calls failed.
+					.unwrap())
+			});
+		}
+
 		let context = Context {
 			node: Arc::clone(&self.node),
 			paginated_kv_store: Arc::clone(&self.paginated_kv_store),
@@ -187,5 +235,109 @@ async fn handle_request<
 				// unwrap safety: body only errors when previous chained calls failed.
 				.unwrap())
 		},
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use hyper::header::AUTHORIZATION;
+
+	fn create_test_request(auth_header: Option<String>) -> Request<()> {
+		let mut builder = Request::builder();
+		if let Some(header) = auth_header {
+			builder = builder.header(AUTHORIZATION, header);
+		}
+		builder.body(()).unwrap()
+	}
+
+	#[test]
+	fn test_validate_auth_success() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		// Create a valid Basic Auth header
+		let credentials = format!("{}:{}", auth_config.username, auth_config.password);
+		let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+		let auth_header = format!("Basic {encoded}");
+
+		let req = create_test_request(Some(auth_header));
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_validate_auth_wrong_password() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		// Wrong password
+		let credentials = format!("{}:wrongpass", auth_config.username);
+		let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+		let auth_header = format!("Basic {encoded}");
+
+		let req = create_test_request(Some(auth_header));
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
+	}
+
+	#[test]
+	fn test_validate_auth_wrong_username() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		// Wrong username
+		let credentials = format!("wronguser:{}", auth_config.password);
+		let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+		let auth_header = format!("Basic {encoded}");
+
+		let req = create_test_request(Some(auth_header));
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
+	}
+
+	#[test]
+	fn test_validate_auth_missing_header() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		let req = create_test_request(None);
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
+	}
+
+	#[test]
+	fn test_validate_auth_invalid_format() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		let credentials = format!("{}:{}", auth_config.username, auth_config.password);
+		let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+		// Missing "Basic " prefix
+		let req = create_test_request(Some(encoded));
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
+	}
+
+	#[test]
+	fn test_validate_auth_invalid_base64() {
+		let auth_config =
+			BasicAuthConfig { username: "testuser".to_string(), password: "testpass".to_string() };
+
+		// Invalid base64
+		let req = create_test_request(Some("Basic not-valid-base64!".to_string()));
+
+		let result = validate_auth(&req, &auth_config);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
 	}
 }

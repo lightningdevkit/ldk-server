@@ -40,12 +40,14 @@ const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
 pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
+	auth_credentials: (String, String),
 }
 
 impl LdkServerClient {
 	/// Constructs a [`LdkServerClient`] using `base_url` as the ldk-server endpoint.
-	pub fn new(base_url: String) -> Self {
-		Self { base_url, client: Client::new() }
+	/// `username` and `password` are used for basic authentication.
+	pub fn new(base_url: String, username: String, password: String) -> Self {
+		Self { base_url, client: Client::new(), auth_credentials: (username, password) }
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
@@ -196,10 +198,12 @@ impl LdkServerClient {
 		&self, request: &Rq, url: &str,
 	) -> Result<Rs, LdkServerError> {
 		let request_body = request.encode_to_vec();
+		let (username, password) = &self.auth_credentials;
 		let response_raw = self
 			.client
 			.post(url)
 			.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM)
+			.basic_auth(username, Some(password))
 			.body(request_body)
 			.send()
 			.await
