@@ -1,0 +1,123 @@
+services:
+  ldk-server:
+    container_name: ldk-server
+    build:
+      context: .
+      args:
+        BUILD_FEATURES: ""
+    command: [
+      "--node-listening-address=0.0.0.0:3001",
+      "--node-rest-service-address=0.0.0.0:3000",
+      "--bitcoind-rpc-host=ldk-server-bitcoin",
+      "--bitcoind-rpc-port=18443",
+      "--bitcoind-rpc-user=user",
+      "--bitcoind-rpc-password=pass",
+    ]
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    networks:
+      - ldk-server
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+    profiles: ["ldk-server"]
+
+  bitcoin:
+    container_name: ldk-server-bitcoin
+    image: blockstream/bitcoind:30.0@sha256:e1351bb0d735893abee13af422d4209069592d8113f8b0aa5ed1458681bfb715
+    platform: linux/amd64
+    command:
+      [
+        "bitcoind",
+        "-printtoconsole",
+        "-regtest=1",
+        "-rpcallowip=0.0.0.0/0",
+        "-rpcbind=0.0.0.0",
+        "-rpcuser=user",
+        "-rpcpassword=pass",
+        "-fallbackfee=0.00001",
+        "-zmqpubrawblock=tcp://0.0.0.0:28332",
+        "-zmqpubrawtx=tcp://0.0.0.0:28333"
+      ]
+    ports:
+      - "18443:18443"
+      - "18444:18444"
+    networks:
+      - ldk-server
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=user", "-rpcpassword=pass", "getblockchaininfo"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      # Example command: bitcoin-cli -regtest -rpcuser=user -rpcpassword=pass getblockchaininfo
+
+  lnd:
+    image: lightninglabs/lnd:v0.18.5-beta@sha256:2b560c9beb559c57ab2f2da1dfed80d286cf11a6dc6e4354cab84aafba79b6f6
+    container_name: ldk-server-lnd
+    ports:
+      - "9735:9735"   # P2P
+      - "10009:10009" # RPC
+    command:
+      - "--noseedbackup"
+      - "--trickledelay=5000"
+      - "--alias=ldk-node-lnd-test"
+      - "--externalip=lnd:9735"
+      - "--bitcoin.active"
+      - "--bitcoin.regtest"
+      - "--bitcoin.node=bitcoind"
+      - "--bitcoind.rpchost=ldk-server-bitcoin:18443"
+      - "--bitcoind.rpcuser=user"
+      - "--bitcoind.rpcpass=pass"
+      - "--bitcoind.zmqpubrawblock=tcp://ldk-server-bitcoin:28332"
+      - "--bitcoind.zmqpubrawtx=tcp://ldk-server-bitcoin:28333"
+      - "--accept-keysend"
+      - "--accept-amp"
+      - "--rpclisten=0.0.0.0:10009"
+      - "--tlsextradomain=lnd"
+      - "--tlsextraip=0.0.0.0"
+      - "--listen=0.0.0.0:9735"
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+    networks:
+      - ldk-server
+    # Example command: lncli --tlscertpath=/root/.lnd/tls.cert --macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon  getinfo
+
+  cln:
+    image: blockstream/lightningd:v25.05@sha256:4f61a5e77deb27c14ed223dd789bb3bfafe00c0c13f4f1e973c0a43b8ad5de90
+    container_name: ldk-server-cln
+    platform: linux/amd64
+    command:
+      [
+        "--bitcoin-rpcconnect=ldk-server-bitcoin",
+        "--bitcoin-rpcport=18443",
+        "--bitcoin-rpcuser=user",
+        "--bitcoin-rpcpassword=pass",
+        "--network=regtest",
+        "--log-level=debug",
+        "--alias=ldk-server-cln",
+      ]
+    ports:
+      - "19846:19846"  # RPC
+      - "9736:9736"    # P2P
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+    networks:
+      - ldk-server
+    # Example command: lightning-cli --network=regtest getinfo
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ldk-server-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - ldk-server
+    profiles: ["rabbitmq"]
+
+networks:
+  ldk-server:
+    driver: bridge
