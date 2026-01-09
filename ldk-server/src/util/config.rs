@@ -24,6 +24,8 @@ pub struct Config {
 	pub listening_addr: SocketAddress,
 	pub alias: Option<NodeAlias>,
 	pub network: Network,
+	pub auth_config: AuthConfig,
+	pub tls_config: Option<TlsConfig>,
 	pub rest_service_addr: SocketAddr,
 	pub storage_dir_path: String,
 	pub chain_source: ChainSource,
@@ -32,6 +34,17 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthConfig {
+	pub api_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TlsConfig {
+	pub cert_path: String,
+	pub key_path: String,
 }
 
 #[derive(Debug)]
@@ -144,18 +157,34 @@ impl TryFrom<TomlConfig> for Config {
 			))?
 			.into());
 
+		let auth_config = toml_config
+			.auth
+			.ok_or_else(|| {
+				io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`auth` section with `api_key` is required in config file",
+				)
+			})
+			.map(|auth| AuthConfig { api_key: auth.api_key })?;
+
+		let tls_config = toml_config
+			.tls
+			.map(|tls| TlsConfig { cert_path: tls.cert_path, key_path: tls.key_path });
+
 		Ok(Config {
 			listening_addr,
 			network: toml_config.node.network,
 			alias,
 			rest_service_addr,
 			storage_dir_path: toml_config.storage.disk.dir_path,
+			auth_config,
 			chain_source,
 			rabbitmq_connection_string,
 			rabbitmq_exchange_name,
 			lsps2_service_config,
 			log_level,
 			log_file_path: toml_config.log.and_then(|l| l.file),
+			tls_config,
 		})
 	}
 }
@@ -171,6 +200,8 @@ pub struct TomlConfig {
 	rabbitmq: Option<RabbitmqConfig>,
 	liquidity: Option<LiquidityConfig>,
 	log: Option<LogConfig>,
+	auth: Option<TomlAuthConfig>,
+	tls: Option<TomlTlsConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -218,6 +249,17 @@ struct LogConfig {
 struct RabbitmqConfig {
 	connection_string: String,
 	exchange_name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct TomlAuthConfig {
+	api_key: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct TomlTlsConfig {
+	cert_path: String,
+	key_path: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -304,17 +346,24 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			api_key = "test_api_key"
+
+			[tls]
+			cert_path = "/path/to/cert.pem"
+			key_path = "/path/to/key.pem"
+
 			[esplora]
 			server_url = "https://mempool.space/api"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
@@ -344,6 +393,11 @@ mod tests {
 			network: Network::Regtest,
 			rest_service_addr: SocketAddr::from_str("127.0.0.1:3002").unwrap(),
 			storage_dir_path: "/tmp".to_string(),
+			auth_config: AuthConfig { api_key: "test_api_key".to_string() },
+			tls_config: Some(TlsConfig {
+				cert_path: "/path/to/cert.pem".to_string(),
+				key_path: "/path/to/key.pem".to_string(),
+			}),
 			chain_source: ChainSource::Esplora {
 				server_url: String::from("https://mempool.space/api"),
 			},
@@ -369,6 +423,8 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
+		assert_eq!(config.auth_config, expected.auth_config);
+		assert_eq!(config.tls_config, expected.tls_config);
 		let ChainSource::Esplora { server_url } = config.chain_source else {
 			panic!("unexpected config chain source");
 		};
@@ -389,21 +445,24 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			api_key = "test_api_key"
+
 			[electrum]
 			server_url = "ssl://electrum.blockstream.info:50002"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
-			
+
 			[liquidity.lsps2_service]
 			advertise_service = false
 			channel_opening_fee_ppm = 1000            # 0.1% fee
@@ -433,19 +492,22 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			api_key = "test_api_key"
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"    # RPC endpoint
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
@@ -481,22 +543,25 @@ mod tests {
 			listening_address = "localhost:3001"
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
-			
+
 			[storage.disk]
 			dir_path = "/tmp"
 
 			[log]
 			level = "Trace"
 			file = "/var/log/ldk-server.log"
-			
+
+			[auth]
+			api_key = "test_api_key"
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"    # RPC endpoint
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-			
+
 			[esplora]
 			server_url = "https://mempool.space/api"
-			
+
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
