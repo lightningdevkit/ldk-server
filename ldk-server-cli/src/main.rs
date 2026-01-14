@@ -18,10 +18,11 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
+	ListPaymentsRequest, ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse,
+	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -198,6 +199,10 @@ enum Commands {
 		#[arg(long)]
 		#[arg(help = "Page token to continue from a previous page (format: token:index)")]
 		page_token: Option<String>,
+	},
+	GetPaymentDetails {
+		#[arg(short, long, help = "The payment ID in hex-encoded form")]
+		payment_id: String,
 	},
 	UpdateChannelConfig {
 		#[arg(short, long)]
@@ -450,6 +455,11 @@ async fn main() {
 
 			handle_response_result::<_, CliListPaymentsResponse>(
 				handle_list_payments(client, number_of_payments, page_token).await,
+			);
+		},
+		Commands::GetPaymentDetails { payment_id } => {
+			handle_response_result::<_, GetPaymentDetailsResponse>(
+				client.get_payment_details(GetPaymentDetailsRequest { payment_id }).await,
 			);
 		},
 		Commands::UpdateChannelConfig {
