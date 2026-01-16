@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use clap::Parser;
 use hex::DisplayHex;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
@@ -48,15 +49,14 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
-use crate::util::config::{load_config, ChainSource};
+use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
 
-const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const API_KEY_FILE: &str = "api_key";
 
-fn get_default_data_dir() -> Option<PathBuf> {
+pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
 	{
 		#[allow(deprecated)] // todo can remove once we update MSRV to 1.87+
@@ -73,48 +73,14 @@ fn get_default_data_dir() -> Option<PathBuf> {
 	}
 }
 
-fn get_default_config_path() -> Option<PathBuf> {
-	get_default_data_dir().map(|data_dir| data_dir.join(DEFAULT_CONFIG_FILE))
-}
-
-const USAGE_GUIDE: &str = "Usage: ldk-server [config_path]
-
-If no config path is provided, ldk-server will look for a config file at:
-  Linux:   ~/.ldk-server/config.toml
-  macOS:   ~/Library/Application Support/ldk-server/config.toml
-  Windows: %APPDATA%\\ldk-server\\config.toml";
-
 fn main() {
-	let args: Vec<String> = std::env::args().collect();
-
-	let config_path: PathBuf = if args.len() < 2 {
-		match get_default_config_path() {
-			Some(path) => path,
-			None => {
-				eprintln!("Unable to determine home directory for default config path.");
-				eprintln!("{USAGE_GUIDE}");
-				std::process::exit(-1);
-			},
-		}
-	} else {
-		let arg = args[1].as_str();
-		if arg == "-h" || arg == "--help" {
-			println!("{USAGE_GUIDE}");
-			std::process::exit(0);
-		}
-		PathBuf::from(arg)
-	};
-
-	if fs::File::open(&config_path).is_err() {
-		eprintln!("Unable to access configuration file: {}", config_path.display());
-		std::process::exit(-1);
-	}
+	let args_config = ArgsConfig::parse();
 
 	let mut ldk_node_config = Config::default();
-	let config_file = match load_config(&config_path) {
+	let config_file = match load_config(&args_config) {
 		Ok(config) => config,
 		Err(e) => {
-			eprintln!("Invalid configuration file: {}", e);
+			eprintln!("Invalid configuration: {e}");
 			std::process::exit(-1);
 		},
 	};
