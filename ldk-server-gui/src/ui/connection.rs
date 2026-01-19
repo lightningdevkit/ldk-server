@@ -1,7 +1,8 @@
 use egui::Ui;
 
 use crate::app::LdkServerApp;
-use crate::state::{AppState, ConnectionStatus};
+use crate::config;
+use crate::state::{AppState, ConnectionStatus, StatusMessage};
 
 pub fn render_status(ui: &mut Ui, state: &AppState) {
     match &state.connection_status {
@@ -57,6 +58,34 @@ pub fn render_settings(ui: &mut Ui, app: &mut LdkServerApp) {
                 }
             } else if ui.button("Connect").clicked() {
                 app.connect();
+            }
+
+            ui.separator();
+
+            if ui.button("Load Config").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("TOML files", &["toml"])
+                    .add_filter("All files", &["*"])
+                    .pick_file()
+                {
+                    match config::load_config(&path) {
+                        Ok(gui_config) => {
+                            app.state.server_url = gui_config.server_url;
+                            app.state.api_key = gui_config.api_key;
+                            app.state.tls_cert_path = gui_config.tls_cert_path;
+                            app.state.network = gui_config.network;
+                            app.state.chain_source = gui_config.chain_source;
+                            app.state.status_message = Some(StatusMessage::success(format!(
+                                "Config loaded from {}",
+                                path.display()
+                            )));
+                        }
+                        Err(e) => {
+                            app.state.status_message =
+                                Some(StatusMessage::error(format!("Failed to load config: {}", e)));
+                        }
+                    }
+                }
             }
         });
     });

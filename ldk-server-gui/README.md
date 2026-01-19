@@ -2,6 +2,23 @@
 
 A graphical user interface for interacting with ldk-server, built with [egui](https://github.com/emilk/egui).
 
+## Prerequisites
+
+**Important:** You must start ldk-server before launching the GUI.
+
+The server generates the TLS certificate on first startup, which is required for the GUI to connect.
+
+```bash
+# 1. First, start the ldk-server
+cargo run -p ldk-server -- --config /path/to/ldk-server-config.toml
+
+# 2. Wait for the server to start and generate the TLS certificate
+#    You should see output indicating the server is listening
+
+# 3. Then start the GUI (in a separate terminal)
+cargo run -p ldk-server-gui
+```
+
 ## Building
 
 ```bash
@@ -22,7 +39,21 @@ Or run the release binary directly:
 
 ## Configuration
 
-Once the GUI opens, configure the connection in the **Node Info** tab:
+### Auto-loading from Config File
+
+The GUI automatically searches for `ldk-server-config.toml` in these locations:
+- Current directory
+- `../ldk-server/` directory
+- Parent directory
+- Path specified in `LDK_SERVER_CONFIG` environment variable
+
+When found, the connection settings are auto-populated from the config file.
+
+You can also click **Load Config** to manually browse for a config file.
+
+### Manual Configuration
+
+If no config file is found, configure the connection manually in the **Node Info** tab:
 
 | Field | Description | Example |
 |-------|-------------|---------|
@@ -36,7 +67,7 @@ Click **Connect** to establish a connection.
 
 ## Features
 
-- **Node Info** - View node ID, block height, and sync timestamps
+- **Node Info** - View node ID, block height, sync timestamps, and chain source info
 - **Balances** - View on-chain and lightning balances
 - **Channels** - List, open, close, force-close, splice, and update channel config
 - **Payments** - View payment history with pagination

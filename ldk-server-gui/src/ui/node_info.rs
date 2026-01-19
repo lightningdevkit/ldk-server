@@ -1,6 +1,7 @@
 use egui::Ui;
 
 use crate::app::LdkServerApp;
+use crate::config::ChainSourceConfig;
 use crate::state::ConnectionStatus;
 use crate::ui::connection;
 
@@ -9,6 +10,10 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
     ui.add_space(10.0);
 
     connection::render_settings(ui, app);
+    ui.add_space(10.0);
+
+    // Show chain source config if loaded
+    render_chain_source_info(ui, app);
     ui.add_space(10.0);
 
     if !matches!(app.state.connection_status, ConnectionStatus::Connected) {
@@ -82,7 +87,108 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
 }
 
 fn format_timestamp(ts: u64) -> String {
-    use std::time::{Duration, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     let datetime = UNIX_EPOCH + Duration::from_secs(ts);
-    format!("{:?}", datetime)
+    let now = SystemTime::now();
+
+    // Calculate how long ago
+    if let Ok(elapsed) = now.duration_since(datetime) {
+        let secs = elapsed.as_secs();
+        if secs < 60 {
+            format!("{} seconds ago", secs)
+        } else if secs < 3600 {
+            format!("{} minutes ago", secs / 60)
+        } else if secs < 86400 {
+            format!("{} hours ago", secs / 3600)
+        } else {
+            format!("{} days ago", secs / 86400)
+        }
+    } else {
+        // Future timestamp or error - just show relative to epoch
+        format!("timestamp: {}", ts)
+    }
+}
+
+fn render_chain_source_info(ui: &mut Ui, app: &LdkServerApp) {
+    // Only show if we have chain source info from config
+    if matches!(app.state.chain_source, ChainSourceConfig::None) && app.state.network.is_empty() {
+        return;
+    }
+
+    ui.group(|ui| {
+        ui.heading("Chain Source Configuration");
+        ui.add_space(5.0);
+
+        egui::Grid::new("chain_source_grid").num_columns(2).spacing([10.0, 5.0]).show(ui, |ui| {
+            if !app.state.network.is_empty() {
+                ui.label("Network:");
+                ui.monospace(&app.state.network);
+                ui.end_row();
+            }
+
+            match &app.state.chain_source {
+                ChainSourceConfig::None => {}
+                ChainSourceConfig::Bitcoind { rpc_address, rpc_user, rpc_password } => {
+                    ui.label("Chain Source:");
+                    ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "Bitcoin Core RPC");
+                    ui.end_row();
+
+                    ui.label("RPC Address:");
+                    ui.horizontal(|ui| {
+                        ui.monospace(rpc_address);
+                        if ui.small_button("Copy").clicked() {
+                            ui.output_mut(|o| o.copied_text = rpc_address.clone());
+                        }
+                    });
+                    ui.end_row();
+
+                    ui.label("RPC User:");
+                    ui.horizontal(|ui| {
+                        ui.monospace(rpc_user);
+                        if ui.small_button("Copy").clicked() {
+                            ui.output_mut(|o| o.copied_text = rpc_user.clone());
+                        }
+                    });
+                    ui.end_row();
+
+                    ui.label("RPC Password:");
+                    ui.horizontal(|ui| {
+                        ui.monospace("********");
+                        if ui.small_button("Copy").clicked() {
+                            ui.output_mut(|o| o.copied_text = rpc_password.clone());
+                        }
+                    });
+                    ui.end_row();
+                }
+                ChainSourceConfig::Electrum { server_url } => {
+                    ui.label("Chain Source:");
+                    ui.colored_label(egui::Color32::from_rgb(100, 149, 237), "Electrum");
+                    ui.end_row();
+
+                    ui.label("Server URL:");
+                    ui.horizontal(|ui| {
+                        ui.monospace(server_url);
+                        if ui.small_button("Copy").clicked() {
+                            ui.output_mut(|o| o.copied_text = server_url.clone());
+                        }
+                    });
+                    ui.end_row();
+                }
+                ChainSourceConfig::Esplora { server_url } => {
+                    ui.label("Chain Source:");
+                    ui.colored_label(egui::Color32::from_rgb(50, 205, 50), "Esplora");
+                    ui.end_row();
+
+                    ui.label("Server URL:");
+                    ui.horizontal(|ui| {
+                        ui.monospace(server_url);
+                        if ui.small_button("Copy").clicked() {
+                            ui.output_mut(|o| o.copied_text = server_url.clone());
+                        }
+                    });
+                    ui.end_row();
+                }
+            }
+        });
+    });
 }

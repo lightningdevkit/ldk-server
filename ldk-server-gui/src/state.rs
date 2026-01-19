@@ -2,12 +2,14 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
+use crate::config::ChainSourceConfig;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_protos::api::{
     Bolt11ReceiveResponse, Bolt11SendResponse, Bolt12ReceiveResponse, Bolt12SendResponse,
-    CloseChannelResponse, ForceCloseChannelResponse, GetBalancesResponse, GetNodeInfoResponse,
-    ListChannelsResponse, ListPaymentsResponse, OnchainReceiveResponse, OnchainSendResponse,
-    OpenChannelResponse, SpliceInResponse, SpliceOutResponse, UpdateChannelConfigResponse,
+    CloseChannelResponse, ConnectPeerResponse, ForceCloseChannelResponse, GetBalancesResponse,
+    GetNodeInfoResponse, ListChannelsResponse, ListPaymentsResponse, OnchainReceiveResponse,
+    OnchainSendResponse, OpenChannelResponse, SpliceInResponse, SpliceOutResponse,
+    UpdateChannelConfigResponse,
 };
 use ldk_server_client::ldk_server_protos::types::PageToken;
 
@@ -106,6 +108,13 @@ pub struct CloseChannelForm {
 }
 
 #[derive(Default, Clone)]
+pub struct ConnectPeerForm {
+    pub node_pubkey: String,
+    pub address: String,
+    pub persist: bool,
+}
+
+#[derive(Default, Clone)]
 pub struct Forms {
     pub open_channel: OpenChannelForm,
     pub bolt11_receive: Bolt11ReceiveForm,
@@ -117,6 +126,7 @@ pub struct Forms {
     pub splice_out: SpliceForm,
     pub update_channel_config: UpdateChannelConfigForm,
     pub close_channel: CloseChannelForm,
+    pub connect_peer: ConnectPeerForm,
 }
 
 pub struct StatusMessage {
@@ -160,6 +170,7 @@ pub struct AsyncTasks {
     pub splice_in: Option<JoinHandle<AsyncTaskResult<SpliceInResponse>>>,
     pub splice_out: Option<JoinHandle<AsyncTaskResult<SpliceOutResponse>>>,
     pub update_channel_config: Option<JoinHandle<AsyncTaskResult<UpdateChannelConfigResponse>>>,
+    pub connect_peer: Option<JoinHandle<AsyncTaskResult<ConnectPeerResponse>>>,
 }
 
 impl Default for AsyncTasks {
@@ -181,6 +192,7 @@ impl Default for AsyncTasks {
             splice_in: None,
             splice_out: None,
             update_channel_config: None,
+            connect_peer: None,
         }
     }
 }
@@ -203,6 +215,7 @@ impl AsyncTasks {
             || self.splice_in.is_some()
             || self.splice_out.is_some()
             || self.update_channel_config.is_some()
+            || self.connect_peer.is_some()
     }
 }
 
@@ -213,6 +226,10 @@ pub struct AppState {
     pub tls_cert_path: String,
     pub connection_status: ConnectionStatus,
     pub client: Option<Arc<LdkServerClient>>,
+
+    // Config info (from loaded config file)
+    pub network: String,
+    pub chain_source: ChainSourceConfig,
 
     // Navigation
     pub active_tab: ActiveTab,
@@ -245,6 +262,7 @@ pub struct AppState {
     pub show_splice_in_dialog: bool,
     pub show_splice_out_dialog: bool,
     pub show_update_config_dialog: bool,
+    pub show_connect_peer_dialog: bool,
     pub lightning_tab: LightningTab,
     pub onchain_tab: OnchainTab,
 }
@@ -274,6 +292,9 @@ impl Default for AppState {
             connection_status: ConnectionStatus::Disconnected,
             client: None,
 
+            network: String::new(),
+            chain_source: ChainSourceConfig::default(),
+
             active_tab: ActiveTab::NodeInfo,
 
             node_info: None,
@@ -299,6 +320,7 @@ impl Default for AppState {
             show_splice_in_dialog: false,
             show_splice_out_dialog: false,
             show_update_config_dialog: false,
+            show_connect_peer_dialog: false,
             lightning_tab: LightningTab::default(),
             onchain_tab: OnchainTab::default(),
         }

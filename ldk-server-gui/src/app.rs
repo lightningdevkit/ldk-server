@@ -8,14 +8,16 @@ use tokio::runtime::Runtime;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_protos::api::{
     Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest, Bolt12SendRequest,
-    CloseChannelRequest, ForceCloseChannelRequest, GetBalancesRequest, GetNodeInfoRequest,
-    ListChannelsRequest, ListPaymentsRequest, OnchainReceiveRequest, OnchainSendRequest,
-    OpenChannelRequest, SpliceInRequest, SpliceOutRequest, UpdateChannelConfigRequest,
+    CloseChannelRequest, ConnectPeerRequest, ForceCloseChannelRequest, GetBalancesRequest,
+    GetNodeInfoRequest, ListChannelsRequest, ListPaymentsRequest, OnchainReceiveRequest,
+    OnchainSendRequest, OpenChannelRequest, SpliceInRequest, SpliceOutRequest,
+    UpdateChannelConfigRequest,
 };
 use ldk_server_client::ldk_server_protos::types::{
     bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig,
 };
 
+use crate::config;
 use crate::state::{ActiveTab, AppState, ConnectionStatus, StatusMessage};
 use crate::ui;
 
@@ -26,10 +28,20 @@ pub struct LdkServerApp {
 
 impl LdkServerApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        Self {
-            state: AppState::default(),
-            rt: Runtime::new().expect("Failed to create tokio runtime"),
+        let mut state = AppState::default();
+
+        // Try to load config from file and populate connection settings
+        if let Some(gui_config) = config::find_and_load_config() {
+            state.server_url = gui_config.server_url;
+            state.api_key = gui_config.api_key;
+            state.tls_cert_path = gui_config.tls_cert_path;
+            state.network = gui_config.network;
+            state.chain_source = gui_config.chain_source;
+            state.status_message =
+                Some(StatusMessage::success("Config loaded from ldk-server-config.toml"));
         }
+
+        Self { state, rt: Runtime::new().expect("Failed to create tokio runtime") }
     }
 
     pub fn connect(&mut self) {
@@ -528,6 +540,32 @@ impl LdkServerApp {
         }
     }
 
+    pub fn connect_peer(&mut self) {
+        if self.state.tasks.connect_peer.is_some() {
+            return;
+        }
+        if let Some(client) = &self.state.client {
+            let form = &self.state.forms.connect_peer;
+            let node_pubkey = form.node_pubkey.trim().to_string();
+            let address = form.address.trim().to_string();
+            let persist = form.persist;
+
+            if node_pubkey.is_empty() || address.is_empty() {
+                self.state.status_message =
+                    Some(StatusMessage::error("Node pubkey and address are required"));
+                return;
+            }
+
+            let client = client.clone();
+            self.state.tasks.connect_peer = Some(self.rt.spawn(async move {
+                client
+                    .connect_peer(ConnectPeerRequest { node_pubkey, address, persist })
+                    .await
+                    .map_err(|e| e.to_string())
+            }));
+        }
+    }
+
     fn poll_tasks(&mut self, ctx: &egui::Context) {
         macro_rules! poll_task {
             ($task:expr => |$val:ident| $handler:expr) => {
@@ -644,6 +682,12 @@ impl LdkServerApp {
             self.state.forms.update_channel_config = Default::default();
             self.state.show_update_config_dialog = false;
             self.fetch_channels();
+        });
+
+        poll_task!(self.state.tasks.connect_peer => |_v| {
+            self.state.status_message = Some(StatusMessage::success("Peer connected successfully"));
+            self.state.forms.connect_peer = Default::default();
+            self.state.show_connect_peer_dialog = false;
         });
     }
 }

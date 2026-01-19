@@ -23,6 +23,10 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
 
         ui.separator();
 
+        if ui.button("Connect Peer").clicked() {
+            app.state.show_connect_peer_dialog = true;
+        }
+
         if ui.button("Open Channel").clicked() {
             app.state.show_open_channel_dialog = true;
         }
@@ -131,11 +135,60 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
 }
 
 pub fn render_dialogs(ctx: &Context, app: &mut LdkServerApp) {
+    render_connect_peer_dialog(ctx, app);
     render_open_channel_dialog(ctx, app);
     render_close_channel_dialog(ctx, app);
     render_splice_in_dialog(ctx, app);
     render_splice_out_dialog(ctx, app);
     render_update_config_dialog(ctx, app);
+}
+
+fn render_connect_peer_dialog(ctx: &Context, app: &mut LdkServerApp) {
+    if !app.state.show_connect_peer_dialog {
+        return;
+    }
+
+    egui::Window::new("Connect Peer")
+        .collapsible(false)
+        .resizable(false)
+        .show(ctx, |ui| {
+            let form = &mut app.state.forms.connect_peer;
+
+            ui.label("Connect to a Lightning Network peer");
+            ui.add_space(5.0);
+
+            egui::Grid::new("connect_peer_grid")
+                .num_columns(2)
+                .spacing([10.0, 5.0])
+                .show(ui, |ui| {
+                    ui.label("Node Pubkey:");
+                    ui.text_edit_singleline(&mut form.node_pubkey);
+                    ui.end_row();
+
+                    ui.label("Address:");
+                    ui.text_edit_singleline(&mut form.address);
+                    ui.end_row();
+
+                    ui.label("Persist Connection:");
+                    ui.checkbox(&mut form.persist, "");
+                    ui.end_row();
+                });
+
+            ui.add_space(10.0);
+
+            ui.horizontal(|ui| {
+                let is_pending = app.state.tasks.connect_peer.is_some();
+                if is_pending {
+                    ui.spinner();
+                } else if ui.button("Connect").clicked() {
+                    app.connect_peer();
+                }
+                if ui.button("Cancel").clicked() {
+                    app.state.show_connect_peer_dialog = false;
+                    app.state.forms.connect_peer = Default::default();
+                }
+            });
+        });
 }
 
 fn render_open_channel_dialog(ctx: &Context, app: &mut LdkServerApp) {
