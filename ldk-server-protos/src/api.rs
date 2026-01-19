@@ -600,3 +600,64 @@ pub struct GetBalancesResponse {
 	pub pending_balances_from_channel_closures:
 		::prost::alloc::vec::Vec<super::types::PendingSweepBalance>,
 }
+/// Connect to a remote peer.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConnectPeerRequest {
+	/// The hex-encoded public key of the node to connect to.
+	#[prost(string, tag = "1")]
+	pub node_pubkey: ::prost::alloc::string::String,
+	/// The socket address (IPv4/IPv6:port) of the peer.
+	#[prost(string, tag = "2")]
+	pub address: ::prost::alloc::string::String,
+	/// If true, the connection will be persisted and automatically reconnected if dropped.
+	#[prost(bool, tag = "3")]
+	pub persist: bool,
+}
+/// The response for the `ConnectPeer` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConnectPeerResponse {}
+/// List all known peers.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListPeersRequest {}
+/// The response for the `ListPeers` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListPeersResponse {
+	/// List of known peers.
+	#[prost(message, repeated, tag = "1")]
+	pub peers: ::prost::alloc::vec::Vec<PeerDetails>,
+}
+/// Details about a known peer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PeerDetails {
+	/// The hex-encoded public key of the peer.
+	#[prost(string, tag = "1")]
+	pub node_id: ::prost::alloc::string::String,
+	/// The network address of the peer.
+	#[prost(string, tag = "2")]
+	pub address: ::prost::alloc::string::String,
+	/// Whether we'll try to reconnect to this peer after restarts.
+	#[prost(bool, tag = "3")]
+	pub is_persisted: bool,
+	/// Whether we currently have an active connection with the peer.
+	#[prost(bool, tag = "4")]
+	pub is_connected: bool,
+}

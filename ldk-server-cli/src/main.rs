@@ -22,9 +22,10 @@ use ldk_server_client::error::LdkServerErrorCode::{
 use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
-	CloseChannelRequest, CloseChannelResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
+	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, ListChannelsRequest, ListChannelsResponse,
+	ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
 	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
@@ -319,6 +320,20 @@ enum Commands {
 		)]
 		cltv_expiry_delta: Option<u32>,
 	},
+	ConnectPeer {
+		#[arg(short, long, help = "The hex-encoded public key of the node to connect to")]
+		node_pubkey: String,
+		#[arg(short, long, help = "Address of the peer (e.g., 127.0.0.1:9735)")]
+		address: String,
+		#[arg(
+			short,
+			long,
+			default_value = "true",
+			help = "Whether to persist the connection for reconnection on restart"
+		)]
+		persist: bool,
+	},
+	ListPeers,
 }
 
 #[tokio::main]
@@ -611,6 +626,18 @@ async fn main() {
 						channel_config: Some(channel_config),
 					})
 					.await,
+			);
+		},
+		Commands::ConnectPeer { node_pubkey, address, persist } => {
+			handle_response_result::<_, ConnectPeerResponse>(
+				client
+					.connect_peer(ConnectPeerRequest { node_pubkey, address, persist })
+					.await,
+			);
+		},
+		Commands::ListPeers => {
+			handle_response_result::<_, ListPeersResponse>(
+				client.list_peers(ListPeersRequest {}).await,
 			);
 		},
 	}

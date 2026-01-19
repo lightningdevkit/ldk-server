@@ -14,18 +14,20 @@ use bitcoin_hashes::{sha256, Hash, HashEngine};
 use ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
-	CloseChannelRequest, CloseChannelResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
+	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, ListChannelsRequest, ListChannelsResponse,
+	ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
 	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
-	CLOSE_CHANNEL_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH,
-	LIST_CHANNELS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH,
-	OPEN_CHANNEL_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
+	GET_NODE_INFO_PATH, LIST_CHANNELS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -228,6 +230,24 @@ impl LdkServerClient {
 		&self, request: UpdateChannelConfigRequest,
 	) -> Result<UpdateChannelConfigResponse, LdkServerError> {
 		let url = format!("https://{}/{UPDATE_CHANNEL_CONFIG_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Connects to a remote peer without opening a channel.
+	/// For API contract/usage, refer to docs for [`ConnectPeerRequest`] and [`ConnectPeerResponse`].
+	pub async fn connect_peer(
+		&self, request: ConnectPeerRequest,
+	) -> Result<ConnectPeerResponse, LdkServerError> {
+		let url = format!("https://{}/{CONNECT_PEER_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieves a list of all known peers.
+	/// For API contract/usage, refer to docs for [`ListPeersRequest`] and [`ListPeersResponse`].
+	pub async fn list_peers(
+		&self, request: ListPeersRequest,
+	) -> Result<ListPeersResponse, LdkServerError> {
+		let url = format!("https://{}/{LIST_PEERS_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

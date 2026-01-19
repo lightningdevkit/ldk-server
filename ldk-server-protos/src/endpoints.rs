@@ -25,3 +25,5 @@ pub const LIST_PAYMENTS_PATH: &str = "ListPayments";
 pub const LIST_FORWARDED_PAYMENTS_PATH: &str = "ListForwardedPayments";
 pub const UPDATE_CHANNEL_CONFIG_PATH: &str = "UpdateChannelConfig";
 pub const GET_PAYMENT_DETAILS_PATH: &str = "GetPaymentDetails";
+pub const CONNECT_PEER_PATH: &str = "ConnectPeer";
+pub const LIST_PEERS_PATH: &str = "ListPeers";

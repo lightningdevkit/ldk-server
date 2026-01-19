@@ -436,6 +436,51 @@ message ListForwardedPaymentsResponse {
   optional types.PageToken next_page_token = 2;
 }
 
+// Connect to a peer without opening a channel.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect
+message ConnectPeerRequest {
+  // The hex-encoded public key of the node to connect to.
+  string node_pubkey = 1;
+
+  // An address which can be used to connect to a remote peer.
+  // It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
+  string address = 2;
+
+  // Whether to persist the connection. If true, the node will attempt to
+  // reconnect to this peer on restart.
+  bool persist = 3;
+}
+
+// The response for the `ConnectPeer` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response contains a serialized `ErrorResponse`.
+message ConnectPeerResponse {}
+
+// List all known peers.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers
+message ListPeersRequest {}
+
+// The response for the `ListPeers` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response contains a serialized `ErrorResponse`.
+message ListPeersResponse {
+  // List of known peers.
+  repeated PeerDetails peers = 1;
+}
+
+// Details about a known peer.
+message PeerDetails {
+  // The hex-encoded public key of the peer.
+  string node_id = 1;
+
+  // The network address of the peer.
+  string address = 2;
+
+  // Whether we'll try to reconnect to this peer after restarts.
+  bool is_persisted = 3;
+
+  // Whether we currently have an active connection with the peer.
+  bool is_connected = 4;
+}
+
 // Retrieves an overview of all known balances.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances
 message GetBalancesRequest {}
