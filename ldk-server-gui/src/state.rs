@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
-use crate::config::ChainSourceConfig;
+use crate::config::{ChainSourceConfig, ChainSourceType};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_protos::api::{
     Bolt11ReceiveResponse, Bolt11SendResponse, Bolt12ReceiveResponse, Bolt12SendResponse,
@@ -114,6 +114,60 @@ pub struct ConnectPeerForm {
     pub persist: bool,
 }
 
+/// Editable chain source configuration
+#[derive(Default, Clone)]
+pub struct ChainSourceForm {
+    pub source_type: ChainSourceType,
+    // Bitcoind fields
+    pub btc_rpc_address: String,
+    pub btc_rpc_user: String,
+    pub btc_rpc_password: String,
+    // Electrum/Esplora field
+    pub server_url: String,
+}
+
+impl ChainSourceForm {
+    pub fn from_config(config: &ChainSourceConfig) -> Self {
+        match config {
+            ChainSourceConfig::None => Self::default(),
+            ChainSourceConfig::Bitcoind { rpc_address, rpc_user, rpc_password } => Self {
+                source_type: ChainSourceType::Bitcoind,
+                btc_rpc_address: rpc_address.clone(),
+                btc_rpc_user: rpc_user.clone(),
+                btc_rpc_password: rpc_password.clone(),
+                server_url: String::new(),
+            },
+            ChainSourceConfig::Electrum { server_url } => Self {
+                source_type: ChainSourceType::Electrum,
+                server_url: server_url.clone(),
+                ..Default::default()
+            },
+            ChainSourceConfig::Esplora { server_url } => Self {
+                source_type: ChainSourceType::Esplora,
+                server_url: server_url.clone(),
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn to_config(&self) -> ChainSourceConfig {
+        match self.source_type {
+            ChainSourceType::None => ChainSourceConfig::None,
+            ChainSourceType::Bitcoind => ChainSourceConfig::Bitcoind {
+                rpc_address: self.btc_rpc_address.clone(),
+                rpc_user: self.btc_rpc_user.clone(),
+                rpc_password: self.btc_rpc_password.clone(),
+            },
+            ChainSourceType::Electrum => ChainSourceConfig::Electrum {
+                server_url: self.server_url.clone(),
+            },
+            ChainSourceType::Esplora => ChainSourceConfig::Esplora {
+                server_url: self.server_url.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Forms {
     pub open_channel: OpenChannelForm,
@@ -127,6 +181,7 @@ pub struct Forms {
     pub update_channel_config: UpdateChannelConfigForm,
     pub close_channel: CloseChannelForm,
     pub connect_peer: ConnectPeerForm,
+    pub chain_source: ChainSourceForm,
 }
 
 pub struct StatusMessage {
@@ -228,6 +283,7 @@ pub struct AppState {
     pub client: Option<Arc<LdkServerClient>>,
 
     // Config info (from loaded config file)
+    pub config_file_path: Option<String>,
     pub network: String,
     pub chain_source: ChainSourceConfig,
 
@@ -281,6 +337,7 @@ pub enum OnchainTab {
     #[default]
     Send,
     Receive,
+    History,
 }
 
 impl Default for AppState {
@@ -292,6 +349,7 @@ impl Default for AppState {
             connection_status: ConnectionStatus::Disconnected,
             client: None,
 
+            config_file_path: None,
             network: String::new(),
             chain_source: ChainSourceConfig::default(),
 

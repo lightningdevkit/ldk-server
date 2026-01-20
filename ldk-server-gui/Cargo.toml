@@ -14,3 +14,4 @@ rfd = "0.15"
 arboard = "3.4"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+hex = { package = "hex-conservative", version = "0.2", default-features = false, features = ["std"] }

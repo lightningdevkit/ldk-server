@@ -18,7 +18,7 @@ use ldk_server_client::ldk_server_protos::types::{
 };
 
 use crate::config;
-use crate::state::{ActiveTab, AppState, ConnectionStatus, StatusMessage};
+use crate::state::{ActiveTab, AppState, ChainSourceForm, ConnectionStatus, StatusMessage};
 use crate::ui;
 
 pub struct LdkServerApp {
@@ -36,6 +36,7 @@ impl LdkServerApp {
             state.api_key = gui_config.api_key;
             state.tls_cert_path = gui_config.tls_cert_path;
             state.network = gui_config.network;
+            state.forms.chain_source = ChainSourceForm::from_config(&gui_config.chain_source);
             state.chain_source = gui_config.chain_source;
             state.status_message =
                 Some(StatusMessage::success("Config loaded from ldk-server-config.toml"));
@@ -736,7 +737,7 @@ impl App for LdkServerApp {
                 (ActiveTab::NodeInfo, "Node Info"),
                 (ActiveTab::Balances, "Balances"),
                 (ActiveTab::Channels, "Channels"),
-                (ActiveTab::Payments, "Payments"),
+                (ActiveTab::Payments, "Payment History"),
                 (ActiveTab::Lightning, "Lightning"),
                 (ActiveTab::Onchain, "On-chain"),
             ];
@@ -746,6 +747,16 @@ impl App for LdkServerApp {
                     self.state.active_tab = tab;
                 }
             }
+
+            ui.add_space(20.0);
+            ui.separator();
+            ui.label(egui::RichText::new("Documentation").small().strong());
+            ui.add_space(5.0);
+
+            ui.hyperlink_to("LDK Server", "https://github.com/lightningdevkit/ldk-server");
+            ui.hyperlink_to("LDK Node", "https://docs.rs/ldk-node/latest/ldk_node/");
+            ui.hyperlink_to("Rust Lightning", "https://docs.rs/lightning/latest/lightning/");
+            ui.hyperlink_to("BDK", "https://docs.rs/bdk_wallet/latest/bdk_wallet/");
         });
 
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {

@@ -116,36 +116,36 @@ fn render_lightning_balance(
     match balance {
         BalanceType::ClaimableOnChannelClose(b) => {
             ui.label("Type: Claimable on Channel Close");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
         }
         BalanceType::ClaimableAwaitingConfirmations(b) => {
             ui.label("Type: Awaiting Confirmations");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
             ui.label(format!("Confirmation Height: {}", b.confirmation_height));
         }
         BalanceType::ContentiousClaimable(b) => {
             ui.label("Type: Contentious Claimable");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
             ui.label(format!("Timeout Height: {}", b.timeout_height));
         }
         BalanceType::MaybeTimeoutClaimableHtlc(b) => {
             ui.label("Type: Maybe Timeout Claimable HTLC");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
             ui.label(format!("Claimable Height: {}", b.claimable_height));
         }
         BalanceType::MaybePreimageClaimableHtlc(b) => {
             ui.label("Type: Maybe Preimage Claimable HTLC");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
             ui.label(format!("Expiry Height: {}", b.expiry_height));
         }
         BalanceType::CounterpartyRevokedOutputClaimable(b) => {
             ui.label("Type: Counterparty Revoked Output");
-            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 16)));
+            ui.label(format!("Channel: {}", crate::ui::truncate_id(&b.channel_id, 8, 8)));
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
         }
     }
@@ -161,22 +161,22 @@ fn render_pending_sweep(
         BalanceType::PendingBroadcast(b) => {
             ui.label("Type: Pending Broadcast");
             if let Some(ch) = &b.channel_id {
-                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 16)));
+                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 8, 8)));
             }
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
         }
         BalanceType::BroadcastAwaitingConfirmation(b) => {
             ui.label("Type: Broadcast Awaiting Confirmation");
             if let Some(ch) = &b.channel_id {
-                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 16)));
+                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 8, 8)));
             }
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
-            ui.label(format!("TXID: {}", crate::ui::truncate_id(&b.latest_spending_txid, 16)));
+            ui.label(format!("TXID: {}", crate::ui::truncate_id(&b.latest_spending_txid, 8, 8)));
         }
         BalanceType::AwaitingThresholdConfirmations(b) => {
             ui.label("Type: Awaiting Threshold Confirmations");
             if let Some(ch) = &b.channel_id {
-                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 16)));
+                ui.label(format!("Channel: {}", crate::ui::truncate_id(ch, 8, 8)));
             }
             ui.label(format!("Amount: {} sats", format_sats(b.amount_satoshis)));
             ui.label(format!("Confirmed at height: {}", b.confirmation_height));

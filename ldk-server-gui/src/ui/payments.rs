@@ -56,7 +56,7 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
                         for payment in payments {
                             // Payment ID
                             ui.horizontal(|ui| {
-                                ui.monospace(truncate_id(&payment.id, 8));
+                                ui.monospace(truncate_id(&payment.id, 5, 4));
                                 if ui.small_button("Copy").clicked() {
                                     ui.output_mut(|o| o.copied_text = payment.id.clone());
                                 }

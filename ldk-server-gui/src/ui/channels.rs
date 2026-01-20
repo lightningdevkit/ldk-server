@@ -45,23 +45,24 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
             ScrollArea::both().max_height(400.0).show(ui, |ui| {
                 egui::Grid::new("channels_grid")
                     .striped(true)
-                    .min_col_width(60.0)
+                    .spacing([12.0, 6.0])
                     .show(ui, |ui| {
                         // Header
                         ui.strong("Channel ID");
                         ui.strong("Counterparty");
+                        ui.strong("Funding Tx");
                         ui.strong("Capacity");
                         ui.strong("Outbound");
                         ui.strong("Inbound");
                         ui.strong("Ready");
-                        ui.strong("Usable");
+                        ui.strong("Use");
                         ui.strong("Actions");
                         ui.end_row();
 
                         for ch in channels {
                             // Channel ID
                             ui.horizontal(|ui| {
-                                ui.monospace(truncate_id(&ch.channel_id, 8));
+                                ui.monospace(truncate_id(&ch.channel_id, 5, 4));
                                 if ui.small_button("Copy").clicked() {
                                     ui.output_mut(|o| o.copied_text = ch.channel_id.clone());
                                 }
@@ -69,11 +70,23 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
 
                             // Counterparty
                             ui.horizontal(|ui| {
-                                ui.monospace(truncate_id(&ch.counterparty_node_id, 8));
+                                ui.monospace(truncate_id(&ch.counterparty_node_id, 5, 4));
                                 if ui.small_button("Copy").clicked() {
                                     ui.output_mut(|o| {
                                         o.copied_text = ch.counterparty_node_id.clone()
                                     });
+                                }
+                            });
+
+                            // Funding Txid
+                            ui.horizontal(|ui| {
+                                if let Some(ref funding_txo) = ch.funding_txo {
+                                    ui.monospace(truncate_id(&funding_txo.txid, 5, 4));
+                                    if ui.small_button("Copy").clicked() {
+                                        ui.output_mut(|o| o.copied_text = funding_txo.txid.clone());
+                                    }
+                                } else {
+                                    ui.label("-");
                                 }
                             });
 

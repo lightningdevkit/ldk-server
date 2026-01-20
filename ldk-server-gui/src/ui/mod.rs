@@ -6,12 +6,11 @@ pub mod node_info;
 pub mod onchain;
 pub mod payments;
 
-pub fn truncate_id(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+pub fn truncate_id(s: &str, start: usize, end: usize) -> String {
+    if s.len() <= start + end + 2 {
         s.to_string()
     } else {
-        let half = (max_len - 3) / 2;
-        format!("{}...{}", &s[..half], &s[s.len() - half..])
+        format!("{}..{}", &s[..start], &s[s.len() - end..])
     }
 }
 

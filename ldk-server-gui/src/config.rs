@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use hex::DisplayHex;
+use serde::{Deserialize, Serialize};
 
 /// GUI-specific config extracted from ldk-server config file.
 #[derive(Debug, Clone, Default)]
@@ -10,6 +11,55 @@ pub struct GuiConfig {
     pub tls_cert_path: String,
     pub network: String,
     pub chain_source: ChainSourceConfig,
+}
+
+/// Map network string to the directory name used by ldk-server.
+fn network_to_dir_name(network: &str) -> &str {
+    match network {
+        "bitcoin" | "mainnet" => "bitcoin",
+        "testnet" => "testnet",
+        "testnet4" => "testnet4",
+        "signet" => "signet",
+        "regtest" => "regtest",
+        other => other,
+    }
+}
+
+/// Load the API key from the generated file at {storage_dir}/{network}/api_key.
+/// The server stores raw bytes; we return them hex-encoded.
+fn load_api_key_from_file(storage_dir: &Path, network: &str) -> Option<String> {
+    let network_dir = network_to_dir_name(network);
+    let api_key_path = storage_dir.join(network_dir).join("api_key");
+    std::fs::read(&api_key_path)
+        .ok()
+        .map(|bytes| bytes.to_lower_hex_string())
+}
+
+/// Chain source type for UI selection
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ChainSourceType {
+    #[default]
+    None,
+    Bitcoind,
+    Electrum,
+    Esplora,
+}
+
+impl ChainSourceType {
+    pub const ALL: [ChainSourceType; 3] = [
+        ChainSourceType::Bitcoind,
+        ChainSourceType::Electrum,
+        ChainSourceType::Esplora,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            ChainSourceType::None => "None",
+            ChainSourceType::Bitcoind => "Bitcoin Core RPC",
+            ChainSourceType::Electrum => "Electrum",
+            ChainSourceType::Esplora => "Esplora",
+        }
+    }
 }
 
 /// Chain source configuration (Bitcoind RPC, Electrum, or Esplora)
@@ -30,6 +80,17 @@ pub enum ChainSourceConfig {
     },
 }
 
+impl ChainSourceConfig {
+    pub fn source_type(&self) -> ChainSourceType {
+        match self {
+            ChainSourceConfig::None => ChainSourceType::None,
+            ChainSourceConfig::Bitcoind { .. } => ChainSourceType::Bitcoind,
+            ChainSourceConfig::Electrum { .. } => ChainSourceType::Electrum,
+            ChainSourceConfig::Esplora { .. } => ChainSourceType::Esplora,
+        }
+    }
+}
+
 /// Partial deserialization of the ldk-server config file.
 /// We only need the fields relevant to connecting as a client.
 #[derive(Deserialize)]
@@ -45,7 +106,8 @@ struct TomlConfig {
 struct NodeConfig {
     network: String,
     rest_service_address: String,
-    api_key: String,
+    // Note: api_key in config is ignored by ldk-server.
+    // The server generates its own key at {storage_dir}/{network}/api_key
 }
 
 #[derive(Deserialize)]
@@ -82,6 +144,10 @@ impl TryFrom<TomlConfig> for GuiConfig {
         let storage_dir = PathBuf::from(&toml.storage.disk.dir_path);
         let tls_cert_path = storage_dir.join("tls.crt");
 
+        // Load API key from the generated file (not from config - server ignores that field)
+        let api_key = load_api_key_from_file(&storage_dir, &toml.node.network)
+            .unwrap_or_default();
+
         let chain_source = if let Some(btc) = toml.bitcoind {
             ChainSourceConfig::Bitcoind {
                 rpc_address: btc.rpc_address,
@@ -98,9 +164,9 @@ impl TryFrom<TomlConfig> for GuiConfig {
 
         Ok(GuiConfig {
             server_url: toml.node.rest_service_address,
-            api_key: toml.node.api_key,
+            api_key,
             tls_cert_path: tls_cert_path.to_string_lossy().to_string(),
-            network: toml.node.network,
+            network: toml.node.network.clone(),
             chain_source,
         })
     }
@@ -148,4 +214,84 @@ pub fn find_and_load_config() -> Option<GuiConfig> {
     }
 
     None
+}
+
+/// Serializable chain source configs for saving to TOML
+#[derive(Serialize)]
+struct BitcoindConfigSave {
+    rpc_address: String,
+    rpc_user: String,
+    rpc_password: String,
+}
+
+#[derive(Serialize)]
+struct ElectrumConfigSave {
+    server_url: String,
+}
+
+#[derive(Serialize)]
+struct EsploraConfigSave {
+    server_url: String,
+}
+
+/// Update the chain source in an existing config file.
+/// Preserves all other config sections.
+pub fn save_chain_source<P: AsRef<Path>>(
+    path: P,
+    chain_source: &ChainSourceConfig,
+) -> Result<(), String> {
+    // Read existing file
+    let contents = std::fs::read_to_string(path.as_ref())
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+
+    // Parse as generic TOML value to preserve structure
+    let mut doc: toml::Value = toml::from_str(&contents)
+        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+
+    let table = doc
+        .as_table_mut()
+        .ok_or_else(|| "Config file root is not a table".to_string())?;
+
+    // Remove existing chain source sections
+    table.remove("bitcoind");
+    table.remove("electrum");
+    table.remove("esplora");
+
+    // Add new chain source section
+    match chain_source {
+        ChainSourceConfig::None => {
+            // No chain source - leave all removed
+        }
+        ChainSourceConfig::Bitcoind { rpc_address, rpc_user, rpc_password } => {
+            let btc_config = BitcoindConfigSave {
+                rpc_address: rpc_address.clone(),
+                rpc_user: rpc_user.clone(),
+                rpc_password: rpc_password.clone(),
+            };
+            let value = toml::Value::try_from(btc_config)
+                .map_err(|e| format!("Failed to serialize bitcoind config: {}", e))?;
+            table.insert("bitcoind".to_string(), value);
+        }
+        ChainSourceConfig::Electrum { server_url } => {
+            let electrum_config = ElectrumConfigSave { server_url: server_url.clone() };
+            let value = toml::Value::try_from(electrum_config)
+                .map_err(|e| format!("Failed to serialize electrum config: {}", e))?;
+            table.insert("electrum".to_string(), value);
+        }
+        ChainSourceConfig::Esplora { server_url } => {
+            let esplora_config = EsploraConfigSave { server_url: server_url.clone() };
+            let value = toml::Value::try_from(esplora_config)
+                .map_err(|e| format!("Failed to serialize esplora config: {}", e))?;
+            table.insert("esplora".to_string(), value);
+        }
+    }
+
+    // Write back to file
+    let output = toml::to_string_pretty(&doc)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    std::fs::write(path.as_ref(), output)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    Ok(())
 }

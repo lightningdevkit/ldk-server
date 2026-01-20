@@ -75,7 +75,7 @@ fn render_bolt11_send(ui: &mut Ui, app: &mut LdkServerApp) {
             ui.add_space(5.0);
             ui.horizontal(|ui| {
                 ui.label("Last Payment ID:");
-                ui.monospace(crate::ui::truncate_id(payment_id, 16));
+                ui.monospace(crate::ui::truncate_id(payment_id, 8, 8));
                 if ui.small_button("Copy").clicked() {
                     ui.output_mut(|o| o.copied_text = payment_id.clone());
                 }
@@ -180,7 +180,7 @@ fn render_bolt12_send(ui: &mut Ui, app: &mut LdkServerApp) {
             ui.add_space(5.0);
             ui.horizontal(|ui| {
                 ui.label("Last Payment ID:");
-                ui.monospace(crate::ui::truncate_id(payment_id, 16));
+                ui.monospace(crate::ui::truncate_id(payment_id, 8, 8));
                 if ui.small_button("Copy").clicked() {
                     ui.output_mut(|o| o.copied_text = payment_id.clone());
                 }

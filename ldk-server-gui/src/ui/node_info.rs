@@ -37,7 +37,7 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
                 ui.label("Node ID:");
                 ui.horizontal(|ui| {
                     let node_id = &info.node_id;
-                    ui.monospace(crate::ui::truncate_id(node_id, 24));
+                    ui.monospace(crate::ui::truncate_id(node_id, 12, 12));
                     if ui.small_button("Copy").clicked() {
                         ui.output_mut(|o| o.copied_text = node_id.clone());
                     }
@@ -46,7 +46,7 @@ pub fn render(ui: &mut Ui, app: &mut LdkServerApp) {
 
                 if let Some(block) = &info.current_best_block {
                     ui.label("Best Block:");
-                    ui.monospace(format!("{} (height: {})", crate::ui::truncate_id(&block.block_hash, 16), block.height));
+                    ui.monospace(format!("{} (height: {})", crate::ui::truncate_id(&block.block_hash, 8, 8), block.height));
                     ui.end_row();
                 }
 
