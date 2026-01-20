@@ -18,7 +18,6 @@ ldk-server-protos = { path = "../ldk-server-protos" }
 bytes = { version = "1.4.0", default-features = false }
 hex = { package = "hex-conservative", version = "0.2.1", default-features = false }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
-rand = { version = "0.8.5", default-features = false }
 async-trait = { version = "0.1.85", default-features = false }
 toml = { version = "0.8.9", default-features = false, features = ["parse"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

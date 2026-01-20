@@ -1747,7 +1747,6 @@ dependencies = [
  "ldk-server-protos",
  "log",
  "prost",
- "rand 0.8.5",
  "ring",
  "rusqlite",
  "serde",
