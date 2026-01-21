@@ -69,6 +69,16 @@ impl PaymentTracker {
 		(self.total_success.load(Ordering::Relaxed), self.total_attempts.load(Ordering::Relaxed))
 	}
 
+	/// Returns the successful payments per second rate since start.
+	fn get_success_rate(&self) -> f64 {
+		let elapsed_secs = self.elapsed_millis() as f64 / 1000.0;
+		if elapsed_secs < 0.001 {
+			return 0.0;
+		}
+		let total_success = self.total_success.load(Ordering::Relaxed) as f64;
+		total_success / elapsed_secs
+	}
+
 	/// Returns Some(direction_str) if a direction has timed out, None otherwise.
 	fn check_timeout(&self) -> Option<String> {
 		let now = self.elapsed_millis();
@@ -466,6 +476,31 @@ async fn main() -> anyhow::Result<()> {
 				return Some(direction);
 			}
 			sleep(Duration::from_millis(500)).await;
+		}
+	});
+
+	// Periodic metrics reporter (every 10 seconds)
+	let tracker_clone = payment_tracker.clone();
+	let shutdown_rx = shutdown_tx.subscribe();
+	tokio::spawn(async move {
+		let mut interval = tokio::time::interval(Duration::from_secs(10));
+		interval.tick().await; // Skip immediate first tick
+		loop {
+			interval.tick().await;
+			if *shutdown_rx.borrow() {
+				return;
+			}
+			let (success, attempts) = tracker_clone.get_counts();
+			let rate = tracker_clone.get_success_rate();
+			let success_pct =
+				if attempts > 0 { (success as f64 / attempts as f64) * 100.0 } else { 0.0 };
+			tprintln!(
+				"[METRICS] Rate: {:.2} payments/sec | Success: {}/{} ({:.1}%)",
+				rate,
+				success,
+				attempts,
+				success_pct
+			);
 		}
 	});
 
