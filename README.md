@@ -70,3 +70,7 @@ eval "$(ldk-server-cli completions zsh)"
 # Fish (add to ~/.config/fish/config.fish)
 ldk-server-cli completions fish | source
 ```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on building, testing, code style, and development workflow.
