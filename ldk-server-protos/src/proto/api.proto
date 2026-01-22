@@ -138,7 +138,7 @@ message Bolt11SendRequest {
   // amount paid to be determined by the user.
   // This operation will fail if the amount specified is less than the value required by the given invoice.
   optional uint64 amount_msat = 2;
-  
+
   // Configuration options for payment routing and pathfinding.
   optional types.RouteParametersConfig route_parameters = 3;
 
@@ -211,6 +211,26 @@ message Bolt12SendRequest {
 // When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
 message Bolt12SendResponse {
 
+  // An identifier used to uniquely identify a payment in hex-encoded form.
+  string payment_id = 1;
+}
+
+// Send a spontaneous payment, also known as "keysend", to a node.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send
+message SpontaneousSendRequest {
+  // The amount in millisatoshis to send.
+  uint64 amount_msat = 1;
+
+  // The hex-encoded public key of the node to send the payment to.
+  string node_id = 2;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 3;
+}
+
+// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message SpontaneousSendResponse {
   // An identifier used to uniquely identify a payment in hex-encoded form.
   string payment_id = 1;
 }

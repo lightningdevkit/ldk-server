@@ -29,7 +29,8 @@ use ldk_server_client::ldk_server_protos::api::{
 	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -181,6 +182,30 @@ enum Commands {
 		#[arg(
 			long,
 			help = "Maximum total fees, in millisatoshi, that may accrue during route finding, Defaults to 1% of the payment amount + 50 sats"
+		)]
+		max_total_routing_fee_msat: Option<u64>,
+		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
+		max_total_cltv_expiry_delta: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum number of paths that may be used by MPP payments (default: 10)"
+		)]
+		max_path_count: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
+		)]
+		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(about = "Send a spontaneous payment (keysend) to a node")]
+	SpontaneousSend {
+		#[arg(short, long, help = "The hex-encoded public key of the node to send the payment to")]
+		node_id: String,
+		#[arg(short, long, help = "The amount in millisatoshis to send")]
+		amount_msat: u64,
+		#[arg(
+			long,
+			help = "Maximum total fees in millisatoshis that may accrue during route finding. Defaults to 1% of payment + 50 sats"
 		)]
 		max_total_routing_fee_msat: Option<u64>,
 		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
@@ -538,6 +563,33 @@ async fn main() {
 						amount_msat,
 						quantity,
 						payer_note,
+						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
+		Commands::SpontaneousSend {
+			node_id,
+			amount_msat,
+			max_total_routing_fee_msat,
+			max_total_cltv_expiry_delta,
+			max_path_count,
+			max_channel_saturation_power_of_half,
+		} => {
+			let route_parameters = RouteParametersConfig {
+				max_total_routing_fee_msat,
+				max_total_cltv_expiry_delta: max_total_cltv_expiry_delta
+					.unwrap_or(DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA),
+				max_path_count: max_path_count.unwrap_or(DEFAULT_MAX_PATH_COUNT),
+				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
+					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
+			};
+
+			handle_response_result::<_, SpontaneousSendResponse>(
+				client
+					.spontaneous_send(SpontaneousSendRequest {
+						amount_msat,
+						node_id,
 						route_parameters: Some(route_parameters),
 					})
 					.await,

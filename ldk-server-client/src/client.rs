@@ -21,14 +21,15 @@ use ldk_server_protos::api::{
 	ListForwardedPaymentsResponse, ListPaymentsRequest, ListPaymentsResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
 	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH,
 	LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -258,6 +259,15 @@ impl LdkServerClient {
 		&self, request: ConnectPeerRequest,
 	) -> Result<ConnectPeerResponse, LdkServerError> {
 		let url = format!("https://{}/{CONNECT_PEER_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Send a spontaneous payment (keysend) to a node.
+	/// For API contract/usage, refer to docs for [`SpontaneousSendRequest`] and [`SpontaneousSendResponse`].
+	pub async fn spontaneous_send(
+		&self, request: SpontaneousSendRequest,
+	) -> Result<SpontaneousSendResponse, LdkServerError> {
+		let url = format!("https://{}/{SPONTANEOUS_SEND_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 
