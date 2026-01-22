@@ -23,6 +23,20 @@ pub(crate) fn handle_get_node_info_request(
 		height: node_status.current_best_block.height,
 	};
 
+	let listening_addresses = context
+		.node
+		.listening_addresses()
+		.map(|addrs| addrs.into_iter().map(|a| a.to_string()).collect())
+		.unwrap_or_default();
+
+	let announcement_addresses = context
+		.node
+		.announcement_addresses()
+		.map(|addrs| addrs.into_iter().map(|a| a.to_string()).collect())
+		.unwrap_or_default();
+
+	let node_alias = context.node.node_alias().map(|alias| alias.to_string());
+
 	let response = GetNodeInfoResponse {
 		node_id: context.node.node_id().to_string(),
 		current_best_block: Some(best_block),
@@ -32,6 +46,9 @@ pub(crate) fn handle_get_node_info_request(
 		latest_rgs_snapshot_timestamp: node_status.latest_rgs_snapshot_timestamp,
 		latest_node_announcement_broadcast_timestamp: node_status
 			.latest_node_announcement_broadcast_timestamp,
+		listening_addresses,
+		announcement_addresses,
+		node_alias,
 	};
 	Ok(response)
 }

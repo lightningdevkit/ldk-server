@@ -59,6 +59,21 @@ pub struct GetNodeInfoResponse {
 	/// Will be `None` if we have no public channels or we haven’t broadcasted since the node was initialized.
 	#[prost(uint64, optional, tag = "8")]
 	pub latest_node_announcement_broadcast_timestamp: ::core::option::Option<u64>,
+	/// The addresses the node is currently listening on for incoming connections.
+	///
+	/// Will be empty if the node is not listening on any addresses.
+	#[prost(string, repeated, tag = "9")]
+	pub listening_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The addresses the node announces to the network.
+	///
+	/// Will be empty if no announcement addresses are configured.
+	#[prost(string, repeated, tag = "10")]
+	pub announcement_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The node alias, if configured.
+	///
+	/// Will be `None` if no alias is configured.
+	#[prost(string, optional, tag = "11")]
+	pub node_alias: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>

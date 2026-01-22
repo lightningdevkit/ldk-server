@@ -49,6 +49,21 @@ message GetNodeInfoResponse {
   //
   // Will be `None` if we have no public channels or we haven’t broadcasted since the node was initialized.
   optional uint64  latest_node_announcement_broadcast_timestamp = 8;
+
+  // The addresses the node is currently listening on for incoming connections.
+  //
+  // Will be empty if the node is not listening on any addresses.
+  repeated string listening_addresses = 9;
+
+  // The addresses the node announces to the network.
+  //
+  // Will be empty if no announcement addresses are configured.
+  repeated string announcement_addresses = 10;
+
+  // The node alias, if configured.
+  //
+  // Will be `None` if no alias is configured.
+  optional string node_alias = 11;
 }
 
 // Retrieve a new on-chain funding address.
