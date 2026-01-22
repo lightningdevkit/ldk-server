@@ -505,6 +505,17 @@ message VerifySignatureResponse {
   bool valid = 1;
 }
 
+// Export the pathfinding scores used by the router.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores
+message ExportPathfindingScoresRequest {}
+
+// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message ExportPathfindingScoresResponse {
+  // The serialized pathfinding scores data.
+  bytes scores = 1;
+}
+
 // Retrieves an overview of all known balances.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances
 message GetBalancesRequest {}

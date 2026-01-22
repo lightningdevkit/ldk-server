@@ -24,12 +24,13 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
+	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
+	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 	VerifySignatureRequest, VerifySignatureResponse,
 };
@@ -38,6 +39,7 @@ use ldk_server_client::ldk_server_protos::types::{
 	RouteParametersConfig,
 };
 use serde::Serialize;
+use serde_json::{json, Value};
 use types::{CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse};
 
 mod config;
@@ -393,6 +395,8 @@ enum Commands {
 		#[arg(short, long, help = "The hex-encoded public key of the signer")]
 		public_key: String,
 	},
+	#[command(about = "Export the pathfinding scores used by the router")]
+	ExportPathfindingScores,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -778,6 +782,16 @@ async fn main() {
 						public_key,
 					})
 					.await,
+			);
+		},
+		Commands::ExportPathfindingScores => {
+			handle_response_result::<_, Value>(
+				client.export_pathfinding_scores(ExportPathfindingScoresRequest {}).await.map(
+					|s| {
+						let scores_hex = s.scores.as_hex().to_string();
+						json!({ "pathfinding_scores": scores_hex })
+					},
+				),
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),

@@ -640,6 +640,24 @@ pub struct VerifySignatureResponse {
 	#[prost(bool, tag = "1")]
 	pub valid: bool,
 }
+/// Export the pathfinding scores used by the router.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportPathfindingScoresRequest {}
+/// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportPathfindingScoresResponse {
+	/// The serialized pathfinding scores data.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub scores: ::prost::bytes::Bytes,
+}
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
