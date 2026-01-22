@@ -4,6 +4,12 @@ A graphical user interface for interacting with ldk-server, built with [egui](ht
 
 ## Screenshots
 
+### Channels
+![Channels](screenshots/channels.png)
+
+### On-chain
+![On-chain](screenshots/on-chain.png)
+
 ### Node Info (Connected)
 ![Node Info](screenshots/node-info.png)
 
@@ -13,14 +19,8 @@ A graphical user interface for interacting with ldk-server, built with [egui](ht
 ### Lightning Payments
 ![Lightning Payments](screenshots/lightning-payments.png)
 
-### Connection Settings (Disconnected)
-![Connection Settings](screenshots/connection-disconnected.png)
-
-### Connection Settings
-![Connection Settings](screenshots/connection-settings.png)
-
-### Connection Error
-![Connection Error](screenshots/connection-error.png)
+### RPC Connection
+![RPC Connection](screenshots/rpc-connection.png)
 
 ## Prerequisites
 
