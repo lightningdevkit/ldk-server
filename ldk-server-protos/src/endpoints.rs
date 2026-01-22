@@ -27,3 +27,5 @@ pub const UPDATE_CHANNEL_CONFIG_PATH: &str = "UpdateChannelConfig";
 pub const GET_PAYMENT_DETAILS_PATH: &str = "GetPaymentDetails";
 pub const CONNECT_PEER_PATH: &str = "ConnectPeer";
 pub const SPONTANEOUS_SEND_PATH: &str = "SpontaneousSend";
+pub const SIGN_MESSAGE_PATH: &str = "SignMessage";
+pub const VERIFY_SIGNATURE_PATH: &str = "VerifySignature";

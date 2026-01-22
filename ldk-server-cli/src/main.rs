@@ -28,9 +28,10 @@ use ldk_server_client::ldk_server_protos::api::{
 	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
 	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse,
+	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -377,6 +378,20 @@ enum Commands {
 			help = "Whether to persist the connection for automatic reconnection on restart"
 		)]
 		persist: bool,
+	},
+	#[command(about = "Sign a message with the node's secret key")]
+	SignMessage {
+		#[arg(short, long, help = "The message to sign")]
+		message: String,
+	},
+	#[command(about = "Verify a signature against a message and public key")]
+	VerifySignature {
+		#[arg(short, long, help = "The message that was signed")]
+		message: String,
+		#[arg(short, long, help = "The zbase32-encoded signature to verify")]
+		signature: String,
+		#[arg(short, long, help = "The hex-encoded public key of the signer")]
+		public_key: String,
 	},
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
@@ -745,6 +760,24 @@ async fn main() {
 		Commands::ConnectPeer { node_pubkey, address, persist } => {
 			handle_response_result::<_, ConnectPeerResponse>(
 				client.connect_peer(ConnectPeerRequest { node_pubkey, address, persist }).await,
+			);
+		},
+		Commands::SignMessage { message } => {
+			handle_response_result::<_, SignMessageResponse>(
+				client
+					.sign_message(SignMessageRequest { message: message.into_bytes().into() })
+					.await,
+			);
+		},
+		Commands::VerifySignature { message, signature, public_key } => {
+			handle_response_result::<_, VerifySignatureResponse>(
+				client
+					.verify_signature(VerifySignatureRequest {
+						message: message.into_bytes().into(),
+						signature,
+						public_key,
+					})
+					.await,
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),

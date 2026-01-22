@@ -590,6 +590,56 @@ pub struct ListForwardedPaymentsResponse {
 	#[prost(message, optional, tag = "2")]
 	pub next_page_token: ::core::option::Option<super::types::PageToken>,
 }
+/// Sign a message with the node's secret key.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignMessageRequest {
+	/// The message to sign, as raw bytes.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub message: ::prost::bytes::Bytes,
+}
+/// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignMessageResponse {
+	/// The signature of the message, as a zbase32-encoded string.
+	#[prost(string, tag = "1")]
+	pub signature: ::prost::alloc::string::String,
+}
+/// Verify a signature against a message and public key.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VerifySignatureRequest {
+	/// The message that was signed, as raw bytes.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub message: ::prost::bytes::Bytes,
+	/// The signature to verify, as a zbase32-encoded string.
+	#[prost(string, tag = "2")]
+	pub signature: ::prost::alloc::string::String,
+	/// The hex-encoded public key of the signer.
+	#[prost(string, tag = "3")]
+	pub public_key: ::prost::alloc::string::String,
+}
+/// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VerifySignatureResponse {
+	/// Whether the signature is valid.
+	#[prost(bool, tag = "1")]
+	pub valid: bool,
+}
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

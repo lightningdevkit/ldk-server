@@ -30,9 +30,11 @@ pub(crate) mod list_payments;
 pub(crate) mod onchain_receive;
 pub(crate) mod onchain_send;
 pub(crate) mod open_channel;
+pub(crate) mod sign_message;
 pub(crate) mod splice_channel;
 pub(crate) mod spontaneous_send;
 pub(crate) mod update_channel_config;
+pub(crate) mod verify_signature;
 
 pub(crate) fn build_channel_config_from_proto(
 	default_config: ChannelConfig, proto_channel_config: ldk_server_protos::types::ChannelConfig,

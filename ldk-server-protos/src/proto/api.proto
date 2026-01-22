@@ -471,6 +471,40 @@ message ListForwardedPaymentsResponse {
   optional types.PageToken next_page_token = 2;
 }
 
+// Sign a message with the node's secret key.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message
+message SignMessageRequest {
+  // The message to sign, as raw bytes.
+  bytes message = 1;
+}
+
+// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message SignMessageResponse {
+  // The signature of the message, as a zbase32-encoded string.
+  string signature = 1;
+}
+
+// Verify a signature against a message and public key.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature
+message VerifySignatureRequest {
+  // The message that was signed, as raw bytes.
+  bytes message = 1;
+
+  // The signature to verify, as a zbase32-encoded string.
+  string signature = 2;
+
+  // The hex-encoded public key of the signer.
+  string public_key = 3;
+}
+
+// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message VerifySignatureResponse {
+  // Whether the signature is valid.
+  bool valid = 1;
+}
+
 // Retrieves an overview of all known balances.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances
 message GetBalancesRequest {}
