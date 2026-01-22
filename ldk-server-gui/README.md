@@ -78,3 +78,17 @@ Click **Connect** to establish a connection.
 - **Payments** - View payment history with pagination
 - **Lightning** - Send and receive via BOLT11 invoices and BOLT12 offers
 - **On-chain** - Send and receive on-chain transactions
+
+## Screenshots
+
+### Node Info (Connected)
+![Node Info](screenshots/node-info.png)
+
+### Balances
+![Balances](screenshots/balances.png)
+
+### Lightning Payments
+![Lightning Payments](screenshots/lightning-payments.png)
+
+### Connection Settings
+![Connection Settings](screenshots/connection-disconnected.png)
