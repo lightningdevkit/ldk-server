@@ -2,6 +2,26 @@
 
 A graphical user interface for interacting with ldk-server, built with [egui](https://github.com/emilk/egui).
 
+## Screenshots
+
+### Node Info (Connected)
+![Node Info](screenshots/node-info.png)
+
+### Balances
+![Balances](screenshots/balances.png)
+
+### Lightning Payments
+![Lightning Payments](screenshots/lightning-payments.png)
+
+### Connection Settings (Disconnected)
+![Connection Settings](screenshots/connection-disconnected.png)
+
+### Connection Settings
+![Connection Settings](screenshots/connection-settings.png)
+
+### Connection Error
+![Connection Error](screenshots/connection-error.png)
+
 ## Prerequisites
 
 **Important:** You must start ldk-server before launching the GUI.
@@ -79,16 +99,3 @@ Click **Connect** to establish a connection.
 - **Lightning** - Send and receive via BOLT11 invoices and BOLT12 offers
 - **On-chain** - Send and receive on-chain transactions
 
-## Screenshots
-
-### Node Info (Connected)
-![Node Info](screenshots/node-info.png)
-
-### Balances
-![Balances](screenshots/balances.png)
-
-### Lightning Payments
-![Lightning Payments](screenshots/lightning-payments.png)
-
-### Connection Settings
-![Connection Settings](screenshots/connection-disconnected.png)
