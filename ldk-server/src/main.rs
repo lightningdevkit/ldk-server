@@ -144,6 +144,12 @@ fn main() {
 		Network::Regtest => storage_dir.join("regtest"),
 	};
 
+	// Create network directory if it doesn't exist
+	if let Err(e) = fs::create_dir_all(&network_dir) {
+		eprintln!("Failed to create network directory {}: {e}", network_dir.display());
+		std::process::exit(-1);
+	}
+
 	let log_file_path = config_file.log_file_path.map(PathBuf::from).unwrap_or_else(|| {
 		let mut default_log_path = network_dir.clone();
 		default_log_path.push("ldk-server.log");
@@ -175,6 +181,7 @@ fn main() {
 	ldk_node_config.listening_addresses = config_file.listening_addrs;
 	ldk_node_config.announcement_addresses = config_file.announcement_addrs;
 	ldk_node_config.network = config_file.network;
+	ldk_node_config.trusted_peers_0conf = config_file.trusted_peers_0conf;
 
 	let mut builder = Builder::from_config(ldk_node_config);
 	builder.set_log_facade_logger();

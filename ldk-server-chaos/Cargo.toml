@@ -1,0 +1,30 @@
+[package]
+name = "ldk-server-chaos"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ldk-server-chaos"
+path = "src/main.rs"
+
+[dependencies]
+ldk-server-client = { path = "../ldk-server-client" }
+ldk-server-protos = { path = "../ldk-server-protos" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Bitcoin RPC
+corepc-client = { version = "0.5", features = ["client-sync"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Utilities
+rand = "0.9"
+tempfile = "3"
+anyhow = "1"
+futures = "0.3"
+chrono = "0.4"
+hex = "0.4.3"

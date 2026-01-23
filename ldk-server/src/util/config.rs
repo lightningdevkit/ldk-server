@@ -12,6 +12,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::{fs, io};
 
+use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
@@ -35,6 +36,7 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+	pub trusted_peers_0conf: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +189,21 @@ impl TryFrom<TomlConfig> for Config {
 			hosts: tls.hosts.unwrap_or_default(),
 		});
 
+		let trusted_peers_0conf = toml_config
+			.node
+			.trusted_peers_0conf
+			.unwrap_or_default()
+			.into_iter()
+			.map(|s| {
+				PublicKey::from_str(&s).map_err(|e| {
+					io::Error::new(
+						io::ErrorKind::InvalidInput,
+						format!("Invalid trusted_peers_0conf pubkey '{}': {}", s, e),
+					)
+				})
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+
 		Ok(Config {
 			listening_addrs,
 			announcement_addrs,
@@ -201,6 +218,7 @@ impl TryFrom<TomlConfig> for Config {
 			log_level,
 			log_file_path: toml_config.log.and_then(|l| l.file),
 			tls_config,
+			trusted_peers_0conf,
 		})
 	}
 }
@@ -226,6 +244,7 @@ struct NodeConfig {
 	announcement_addresses: Option<Vec<String>>,
 	rest_service_address: String,
 	alias: Option<String>,
+	trusted_peers_0conf: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Serialize)]
