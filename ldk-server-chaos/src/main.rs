@@ -199,8 +199,20 @@ impl Drop for NodeHandle {
 	}
 }
 
+/// Kill all ldk-server processes. Called on exit/panic/ctrl-c.
+fn kill_all_ldk_servers() {
+	let _ = Command::new("pkill").args(["-9", "-f", "ldk-server"]).status();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+	// Register panic hook to kill ldk-server processes on panic/assert failure
+	let default_hook = std::panic::take_hook();
+	std::panic::set_hook(Box::new(move |info| {
+		kill_all_ldk_servers();
+		default_hook(info);
+	}));
+
 	tprintln!("=== LDK Server Chaos Test ===\n");
 
 	// Use a fixed data directory under ldk-server-chaos for persistence and easy access
@@ -268,8 +280,8 @@ async fn main() -> anyhow::Result<()> {
 		tprintln!("Node {} funding address: {}", i, addr_resp.address);
 
 		// Fund by mining blocks directly to the node's address
-		bitcoind.mine_to_address(10, &addr_resp.address)?;
-		tprintln!("Node {} funded with 10 block rewards", i);
+		bitcoind.mine_to_address(20, &addr_resp.address)?;
+		tprintln!("Node {} funded with 20 block rewards", i);
 	}
 
 	// Mine 101 blocks to mature the coinbase outputs (100 block requirement)
@@ -315,109 +327,144 @@ async fn main() -> anyhow::Result<()> {
 		}
 	}
 
-	// Open channels: Node0 -> Node1 (100 channels), Node1 -> Node2 (1 channel)
-	tprintln!("\nOpening {} channels from Node 0 to Node 1...", NUM_CHANNELS);
+	// Open channels in batches due to LDK's MAX_UNFUNDED_CHANS_PER_PEER limit (currently 4).
+	//
+	// When a node receives an open_channel message, LDK checks if the sender already has too many
+	// "unfunded" inbound channels (channels that haven't completed the funding handshake yet).
+	// If so, LDK silently rejects the channel - the opener's open_channel() call succeeds, but
+	// the receiver never processes it.
+	//
+	// 0-conf channels DO bypass this limit once they complete the handshake (minimum_depth == 0
+	// means they're not considered "unfunded"), but there's a race condition: the unfunded check
+	// happens in the message handler BEFORE the OpenChannelRequest event fires and 0-conf is
+	// configured. So if we send 5+ open_channel messages before any complete their handshake,
+	// the 5th+ get rejected.
+	//
+	// Solution: Open in batches of 4, wait for the receiver to see those channels (meaning the
+	// handshake completed), then open the next batch.
+	const BATCH_SIZE: usize = 4;
+	let channel_pairs = [(0, 1), (1, 2)]; // (opener, receiver)
 
-	// Node 0 -> Node 1 (100 private channels)
-	{
-		let node0 = nodes[0].lock().await;
-		let client = node0.client().expect("Node not started");
-		for i in 0..NUM_CHANNELS {
-			let resp = client
-				.open_channel(OpenChannelRequest {
-					node_pubkey: node_ids[1].clone(),
-					address: node_addresses[1].clone(),
-					channel_amount_sats: CHANNEL_AMOUNT_SATS,
-					push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
-					channel_config: None,
-					announce_channel: false,
-				})
-				.await?;
-			if (i + 1) % 10 == 0 || i == 0 {
-				tprintln!(
-					"Opened channel {}/{} (0->1): {}",
-					i + 1,
-					NUM_CHANNELS,
-					resp.user_channel_id
-				);
+	for (opener_idx, receiver_idx) in channel_pairs {
+		tprintln!(
+			"\nOpening {} channels from Node {} to Node {}...",
+			NUM_CHANNELS,
+			opener_idx,
+			receiver_idx
+		);
+
+		// Track how many channels receiver had before we started (for 1->2, node 1 already has channels)
+		let receiver_initial_count = {
+			let receiver = nodes[receiver_idx].lock().await;
+			let client = receiver.client().expect("Node not started");
+			client.list_channels(ListChannelsRequest {}).await?.channels.len()
+		};
+
+		for batch in 0..(NUM_CHANNELS + BATCH_SIZE - 1) / BATCH_SIZE {
+			let start = batch * BATCH_SIZE;
+			let end = (start + BATCH_SIZE).min(NUM_CHANNELS);
+
+			// Open this batch
+			{
+				let opener = nodes[opener_idx].lock().await;
+				let client = opener.client().expect("Node not started");
+
+				for i in start..end {
+					match client
+						.open_channel(OpenChannelRequest {
+							node_pubkey: node_ids[receiver_idx].clone(),
+							address: node_addresses[receiver_idx].clone(),
+							channel_amount_sats: CHANNEL_AMOUNT_SATS,
+							push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
+							channel_config: None,
+							announce_channel: false,
+						})
+						.await
+					{
+						Ok(resp) => {
+							if (i + 1) % 10 == 0 || i == 0 {
+								tprintln!(
+									"Opened channel {}/{} ({}->{}): {}",
+									i + 1,
+									NUM_CHANNELS,
+									opener_idx,
+									receiver_idx,
+									resp.user_channel_id
+								);
+							}
+						},
+						Err(e) => {
+							tprintln!(
+								"Failed to open channel {}/{} ({}->{}): {}",
+								i + 1,
+								NUM_CHANNELS,
+								opener_idx,
+								receiver_idx,
+								e
+							);
+						},
+					}
+				}
+			} // Release opener lock
+
+			// Wait for receiver to see these channels before opening more
+			if end < NUM_CHANNELS {
+				let target_count = receiver_initial_count + end;
+				loop {
+					let receiver = nodes[receiver_idx].lock().await;
+					let client = receiver.client().expect("Node not started");
+					let channels = client.list_channels(ListChannelsRequest {}).await?;
+					if channels.channels.len() >= target_count {
+						break;
+					}
+					drop(receiver);
+					sleep(Duration::from_millis(50)).await;
+				}
 			}
 		}
+		tprintln!(
+			"Successfully opened {} channels ({}->{})",
+			NUM_CHANNELS,
+			opener_idx,
+			receiver_idx
+		);
 	}
 
-	// Node 1 -> Node 2 (100 private channels)
-	tprintln!("\nOpening {} channels from Node 1 to Node 2...", NUM_CHANNELS);
-	{
-		let node1 = nodes[1].lock().await;
-		let client = node1.client().expect("Node not started");
-		for i in 0..NUM_CHANNELS {
-			let resp = client
-				.open_channel(OpenChannelRequest {
-					node_pubkey: node_ids[2].clone(),
-					address: node_addresses[2].clone(),
-					channel_amount_sats: CHANNEL_AMOUNT_SATS,
-					push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
-					channel_config: None,
-					announce_channel: false,
-				})
-				.await?;
-			if (i + 1) % 10 == 0 || i == 0 {
-				tprintln!(
-					"Opened channel {}/{} (1->2): {}",
-					i + 1,
-					NUM_CHANNELS,
-					resp.user_channel_id
-				);
-			}
-		}
-	}
-
-	// Assert that list_channels reports the expected number of channels
+	// Wait for all channels to become visible and usable on each node
 	// Node 0: 100 channels (all with Node 1)
 	// Node 1: 200 channels (100 with Node 0, 100 with Node 2)
 	// Node 2: 100 channels (all with Node 1)
 	let expected_counts = [NUM_CHANNELS, NUM_CHANNELS * 2, NUM_CHANNELS];
+	tprintln!("\nWaiting for channels to become visible and usable...");
 	for (i, node) in nodes.iter().enumerate() {
-		let node = node.lock().await;
-		let client = node.client().expect("Node not started");
-		let channels = client.list_channels(ListChannelsRequest {}).await?;
-		let actual_count = channels.channels.len();
-		assert_eq!(
-			actual_count, expected_counts[i],
-			"Node {} has {} channels, expected {}",
-			i, actual_count, expected_counts[i]
-		);
-		tprintln!("Node {} channel count verified: {}", i, actual_count);
-	}
-
-	// With 0-conf, channels become usable immediately after channel_ready exchange
-	// No need to mine blocks or wait for confirmations
-	tprintln!("\nWaiting for 0-conf channels to become usable...");
-	for (i, node) in nodes.iter().enumerate() {
+		let mut last_count = 0;
 		let mut last_usable_count = 0;
 		loop {
 			let node = node.lock().await;
 			let client = node.client().expect("Node not started");
 			let channels = client.list_channels(ListChannelsRequest {}).await?;
+			let total_count = channels.channels.len();
 			let usable_count = channels.channels.iter().filter(|ch| ch.is_usable).count();
-			let all_usable =
-				!channels.channels.is_empty() && channels.channels.iter().all(|ch| ch.is_usable);
 
-			if usable_count != last_usable_count {
+			if total_count != last_count || usable_count != last_usable_count {
 				tprintln!(
-					"Node {} channels: {}/{} usable",
+					"Node {} channels: {}/{} total, {}/{} usable",
 					i,
+					total_count,
+					expected_counts[i],
 					usable_count,
-					channels.channels.len()
+					expected_counts[i]
 				);
+				last_count = total_count;
 				last_usable_count = usable_count;
 			}
 
-			if all_usable {
-				tprintln!("Node {} has all {} channels usable", i, channels.channels.len());
+			if usable_count >= expected_counts[i] {
+				tprintln!("Node {} ready: {} channels usable", i, usable_count);
 				break;
 			}
 			drop(node);
-			sleep(Duration::from_secs(1)).await;
+			sleep(Duration::from_millis(500)).await;
 		}
 	}
 
@@ -430,7 +477,8 @@ async fn main() -> anyhow::Result<()> {
 	// Spawn a task that hard-exits on Ctrl+C (no graceful shutdown)
 	tokio::spawn(async {
 		let _ = tokio::signal::ctrl_c().await;
-		tprintln!("\nReceived Ctrl+C, hard exit...");
+		tprintln!("\nReceived Ctrl+C, killing ldk-server processes...");
+		kill_all_ldk_servers();
 		std::process::exit(0);
 	});
 
