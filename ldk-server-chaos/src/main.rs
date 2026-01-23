@@ -18,7 +18,7 @@ use ldk_server_protos::api::{
 use ldk_server_protos::types::bolt11_invoice_description::Kind as DescriptionKind;
 use ldk_server_protos::types::Bolt11InvoiceDescription;
 use rand::{Rng, SeedableRng};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::Mutex;
 use tokio::time::sleep;
 
 mod bitcoind;
@@ -28,7 +28,8 @@ use bitcoind::BitcoindClient;
 use config::NodeConfig;
 
 const NUM_NODES: usize = 3;
-const CHANNEL_AMOUNT_SATS: u64 = 500_000;
+const NUM_CHANNELS: usize = 100;
+const CHANNEL_AMOUNT_SATS: u64 = 100_000;
 const PAYMENT_AMOUNT_MSAT: u64 = 10_000;
 const PAYMENT_TIMEOUT_SECS: u64 = 60;
 
@@ -275,6 +276,25 @@ async fn main() -> anyhow::Result<()> {
 	tprintln!("\nMining 101 blocks to mature coinbase outputs...");
 	bitcoind.mine_blocks(101)?;
 
+	// Restart nodes with 0-conf trust for all other nodes
+	tprintln!("\nRestarting nodes with 0-conf trust configuration...");
+	for (i, node) in nodes.iter().enumerate() {
+		let mut node = node.lock().await;
+		node.kill();
+
+		// Configure to trust all other nodes for 0-conf
+		let trusted_peers: Vec<String> = node_ids
+			.iter()
+			.enumerate()
+			.filter(|(j, _)| *j != i)
+			.map(|(_, id)| id.clone())
+			.collect();
+		node.config.trusted_peers_0conf = trusted_peers;
+
+		node.start().await?;
+		tprintln!("Node {} restarted with 0-conf trust", i);
+	}
+
 	// Wait for nodes to have spendable balance
 	tprintln!("Waiting for nodes to sync and have spendable balance...");
 	for (i, node) in nodes.iter().enumerate() {
@@ -295,128 +315,106 @@ async fn main() -> anyhow::Result<()> {
 		}
 	}
 
-	// Open channels: Node0 -> Node1, Node1 -> Node2 (payments route through Node1)
-	tprintln!("\nOpening channels...");
+	// Open channels: Node0 -> Node1 (100 channels), Node1 -> Node2 (1 channel)
+	tprintln!("\nOpening {} channels from Node 0 to Node 1...", NUM_CHANNELS);
 
-	// Node 0 -> Node 1 (private channel - routing hints in invoices)
+	// Node 0 -> Node 1 (100 private channels)
 	{
 		let node0 = nodes[0].lock().await;
 		let client = node0.client().expect("Node not started");
-		let resp = client
-			.open_channel(OpenChannelRequest {
-				node_pubkey: node_ids[1].clone(),
-				address: node_addresses[1].clone(),
-				channel_amount_sats: CHANNEL_AMOUNT_SATS,
-				push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
-				channel_config: None,
-				announce_channel: false,
-			})
-			.await?;
-		tprintln!("Opened private channel 0->1: {}", resp.user_channel_id);
+		for i in 0..NUM_CHANNELS {
+			let resp = client
+				.open_channel(OpenChannelRequest {
+					node_pubkey: node_ids[1].clone(),
+					address: node_addresses[1].clone(),
+					channel_amount_sats: CHANNEL_AMOUNT_SATS,
+					push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
+					channel_config: None,
+					announce_channel: false,
+				})
+				.await?;
+			if (i + 1) % 10 == 0 || i == 0 {
+				tprintln!(
+					"Opened channel {}/{} (0->1): {}",
+					i + 1,
+					NUM_CHANNELS,
+					resp.user_channel_id
+				);
+			}
+		}
 	}
 
-	// Node 1 -> Node 2 (private channel - routing hints in invoices)
+	// Node 1 -> Node 2 (100 private channels)
+	tprintln!("\nOpening {} channels from Node 1 to Node 2...", NUM_CHANNELS);
 	{
 		let node1 = nodes[1].lock().await;
 		let client = node1.client().expect("Node not started");
-		let resp = client
-			.open_channel(OpenChannelRequest {
-				node_pubkey: node_ids[2].clone(),
-				address: node_addresses[2].clone(),
-				channel_amount_sats: CHANNEL_AMOUNT_SATS,
-				push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
-				channel_config: None,
-				announce_channel: false,
-			})
-			.await?;
-		tprintln!("Opened private channel 1->2: {}", resp.user_channel_id);
-	}
-
-	// Wait for funding transactions to be broadcast to mempool
-	tprintln!("\nWaiting for funding transactions to reach mempool...");
-	sleep(Duration::from_secs(2)).await;
-
-	// Mine blocks to confirm channels
-	tprintln!("Mining blocks to confirm channels...");
-	bitcoind.mine_blocks(6)?;
-
-	// Wait for nodes to sync the new blocks (poll until all channels on all nodes have 6+ confirmations)
-	// Note: ldk-node's lightning wallet sync interval is 30 seconds by default
-	tprintln!("Waiting for nodes to sync new blocks (up to 30s for lightning wallet sync)...");
-	let mut last_min_conf = 0;
-	loop {
-		let mut all_confirmed = true;
-		let mut global_min_conf = u32::MAX;
-		let mut total_channels = 0;
-
-		for node in &nodes {
-			let node = node.lock().await;
-			let client = node.client().expect("Node not started");
-			let channels = client.list_channels(ListChannelsRequest {}).await?;
-			for ch in &channels.channels {
-				total_channels += 1;
-				let conf = ch.confirmations.unwrap_or(0);
-				if conf < 6 {
-					all_confirmed = false;
-				}
-				if conf < global_min_conf {
-					global_min_conf = conf;
-				}
+		for i in 0..NUM_CHANNELS {
+			let resp = client
+				.open_channel(OpenChannelRequest {
+					node_pubkey: node_ids[2].clone(),
+					address: node_addresses[2].clone(),
+					channel_amount_sats: CHANNEL_AMOUNT_SATS,
+					push_to_counterparty_msat: Some((CHANNEL_AMOUNT_SATS / 2) * 1000),
+					channel_config: None,
+					announce_channel: false,
+				})
+				.await?;
+			if (i + 1) % 10 == 0 || i == 0 {
+				tprintln!(
+					"Opened channel {}/{} (1->2): {}",
+					i + 1,
+					NUM_CHANNELS,
+					resp.user_channel_id
+				);
 			}
 		}
-
-		if total_channels > 0 && all_confirmed {
-			tprintln!("All {} channels have at least 6 confirmations", total_channels);
-			break;
-		}
-
-		if global_min_conf != u32::MAX && global_min_conf != last_min_conf {
-			tprintln!("Min confirmations across {} channels: {}", total_channels, global_min_conf);
-			last_min_conf = global_min_conf;
-		}
-
-		sleep(Duration::from_secs(2)).await;
 	}
 
-	// Wait for channels to become usable
-	tprintln!("Waiting for channels to become usable...");
+	// Assert that list_channels reports the expected number of channels
+	// Node 0: 100 channels (all with Node 1)
+	// Node 1: 200 channels (100 with Node 0, 100 with Node 2)
+	// Node 2: 100 channels (all with Node 1)
+	let expected_counts = [NUM_CHANNELS, NUM_CHANNELS * 2, NUM_CHANNELS];
 	for (i, node) in nodes.iter().enumerate() {
-		let mut printed_status = false;
+		let node = node.lock().await;
+		let client = node.client().expect("Node not started");
+		let channels = client.list_channels(ListChannelsRequest {}).await?;
+		let actual_count = channels.channels.len();
+		assert_eq!(
+			actual_count, expected_counts[i],
+			"Node {} has {} channels, expected {}",
+			i, actual_count, expected_counts[i]
+		);
+		tprintln!("Node {} channel count verified: {}", i, actual_count);
+	}
+
+	// With 0-conf, channels become usable immediately after channel_ready exchange
+	// No need to mine blocks or wait for confirmations
+	tprintln!("\nWaiting for 0-conf channels to become usable...");
+	for (i, node) in nodes.iter().enumerate() {
+		let mut last_usable_count = 0;
 		loop {
 			let node = node.lock().await;
 			let client = node.client().expect("Node not started");
 			let channels = client.list_channels(ListChannelsRequest {}).await?;
-			let all_usable = channels.channels.iter().all(|ch| ch.is_usable);
-			if !channels.channels.is_empty() && all_usable {
-				tprintln!("Node {} has {} usable channel(s)", i, channels.channels.len());
-				for ch in &channels.channels {
-					tprintln!(
-						"  - Channel {} usable={} announced={} capacity={}",
-						ch.user_channel_id,
-						ch.is_usable,
-						ch.is_announced,
-						ch.channel_value_sats
-					);
-				}
-				break;
-			}
-			if !printed_status {
+			let usable_count = channels.channels.iter().filter(|ch| ch.is_usable).count();
+			let all_usable =
+				!channels.channels.is_empty() && channels.channels.iter().all(|ch| ch.is_usable);
+
+			if usable_count != last_usable_count {
 				tprintln!(
-					"Node {} channels: {} total, {} usable",
+					"Node {} channels: {}/{} usable",
 					i,
-					channels.channels.len(),
-					channels.channels.iter().filter(|ch| ch.is_usable).count()
+					usable_count,
+					channels.channels.len()
 				);
-				for ch in &channels.channels {
-					tprintln!(
-						"  - Channel {} ready={} usable={} confirmations={}",
-						ch.user_channel_id,
-						ch.is_channel_ready,
-						ch.is_usable,
-						ch.confirmations.unwrap_or(0)
-					);
-				}
-				printed_status = true;
+				last_usable_count = usable_count;
+			}
+
+			if all_usable {
+				tprintln!("Node {} has all {} channels usable", i, channels.channels.len());
+				break;
 			}
 			drop(node);
 			sleep(Duration::from_secs(1)).await;
@@ -426,22 +424,23 @@ async fn main() -> anyhow::Result<()> {
 	// Start payment loop and chaos monkeys
 	tprintln!("\n=== Starting payment loops and chaos monkeys ===\n");
 
-	// Shutdown signal
-	let (shutdown_tx, _) = watch::channel(false);
-
 	// Payment tracker for timeout detection
 	let payment_tracker = Arc::new(PaymentTracker::new());
 
+	// Spawn a task that hard-exits on Ctrl+C (no graceful shutdown)
+	tokio::spawn(async {
+		let _ = tokio::signal::ctrl_c().await;
+		tprintln!("\nReceived Ctrl+C, hard exit...");
+		std::process::exit(0);
+	});
+
 	// Start 20 parallel payment loops
-	let mut payment_handles = Vec::new();
 	for loop_id in 0..20 {
 		let nodes_clone = nodes.clone();
 		let tracker_clone = payment_tracker.clone();
-		let mut shutdown_rx = shutdown_tx.subscribe();
-		let handle = tokio::spawn(async move {
-			payment_loop(nodes_clone, loop_id, tracker_clone, &mut shutdown_rx).await;
+		tokio::spawn(async move {
+			payment_loop(nodes_clone, loop_id, tracker_clone).await;
 		});
-		payment_handles.push(handle);
 	}
 
 	// Start independent chaos monkey for each node
@@ -450,28 +449,16 @@ async fn main() -> anyhow::Result<()> {
 		let nodes_clone = nodes.clone();
 		let node_ids_clone = node_ids.clone();
 		let node_addresses_clone = node_addresses.clone();
-		let mut shutdown_rx = shutdown_tx.subscribe();
 		let handle = tokio::spawn(async move {
-			chaos_monkey_for_node(
-				nodes_clone,
-				node_ids_clone,
-				node_addresses_clone,
-				node_idx,
-				&mut shutdown_rx,
-			)
-			.await
+			chaos_monkey_for_node(nodes_clone, node_ids_clone, node_addresses_clone, node_idx).await
 		});
 		chaos_handles.push(handle);
 	}
 
 	// Timeout monitor task
 	let tracker_clone = payment_tracker.clone();
-	let shutdown_rx = shutdown_tx.subscribe();
 	let timeout_handle = tokio::spawn(async move {
 		loop {
-			if *shutdown_rx.borrow() {
-				return None;
-			}
 			if let Some(direction) = tracker_clone.check_timeout() {
 				return Some(direction);
 			}
@@ -481,15 +468,11 @@ async fn main() -> anyhow::Result<()> {
 
 	// Periodic metrics reporter (every 10 seconds)
 	let tracker_clone = payment_tracker.clone();
-	let shutdown_rx = shutdown_tx.subscribe();
 	tokio::spawn(async move {
 		let mut interval = tokio::time::interval(Duration::from_secs(10));
 		interval.tick().await; // Skip immediate first tick
 		loop {
 			interval.tick().await;
-			if *shutdown_rx.borrow() {
-				return;
-			}
 			let (success, attempts) = tracker_clone.get_counts();
 			let rate = tracker_clone.get_success_rate();
 			let success_pct =
@@ -504,28 +487,17 @@ async fn main() -> anyhow::Result<()> {
 		}
 	});
 
-	// Wait for Ctrl+C, any chaos monkey detecting channel closure, or payment timeout
+	// Wait for any chaos monkey detecting channel closure, or payment timeout
 	tokio::select! {
-		_ = tokio::signal::ctrl_c() => {
-			tprintln!("\nReceived Ctrl+C, shutting down...");
-		}
 		_ = futures::future::select_all(chaos_handles) => {
-			tprintln!("\nA chaos monkey exited (channel closed?), shutting down...");
+			tprintln!("\nA chaos monkey exited (channel closed?), exiting...");
 		}
 		result = timeout_handle => {
 			if let Ok(Some(direction)) = result {
-				tprintln!("\nPAYMENT TIMEOUT: No successful payment in direction {} for {}s, shutting down...", direction, PAYMENT_TIMEOUT_SECS);
+				tprintln!("\nPAYMENT TIMEOUT: No successful payment in direction {} for {}s, exiting...", direction, PAYMENT_TIMEOUT_SECS);
 			}
 		}
 	}
-
-	// Signal all tasks to stop
-	let _ = shutdown_tx.send(true);
-
-	// Wait for payment tasks to finish (with timeout)
-	let _ =
-		tokio::time::timeout(Duration::from_secs(5), futures::future::join_all(payment_handles))
-			.await;
 
 	// Cleanup
 	tprintln!("\nKilling nodes...");
@@ -539,15 +511,10 @@ async fn main() -> anyhow::Result<()> {
 
 async fn payment_loop(
 	nodes: Vec<Arc<Mutex<NodeHandle>>>, loop_id: usize, tracker: Arc<PaymentTracker>,
-	shutdown: &mut watch::Receiver<bool>,
 ) {
 	let mut rng = rand::rngs::SmallRng::from_os_rng();
 
 	loop {
-		if *shutdown.borrow() {
-			return;
-		}
-
 		// Pick random sender and receiver (must be different)
 		let sender_idx = rng.random_range(0..NUM_NODES);
 		let receiver_idx = loop {
@@ -635,16 +602,12 @@ async fn payment_loop(
 
 async fn chaos_monkey_for_node(
 	nodes: Vec<Arc<Mutex<NodeHandle>>>, node_ids: Vec<String>, node_addresses: Vec<String>,
-	node_idx: usize, shutdown: &mut watch::Receiver<bool>,
+	node_idx: usize,
 ) {
 	// Use a Send-safe RNG with unique seed per node
 	let mut rng = rand::rngs::SmallRng::from_os_rng();
 
 	loop {
-		if *shutdown.borrow() {
-			return;
-		}
-
 		// Wait random interval (1-5 seconds)
 		let wait_secs = rng.random_range(1..=5);
 		tprintln!("[Chaos-{}] Waiting {}s before next action...", node_idx, wait_secs);
@@ -675,9 +638,6 @@ async fn chaos_monkey_for_node(
 				continue;
 			}
 			loop {
-				if *shutdown.borrow() {
-					return;
-				}
 				let node = nodes[node_idx].lock().await;
 				let Some(client) = node.client() else {
 					drop(node);
