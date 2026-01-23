@@ -31,7 +31,7 @@ use config::NodeConfig;
 const NUM_NODES: usize = 3;
 const NUM_CHANNELS: usize = 100;
 const CHANNEL_AMOUNT_SATS: u64 = 100_000;
-const PAYMENT_AMOUNT_MSAT: u64 = 10_000;
+const PAYMENT_AMOUNT_MSAT: u64 = 1;
 const PAYMENT_TIMEOUT_SECS: u64 = 60;
 
 /// Tracks payment statistics and timeout detection.
