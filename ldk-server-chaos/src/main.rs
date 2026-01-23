@@ -1,3 +1,4 @@
+use std::env;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -482,6 +483,8 @@ async fn main() -> anyhow::Result<()> {
 		std::process::exit(0);
 	});
 
+	let chaos_enabled = !env::args().any(|arg| arg == "--no-chaos");
+
 	// Start 20 parallel payment loops
 	for loop_id in 0..20 {
 		let nodes_clone = nodes.clone();
@@ -491,16 +494,21 @@ async fn main() -> anyhow::Result<()> {
 		});
 	}
 
-	// Start independent chaos monkey for each node
+	// Start independent chaos monkey for each node (unless disabled)
 	let mut chaos_handles = Vec::new();
-	for node_idx in 0..NUM_NODES {
-		let nodes_clone = nodes.clone();
-		let node_ids_clone = node_ids.clone();
-		let node_addresses_clone = node_addresses.clone();
-		let handle = tokio::spawn(async move {
-			chaos_monkey_for_node(nodes_clone, node_ids_clone, node_addresses_clone, node_idx).await
-		});
-		chaos_handles.push(handle);
+	if chaos_enabled {
+		for node_idx in 0..NUM_NODES {
+			let nodes_clone = nodes.clone();
+			let node_ids_clone = node_ids.clone();
+			let node_addresses_clone = node_addresses.clone();
+			let handle = tokio::spawn(async move {
+				chaos_monkey_for_node(nodes_clone, node_ids_clone, node_addresses_clone, node_idx)
+					.await
+			});
+			chaos_handles.push(handle);
+		}
+	} else {
+		tprintln!("Chaos monkey disabled (--no-chaos)");
 	}
 
 	// Timeout monitor task
@@ -535,15 +543,26 @@ async fn main() -> anyhow::Result<()> {
 		}
 	});
 
-	// Wait for any chaos monkey detecting channel closure, or payment timeout
-	tokio::select! {
-		_ = futures::future::select_all(chaos_handles) => {
-			tprintln!("\nA chaos monkey exited (channel closed?), exiting...");
-		}
-		result = timeout_handle => {
-			if let Ok(Some(direction)) = result {
-				tprintln!("\nPAYMENT TIMEOUT: No successful payment in direction {} for {}s, exiting...", direction, PAYMENT_TIMEOUT_SECS);
+	// Wait for chaos monkey exit, payment timeout, or run forever if chaos disabled
+	if chaos_enabled {
+		tokio::select! {
+			_ = futures::future::select_all(chaos_handles) => {
+				tprintln!("\nA chaos monkey exited (channel closed?), exiting...");
 			}
+			result = timeout_handle => {
+				if let Ok(Some(direction)) = result {
+					tprintln!("\nPAYMENT TIMEOUT: No successful payment in direction {} for {}s, exiting...", direction, PAYMENT_TIMEOUT_SECS);
+				}
+			}
+		}
+	} else {
+		// Without chaos monkey, just wait for payment timeout
+		if let Ok(Some(direction)) = timeout_handle.await {
+			tprintln!(
+				"\nPAYMENT TIMEOUT: No successful payment in direction {} for {}s, exiting...",
+				direction,
+				PAYMENT_TIMEOUT_SECS
+			);
 		}
 	}
 
