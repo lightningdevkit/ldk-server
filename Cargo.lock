@@ -1753,6 +1753,7 @@ dependencies = [
  "lapin",
  "ldk-node",
  "ldk-server-protos",
+ "lightning-macros",
  "log",
  "prost",
  "rand 0.8.5",

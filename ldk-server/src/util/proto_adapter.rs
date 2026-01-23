@@ -14,6 +14,7 @@ use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::ln::types::ChannelId;
+use ldk_node::lightning::routing::gossip::NodeId;
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
@@ -39,6 +40,7 @@ use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{
 	AuthError, InternalServerError, InvalidRequestError, LightningError,
 };
+use crate::io::persist::types::StoredForwardedPayment;
 
 pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 	Channel {
@@ -459,4 +461,51 @@ pub(crate) fn to_error_response(ldk_error: LdkServerError) -> (ErrorResponse, St
 	let error_response = ErrorResponse { message: ldk_error.message, error_code };
 
 	(error_response, status)
+}
+
+/// Convert event parameters to a StoredForwardedPayment for persistence.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn forwarded_payment_to_stored(
+	prev_channel_id: ChannelId, next_channel_id: ChannelId,
+	prev_user_channel_id: Option<UserChannelId>, next_user_channel_id: Option<UserChannelId>,
+	prev_node_id: Option<PublicKey>, next_node_id: Option<PublicKey>,
+	total_fee_earned_msat: Option<u64>, skimmed_fee_msat: Option<u64>, claim_from_onchain_tx: bool,
+	outbound_amount_forwarded_msat: Option<u64>,
+) -> StoredForwardedPayment {
+	StoredForwardedPayment {
+		prev_channel_id: prev_channel_id.0,
+		next_channel_id: next_channel_id.0,
+		prev_user_channel_id: prev_user_channel_id
+			.expect("prev_user_channel_id expected for ldk-server >=0.1")
+			.0,
+		next_user_channel_id: next_user_channel_id.map(|u| u.0),
+		prev_node_id: NodeId::from_pubkey(
+			&prev_node_id.expect("prev_node_id expected for ldk-server >=0.1"),
+		),
+		next_node_id: NodeId::from_pubkey(
+			&next_node_id.expect("next_node_id expected for ldk-node >=0.1"),
+		),
+		total_fee_earned_msat,
+		skimmed_fee_msat,
+		claim_from_onchain_tx,
+		outbound_amount_forwarded_msat,
+	}
+}
+
+/// Convert a StoredForwardedPayment to a proto ForwardedPayment for API responses.
+pub(crate) fn stored_forwarded_payment_to_proto(
+	stored: StoredForwardedPayment,
+) -> ForwardedPayment {
+	ForwardedPayment {
+		prev_channel_id: stored.prev_channel_id.to_lower_hex_string(),
+		next_channel_id: stored.next_channel_id.to_lower_hex_string(),
+		prev_user_channel_id: stored.prev_user_channel_id.to_string(),
+		next_user_channel_id: stored.next_user_channel_id.map(|u| u.to_string()),
+		prev_node_id: stored.prev_node_id.as_slice().to_lower_hex_string(),
+		next_node_id: stored.next_node_id.as_slice().to_lower_hex_string(),
+		total_fee_earned_msat: stored.total_fee_earned_msat,
+		skimmed_fee_msat: stored.skimmed_fee_msat,
+		claim_from_onchain_tx: stored.claim_from_onchain_tx,
+		outbound_amount_forwarded_msat: stored.outbound_amount_forwarded_msat,
+	}
 }

@@ -25,12 +25,12 @@ use ldk_node::bitcoin::Network;
 use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
+use ldk_node::lightning::util::ser::Writeable;
 use ldk_node::{Builder, Event, Node};
 use ldk_server_protos::events;
 use ldk_server_protos::events::{event_envelope, EventEnvelope};
 use ldk_server_protos::types::Payment;
 use log::{debug, error, info};
-use prost::Message;
 use rand::Rng;
 use tokio::net::TcpListener;
 use tokio::select;
@@ -50,7 +50,9 @@ use crate::io::persist::{
 use crate::service::NodeService;
 use crate::util::config::{load_config, ChainSource};
 use crate::util::logger::ServerLogger;
-use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
+use crate::util::proto_adapter::{
+	forwarded_payment_to_proto, forwarded_payment_to_stored, payment_to_proto,
+};
 use crate::util::tls::get_or_generate_tls_config;
 
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
@@ -369,8 +371,7 @@ fn main() {
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							if let Some(payment_details) = event_node.payment(&payment_id) {
-								let payment = payment_to_proto(payment_details);
-								upsert_payment_details(&event_node, Arc::clone(&paginated_store), &payment);
+								upsert_payment_details(&event_node, Arc::clone(&paginated_store), payment_details);
 							} else {
 								error!("Unable to find payment with paymentId: {payment_id}");
 							}
@@ -392,7 +393,22 @@ fn main() {
 								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
 							);
 
-							let forwarded_payment = forwarded_payment_to_proto(
+							// Create proto for event publishing
+							let forwarded_payment_proto = forwarded_payment_to_proto(
+								prev_channel_id,
+								next_channel_id,
+								prev_user_channel_id,
+								next_user_channel_id,
+								prev_node_id,
+								next_node_id,
+								total_fee_earned_msat,
+								skimmed_fee_msat,
+								claim_from_onchain_tx,
+								outbound_amount_forwarded_msat
+							);
+
+							// Create storage type for persistence
+							let forwarded_payment_stored = forwarded_payment_to_stored(
 								prev_channel_id,
 								next_channel_id,
 								prev_user_channel_id,
@@ -415,7 +431,7 @@ fn main() {
 
 							match event_publisher.publish(EventEnvelope {
 									event: Some(event_envelope::Event::PaymentForwarded(events::PaymentForwarded {
-											forwarded_payment: Some(forwarded_payment.clone()),
+											forwarded_payment: Some(forwarded_payment_proto),
 									})),
 							}).await {
 								Ok(_) => {},
@@ -425,10 +441,12 @@ fn main() {
 								}
 							};
 
-							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+							match paginated_store.write(
+								FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
+								FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 								&forwarded_payment_id.to_lower_hex_string(),
 								forwarded_payment_creation_time,
-								&forwarded_payment.encode_to_vec(),
+								&forwarded_payment_stored.encode(),
 							) {
 								Ok(_) => {
 									if let Err(e) = event_node.event_handled() {
@@ -494,9 +512,10 @@ async fn publish_event_and_upsert_payment(
 	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	if let Some(payment_details) = event_node.payment(payment_id) {
-		let payment = payment_to_proto(payment_details);
+		// Create proto for event publishing
+		let payment_proto = payment_to_proto(payment_details.clone());
 
-		let event = payment_to_event(&payment);
+		let event = payment_to_event(&payment_proto);
 		let event_name = get_event_name(&event);
 		match event_publisher.publish(EventEnvelope { event: Some(event) }).await {
 			Ok(_) => {},
@@ -506,24 +525,27 @@ async fn publish_event_and_upsert_payment(
 			},
 		};
 
-		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
+		upsert_payment_details(event_node, Arc::clone(&paginated_store), payment_details);
 	} else {
 		error!("Unable to find payment with paymentId: {payment_id}");
 	}
 }
 
 fn upsert_payment_details(
-	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment: &Payment,
+	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>,
+	payment_details: ldk_node::payment::PaymentDetails,
 ) {
 	let time =
 		SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
 
+	let payment_id = payment_details.id.to_string();
+
 	match paginated_store.write(
 		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-		&payment.id,
+		&payment_id,
 		time,
-		&payment.encode_to_vec(),
+		&payment_details.encode(),
 	) {
 		Ok(_) => {
 			if let Err(e) = event_node.event_handled() {
