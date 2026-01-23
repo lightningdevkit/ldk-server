@@ -11,16 +11,16 @@ lto = true
 panic = "abort"
 
 [patch."https://github.com/lightningdevkit/ldk-node"]
-ldk-node = { git = "https://github.com/joostjager/ldk-node", branch = "mon-barrier" }
+ldk-node = { git = "https://github.com/joostjager/ldk-node", branch = "chain-mon-deferred-writes" }
 
 [patch."https://github.com/lightningdevkit/rust-lightning"]
-lightning = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-invoice = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-net-tokio = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-persister = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-background-processor = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-rapid-gossip-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-transaction-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-liquidity = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-types = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
-lightning-block-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "mon-barrier" }
+lightning = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-invoice = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-net-tokio = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-persister = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-background-processor = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-rapid-gossip-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-transaction-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-liquidity = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-types = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
+lightning-block-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "chain-mon-deferred-writes" }
