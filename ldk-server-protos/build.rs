@@ -11,7 +11,20 @@
 extern crate prost_build;
 
 #[cfg(genproto)]
-use std::{env, fs, path::Path};
+use std::{env, fs, io::Write, path::Path};
+
+#[cfg(genproto)]
+const COPYRIGHT_HEADER: &str =
+	"// This file is Copyright its original authors, visible in version control
+// history.
+//
+// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
+// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
+// You may not use this file except in accordance with one or both of these
+// licenses.
+
+";
 
 /// To generate updated proto objects, run `RUSTFLAGS="--cfg genproto" cargo build`
 fn main() {
@@ -38,13 +51,13 @@ fn generate_protos() {
 			&["src/proto/"],
 		)
 		.expect("protobuf compilation failed");
-	println!("OUT_DIR: {}", &env::var("OUT_DIR").unwrap());
-	let from_path = Path::new(&env::var("OUT_DIR").unwrap()).join("api.rs");
-	fs::copy(from_path, "src/api.rs").unwrap();
-	let from_path = Path::new(&env::var("OUT_DIR").unwrap()).join("types.rs");
-	fs::copy(from_path, "src/types.rs").unwrap();
-	let from_path = Path::new(&env::var("OUT_DIR").unwrap()).join("events.rs");
-	fs::copy(from_path, "src/events.rs").unwrap();
-	let from_path = Path::new(&env::var("OUT_DIR").unwrap()).join("error.rs");
-	fs::copy(from_path, "src/error.rs").unwrap();
+	let out_dir = env::var("OUT_DIR").unwrap();
+	println!("OUT_DIR: {}", &out_dir);
+	for file in &["api.rs", "types.rs", "events.rs", "error.rs"] {
+		let from_path = Path::new(&out_dir).join(file);
+		let content = fs::read(&from_path).unwrap();
+		let mut dest = fs::File::create(Path::new("src").join(file)).unwrap();
+		dest.write_all(COPYRIGHT_HEADER.as_bytes()).unwrap();
+		dest.write_all(&content).unwrap();
+	}
 }
