@@ -576,9 +576,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.53"
+version = "1.2.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755d2fce177175ffca841e9a06afdb2c4ab0f593d53b4dee48147dfaade85932"
+checksum = "6354c81bbfd62d9cfa9cb3c773c2b7b2a3a482d569de977fd0e961f6e7c00583"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -930,15 +930,16 @@ dependencies = [
 
 [[package]]
 name = "esplora-client"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0af349d96a5d9ad77ba59f1437aa6f348b03c5865d4f7d6e7a662d60aedce39"
+checksum = "4aac1895e7d91053ecc4c4955832b6f904f4321ec59d07b120736103bf06f7a5"
 dependencies = [
  "bitcoin",
  "hex-conservative",
  "log",
  "reqwest 0.12.28",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -1478,7 +1479,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tokio",
  "tower-service",
  "tracing",
@@ -1734,7 +1735,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-node"
 version = "0.8.0+git"
-source = "git+https://github.com/joostjager/ldk-node?branch=chain-mon-deferred-writes#13833bd263007e1d25452d3016fa9ff3eb5be6fd"
+source = "git+https://github.com/joostjager/ldk-node?branch=chain-mon-deferred-writes#a80e5beb3af207bf9724cdd3f231a6f4e58807db"
 dependencies = [
  "base64 0.22.1",
  "bdk_chain",
@@ -1860,9 +1861,9 @@ checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
 name = "libm"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libsqlite3-sys"
@@ -1878,7 +1879,7 @@ dependencies = [
 [[package]]
 name = "lightning"
 version = "0.3.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bech32",
  "bitcoin",
@@ -1895,7 +1896,7 @@ dependencies = [
 [[package]]
 name = "lightning-background-processor"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "bitcoin-io",
@@ -1909,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "lightning-block-sync"
 version = "0.3.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "chunked_transfer",
@@ -1921,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.34.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bech32",
  "bitcoin",
@@ -1932,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "lightning-liquidity"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "chrono",
@@ -1947,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "lightning-macros"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1967,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "lightning-net-tokio"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1977,7 +1978,7 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1988,7 +1989,7 @@ dependencies = [
 [[package]]
 name = "lightning-rapid-gossip-sync"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "bitcoin-io",
@@ -1999,7 +2000,7 @@ dependencies = [
 [[package]]
 name = "lightning-transaction-sync"
 version = "0.2.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
  "electrum-client",
@@ -2012,7 +2013,7 @@ dependencies = [
 [[package]]
 name = "lightning-types"
 version = "0.3.0+git"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "bitcoin",
 ]
@@ -2148,9 +2149,9 @@ dependencies = [
 
 [[package]]
 name = "num-conv"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
+checksum = "cf97ec579c3c42f953ef76dbf8d55ac91fb219dde70e49aa4a6b7d74e9919050"
 
 [[package]]
 name = "num-integer"
@@ -2387,7 +2388,7 @@ dependencies = [
 [[package]]
 name = "possiblyrandom"
 version = "0.2.0"
-source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#2e5943f2b4b27b7019c99d262e8657b6ef590a66"
+source = "git+https://github.com/joostjager/rust-lightning?branch=chain-mon-deferred-writes#aeb83aaad00658c81ea767e0f6df96f5ddfc338d"
 dependencies = [
  "getrandom 0.2.17",
 ]
@@ -2428,9 +2429,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.105"
+version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "535d180e0ecab6268a3e718bb9fd44db66bbbc256257165fc699dadf70d16fe7"
+checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
 ]
@@ -2502,7 +2503,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.36",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "thiserror",
  "tokio",
  "tracing",
@@ -2539,16 +2540,16 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tracing",
  "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.43"
+version = "1.0.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc74d9a594b72ae6656596548f56f667211f8a97b3d4c3d467150794690dc40a"
+checksum = "21b2ebcf727b7760c461f091f9f0f539b77b8e87f2fd88131e7f1b433b3cece4"
 dependencies = [
  "proc-macro2",
 ]
@@ -3191,9 +3192,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17129e116933cf371d018bb80ae557e889637989d8638274fb25622827b03881"
+checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
@@ -3352,9 +3353,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.45"
+version = "0.3.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e442fc33d7fdb45aa9bfeb312c095964abdf596f7567261062b2a7107aaabd"
+checksum = "9da98b7d9b7dad93488a84b8248efc35352b0b2657397d4167e7ad67e5d535e5"
 dependencies = [
  "deranged",
  "itoa",
@@ -3367,15 +3368,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b36ee98fd31ec7426d599183e8fe26932a8dc1fb76ddb6214d05493377d34ca"
+checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
 
 [[package]]
 name = "time-macros"
-version = "0.2.25"
+version = "0.2.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e552d1249bf61ac2a52db88179fd0673def1e1ad8243a00d9ec9ed71fee3dd"
+checksum = "78cc610bac2dcee56805c99642447d4c5dbde4d01f752ffea0199aee1f601dc4"
 dependencies = [
  "num-conv",
  "time-core",
@@ -3418,7 +3419,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.6.1",
+ "socket2 0.6.2",
  "tokio-macros",
  "windows-sys 0.61.2",
 ]
@@ -4198,18 +4199,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.33"
+version = "0.8.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668f5168d10b9ee831de31933dc111a459c97ec93225beb307aed970d1372dfd"
+checksum = "71ddd76bcebeed25db614f82bf31a9f4222d3fbba300e6fb6c00afa26cbd4d9d"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.33"
+version = "0.8.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c7962b26b0a8685668b671ee4b54d007a67d4eaf05fda79ac0ecf41e32270f1"
+checksum = "d8187381b52e32220d50b255276aa16a084ec0a9017a0ca2152a1f55c539758d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4278,6 +4279,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.16"
+version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfcd145825aace48cff44a8844de64bf75feec3080e0aa5cdbde72961ae51a65"
+checksum = "02aae0f83f69aafc94776e879363e9771d7ecbffe2c7fbb6c14c5e00dfe88439"

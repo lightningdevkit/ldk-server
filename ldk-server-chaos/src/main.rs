@@ -1,4 +1,5 @@
 use std::env;
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -205,8 +206,45 @@ fn kill_all_ldk_servers() {
 	let _ = Command::new("pkill").args(["-9", "-f", "ldk-server"]).status();
 }
 
+/// Check if a port is available by attempting to bind to it.
+fn is_port_available(port: u16) -> bool {
+	TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Check that all required ports are available before starting the test.
+/// Returns an error with details about which ports are in use.
+fn check_ports_available() -> anyhow::Result<()> {
+	let mut ports_in_use = Vec::new();
+
+	for i in 0..NUM_NODES {
+		let lightning_port = 9700 + i as u16;
+		let rest_port = 3100 + i as u16;
+
+		if !is_port_available(lightning_port) {
+			ports_in_use.push(format!("{} (node {} lightning)", lightning_port, i));
+		}
+		if !is_port_available(rest_port) {
+			ports_in_use.push(format!("{} (node {} REST API)", rest_port, i));
+		}
+	}
+
+	if !ports_in_use.is_empty() {
+		anyhow::bail!(
+			"The following ports are already in use:\n  {}\n\nPlease stop the processes using these ports before running the chaos test.\nYou can find the processes with: lsof -i :<port>",
+			ports_in_use.join("\n  ")
+		);
+	}
+
+	Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+	kill_all_ldk_servers();
+
+	// Check that all required ports are available before proceeding
+	check_ports_available()?;
+
 	// Register panic hook to kill ldk-server processes on panic/assert failure
 	let default_hook = std::panic::take_hook();
 	std::panic::set_hook(Box::new(move |info| {
@@ -675,8 +713,8 @@ async fn chaos_monkey_for_node(
 	let mut rng = rand::rngs::SmallRng::from_os_rng();
 
 	loop {
-		// Wait random interval (1-5 seconds)
-		let wait_secs = rng.random_range(1..=5);
+		// Wait random interval.
+		let wait_secs = rng.random_range(3..=10);
 		tprintln!("[Chaos-{}] Waiting {}s before next action...", node_idx, wait_secs);
 		sleep(Duration::from_secs(wait_secs)).await;
 
