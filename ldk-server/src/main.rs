@@ -36,6 +36,8 @@ use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
 
+use clap::Parser;
+
 use crate::io::events::event_publisher::EventPublisher;
 use crate::io::events::get_event_name;
 #[cfg(feature = "events-rabbitmq")]
@@ -48,7 +50,7 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
-use crate::util::config::{load_config, ChainSource};
+use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
@@ -110,11 +112,13 @@ fn main() {
 		std::process::exit(-1);
 	}
 
+	let args_config = ArgsConfig::parse();
+
 	let mut ldk_node_config = Config::default();
-	let config_file = match load_config(&config_path) {
+	let config_file = match load_config(&args_config) {
 		Ok(config) => config,
 		Err(e) => {
-			eprintln!("Invalid configuration file: {}", e);
+			eprintln!("Invalid configuration: {}", e);
 			std::process::exit(-1);
 		},
 	};
