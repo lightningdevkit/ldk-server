@@ -24,18 +24,22 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
+	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
+	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
 	RouteParametersConfig,
 };
 use serde::Serialize;
+use serde_json::{json, Value};
 use types::{CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse};
 
 mod config;
@@ -181,6 +185,30 @@ enum Commands {
 		#[arg(
 			long,
 			help = "Maximum total fees, in millisatoshi, that may accrue during route finding, Defaults to 1% of the payment amount + 50 sats"
+		)]
+		max_total_routing_fee_msat: Option<u64>,
+		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
+		max_total_cltv_expiry_delta: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum number of paths that may be used by MPP payments (default: 10)"
+		)]
+		max_path_count: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
+		)]
+		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(about = "Send a spontaneous payment (keysend) to a node")]
+	SpontaneousSend {
+		#[arg(short, long, help = "The hex-encoded public key of the node to send the payment to")]
+		node_id: String,
+		#[arg(short, long, help = "The amount in millisatoshis to send")]
+		amount_msat: u64,
+		#[arg(
+			long,
+			help = "Maximum total fees in millisatoshis that may accrue during route finding. Defaults to 1% of payment + 50 sats"
 		)]
 		max_total_routing_fee_msat: Option<u64>,
 		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
@@ -353,6 +381,22 @@ enum Commands {
 		)]
 		persist: bool,
 	},
+	#[command(about = "Sign a message with the node's secret key")]
+	SignMessage {
+		#[arg(short, long, help = "The message to sign")]
+		message: String,
+	},
+	#[command(about = "Verify a signature against a message and public key")]
+	VerifySignature {
+		#[arg(short, long, help = "The message that was signed")]
+		message: String,
+		#[arg(short, long, help = "The zbase32-encoded signature to verify")]
+		signature: String,
+		#[arg(short, long, help = "The hex-encoded public key of the signer")]
+		public_key: String,
+	},
+	#[command(about = "Export the pathfinding scores used by the router")]
+	ExportPathfindingScores,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -543,6 +587,33 @@ async fn main() {
 					.await,
 			);
 		},
+		Commands::SpontaneousSend {
+			node_id,
+			amount_msat,
+			max_total_routing_fee_msat,
+			max_total_cltv_expiry_delta,
+			max_path_count,
+			max_channel_saturation_power_of_half,
+		} => {
+			let route_parameters = RouteParametersConfig {
+				max_total_routing_fee_msat,
+				max_total_cltv_expiry_delta: max_total_cltv_expiry_delta
+					.unwrap_or(DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA),
+				max_path_count: max_path_count.unwrap_or(DEFAULT_MAX_PATH_COUNT),
+				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
+					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
+			};
+
+			handle_response_result::<_, SpontaneousSendResponse>(
+				client
+					.spontaneous_send(SpontaneousSendRequest {
+						amount_msat,
+						node_id,
+						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
 		Commands::CloseChannel { user_channel_id, counterparty_node_id } => {
 			handle_response_result::<_, CloseChannelResponse>(
 				client
@@ -693,6 +764,34 @@ async fn main() {
 		Commands::ConnectPeer { node_pubkey, address, persist } => {
 			handle_response_result::<_, ConnectPeerResponse>(
 				client.connect_peer(ConnectPeerRequest { node_pubkey, address, persist }).await,
+			);
+		},
+		Commands::SignMessage { message } => {
+			handle_response_result::<_, SignMessageResponse>(
+				client
+					.sign_message(SignMessageRequest { message: message.into_bytes().into() })
+					.await,
+			);
+		},
+		Commands::VerifySignature { message, signature, public_key } => {
+			handle_response_result::<_, VerifySignatureResponse>(
+				client
+					.verify_signature(VerifySignatureRequest {
+						message: message.into_bytes().into(),
+						signature,
+						public_key,
+					})
+					.await,
+			);
+		},
+		Commands::ExportPathfindingScores => {
+			handle_response_result::<_, Value>(
+				client.export_pathfinding_scores(ExportPathfindingScoresRequest {}).await.map(
+					|s| {
+						let scores_hex = s.scores.as_hex().to_string();
+						json!({ "pathfinding_scores": scores_hex })
+					},
+				),
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),
