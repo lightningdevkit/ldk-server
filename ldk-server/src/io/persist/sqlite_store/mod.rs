@@ -291,9 +291,8 @@ impl PaginatedKVStore for SqliteStore {
 mod tests {
 	use std::panic::RefUnwindSafe;
 
+	use hex::DisplayHex;
 	use ldk_node::lightning::util::persist::KVSTORE_NAMESPACE_KEY_MAX_LEN;
-	use rand::distributions::Alphanumeric;
-	use rand::{thread_rng, Rng};
 
 	use super::*;
 
@@ -312,8 +311,9 @@ mod tests {
 
 	pub(crate) fn random_storage_path() -> PathBuf {
 		let mut temp_path = std::env::temp_dir();
-		let mut rng = thread_rng();
-		let rand_dir: String = (0..7).map(|_| rng.sample(Alphanumeric) as char).collect();
+		let mut bytes = [0u8; 8];
+		getrandom::getrandom(&mut bytes).expect("Failed to generate random bytes");
+		let rand_dir = bytes.to_lower_hex_string();
 		temp_path.push(rand_dir);
 		temp_path
 	}

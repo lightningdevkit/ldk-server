@@ -31,7 +31,6 @@ use ldk_server_protos::events::{event_envelope, EventEnvelope};
 use ldk_server_protos::types::Payment;
 use log::{debug, error, info};
 use prost::Message;
-use rand::Rng;
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
@@ -408,8 +407,8 @@ fn main() {
 							// We don't expose this payment-id to the user, it is a temporary measure to generate
 							// some unique identifiers until we have forwarded-payment-id available in ldk.
 							// Currently, this is the expected user handling behaviour for forwarded payments.
-							let mut forwarded_payment_id = [0u8;32];
-							rand::thread_rng().fill(&mut forwarded_payment_id);
+							let mut forwarded_payment_id = [0u8; 32];
+							getrandom::getrandom(&mut forwarded_payment_id).expect("Failed to generate random bytes");
 
 							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
 
@@ -549,9 +548,8 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 		fs::create_dir_all(storage_dir)?;
 
 		// Generate a 32-byte random API key
-		let mut rng = rand::thread_rng();
 		let mut key_bytes = [0u8; 32];
-		rng.fill(&mut key_bytes);
+		getrandom::getrandom(&mut key_bytes).map_err(std::io::Error::other)?;
 
 		// Write the raw bytes to the file
 		fs::write(&api_key_path, key_bytes)?;
