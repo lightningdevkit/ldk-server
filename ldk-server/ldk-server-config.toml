@@ -88,3 +88,11 @@ client_trusts_lsp = false
 ## A token we may require to be sent by the clients.
 ## If set, only requests matching this token will be accepted. (uncomment and set if required)
 # require_token = ""
+
+# Metrics settings
+[metrics]
+enabled = false
+poll_metrics_interval = 60       # The polling interval for metrics in seconds. Defaults to 60secs if unset and metrics enabled.
+# The auth details below are optional, but uncommenting the fields means enabling basic auth, so valid fields must be supplied.
+#username = ""               # The username required to access the metrics endpoint (Basic Auth).
+#password = ""               # The password required to access the metrics endpoint (Basic Auth).

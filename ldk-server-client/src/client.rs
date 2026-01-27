@@ -40,13 +40,15 @@ use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH,
 	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
-	GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH,
-	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
+	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
+	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
+use prost::bytes::Bytes;
 use prost::Message;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Certificate, Client};
@@ -68,6 +70,11 @@ pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
 	api_key: String,
+}
+
+enum RequestType {
+	Get,
+	Post,
 }
 
 impl LdkServerClient {
@@ -113,6 +120,27 @@ impl LdkServerClient {
 	) -> Result<GetNodeInfoResponse, LdkServerError> {
 		let url = format!("https://{}/{GET_NODE_INFO_PATH}", self.base_url);
 		self.post_request(&request, &url).await
+	}
+
+	/// Retrieve the node metrics in Prometheus format.
+	pub async fn get_metrics(&self) -> Result<String, LdkServerError> {
+		self.get_metrics_with_auth(None, None).await
+	}
+
+	/// Retrieve the node metrics in Prometheus format using Basic Auth.
+	pub async fn get_metrics_with_auth(
+		&self, username: Option<&str>, password: Option<&str>,
+	) -> Result<String, LdkServerError> {
+		let url = format!("https://{}/{GET_METRICS_PATH}", self.base_url);
+		let payload =
+			self.make_request(&url, RequestType::Get, None, false, username, password).await?;
+
+		String::from_utf8(payload.to_vec()).map_err(|e| {
+			LdkServerError::new(
+				InternalError,
+				format!("Failed to decode metrics response as string: {}", e),
+			)
+		})
 	}
 
 	/// Retrieves an overview of all known balances.
@@ -450,31 +478,60 @@ impl LdkServerClient {
 		&self, request: &Rq, url: &str,
 	) -> Result<Rs, LdkServerError> {
 		let request_body = request.encode_to_vec();
-		let auth_header = self.compute_auth_header(&request_body);
-		let response_raw = self
-			.client
-			.post(url)
-			.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM)
-			.header("X-Auth", auth_header)
-			.body(request_body)
-			.send()
-			.await
-			.map_err(|e| {
-				LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
-			})?;
+		let payload =
+			self.make_request(url, RequestType::Post, Some(request_body), true, None, None).await?;
+		Rs::decode(&payload[..]).map_err(|e| {
+			LdkServerError::new(InternalError, format!("Failed to decode success response: {}", e))
+		})
+	}
 
+	async fn make_request(
+		&self, url: &str, request_type: RequestType, body: Option<Vec<u8>>,
+		hmac_authenticated: bool, metrics_username: Option<&str>, metrics_password: Option<&str>,
+	) -> Result<Bytes, LdkServerError> {
+		let builder = match request_type {
+			RequestType::Get => self.client.get(url),
+			RequestType::Post => self.client.post(url),
+		};
+
+		let builder = if hmac_authenticated {
+			let body_for_auth = body.as_deref().unwrap_or(&[]);
+			let auth_header = self.compute_auth_header(body_for_auth);
+			builder.header("X-Auth", auth_header)
+		} else {
+			builder
+		};
+
+		let builder = if let Some(body_content) = body {
+			builder.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM).body(body_content)
+		} else {
+			builder
+		};
+
+		let builder = if let (Some(username), Some(password)) = (metrics_username, metrics_password)
+		{
+			builder.basic_auth(username, Some(password))
+		} else {
+			builder
+		};
+
+		let response_raw = builder.send().await.map_err(|e| {
+			LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
+		})?;
+
+		self.handle_response(response_raw).await
+	}
+
+	async fn handle_response(
+		&self, response_raw: reqwest::Response,
+	) -> Result<Bytes, LdkServerError> {
 		let status = response_raw.status();
 		let payload = response_raw.bytes().await.map_err(|e| {
 			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
 		})?;
 
 		if status.is_success() {
-			Ok(Rs::decode(&payload[..]).map_err(|e| {
-				LdkServerError::new(
-					InternalError,
-					format!("Failed to decode success response: {}", e),
-				)
-			})?)
+			Ok(payload)
 		} else {
 			let error_response = ErrorResponse::decode(&payload[..]).map_err(|e| {
 				LdkServerError::new(
