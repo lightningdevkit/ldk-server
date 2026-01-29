@@ -50,6 +50,7 @@ use crate::io::persist::{
 use crate::service::NodeService;
 use crate::util::config::{load_config, ChainSource};
 use crate::util::logger::ServerLogger;
+use crate::util::metrics::{BUILD_METRICS_INTERVAL, METRICS};
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
 
@@ -291,6 +292,16 @@ fn main() {
 			}
 		};
 		let event_node = Arc::clone(&node);
+
+		let metrics_node = Arc::clone(&node);
+		let mut interval = tokio::time::interval(BUILD_METRICS_INTERVAL);
+		runtime.spawn(async move {
+			loop {
+				interval.tick().await;
+				METRICS.update_service_health_score(&metrics_node);
+			}
+		});
+
 		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
 			.await
 			.expect("Failed to bind listening port");

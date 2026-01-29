@@ -21,9 +21,9 @@ use ldk_node::Node;
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
-	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH,
-	LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	GET_METRICS_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, LIST_CHANNELS_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH,
+	OPEN_CHANNEL_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, UPDATE_CHANNEL_CONFIG_PATH,
 };
 use prost::Message;
 
@@ -47,6 +47,7 @@ use crate::api::open_channel::handle_open_channel;
 use crate::api::splice_channel::{handle_splice_in_request, handle_splice_out_request};
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+use crate::util::metrics::METRICS;
 use crate::util::proto_adapter::to_error_response;
 
 // Maximum request body size: 10 MB
@@ -148,6 +149,25 @@ impl Service<Request<Incoming>> for NodeService {
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
+		// Handle metrics endpoint separately to bypass auth and return plain text
+		if req.uri().path().len() > 1 && &req.uri().path()[1..] == GET_METRICS_PATH {
+			return Box::pin(async move {
+				match METRICS.gather_metrics() {
+					Ok(metrics) => Ok(Response::builder()
+						.header("Content-Type", "text/plain")
+						.body(Full::new(Bytes::from(metrics)))
+						.unwrap()),
+					Err(e) => {
+						let (error_response, status_code) = to_error_response(e);
+						Ok(Response::builder()
+							.status(status_code)
+							.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+							.unwrap())
+					},
+				}
+			});
+		}
+
 		// Extract auth params from headers (validation happens after body is read)
 		let auth_params = match extract_auth_params(&req) {
 			Ok(params) => params,
