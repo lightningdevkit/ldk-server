@@ -131,3 +131,15 @@ impl From<NodeError> for LdkServerError {
 		LdkServerError::new(error_code, message)
 	}
 }
+
+impl From<prometheus::Error> for LdkServerError {
+	fn from(e: prometheus::Error) -> Self {
+		LdkServerError::new(LdkServerErrorCode::InternalServerError, e.to_string())
+	}
+}
+
+impl From<std::string::FromUtf8Error> for LdkServerError {
+	fn from(e: std::string::FromUtf8Error) -> Self {
+		LdkServerError::new(LdkServerErrorCode::InternalServerError, e.to_string())
+	}
+}
