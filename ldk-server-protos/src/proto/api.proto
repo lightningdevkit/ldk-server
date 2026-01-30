@@ -49,6 +49,21 @@ message GetNodeInfoResponse {
   //
   // Will be `None` if we have no public channels or we haven’t broadcasted since the node was initialized.
   optional uint64  latest_node_announcement_broadcast_timestamp = 8;
+
+  // The addresses the node is currently listening on for incoming connections.
+  //
+  // Will be empty if the node is not listening on any addresses.
+  repeated string listening_addresses = 9;
+
+  // The addresses the node announces to the network.
+  //
+  // Will be empty if no announcement addresses are configured.
+  repeated string announcement_addresses = 10;
+
+  // The node alias, if configured.
+  //
+  // Will be `None` if no alias is configured.
+  optional string node_alias = 11;
 }
 
 // Retrieve a new on-chain funding address.
@@ -138,7 +153,7 @@ message Bolt11SendRequest {
   // amount paid to be determined by the user.
   // This operation will fail if the amount specified is less than the value required by the given invoice.
   optional uint64 amount_msat = 2;
-  
+
   // Configuration options for payment routing and pathfinding.
   optional types.RouteParametersConfig route_parameters = 3;
 
@@ -211,6 +226,26 @@ message Bolt12SendRequest {
 // When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
 message Bolt12SendResponse {
 
+  // An identifier used to uniquely identify a payment in hex-encoded form.
+  string payment_id = 1;
+}
+
+// Send a spontaneous payment, also known as "keysend", to a node.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send
+message SpontaneousSendRequest {
+  // The amount in millisatoshis to send.
+  uint64 amount_msat = 1;
+
+  // The hex-encoded public key of the node to send the payment to.
+  string node_id = 2;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 3;
+}
+
+// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message SpontaneousSendResponse {
   // An identifier used to uniquely identify a payment in hex-encoded form.
   string payment_id = 1;
 }
@@ -434,6 +469,51 @@ message ListForwardedPaymentsResponse {
   // **Caution**: Clients must not assume a specific number of records to be present in a page for
   // paginated response.
   optional types.PageToken next_page_token = 2;
+}
+
+// Sign a message with the node's secret key.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message
+message SignMessageRequest {
+  // The message to sign, as raw bytes.
+  bytes message = 1;
+}
+
+// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message SignMessageResponse {
+  // The signature of the message, as a zbase32-encoded string.
+  string signature = 1;
+}
+
+// Verify a signature against a message and public key.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature
+message VerifySignatureRequest {
+  // The message that was signed, as raw bytes.
+  bytes message = 1;
+
+  // The signature to verify, as a zbase32-encoded string.
+  string signature = 2;
+
+  // The hex-encoded public key of the signer.
+  string public_key = 3;
+}
+
+// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message VerifySignatureResponse {
+  // Whether the signature is valid.
+  bool valid = 1;
+}
+
+// Export the pathfinding scores used by the router.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores
+message ExportPathfindingScoresRequest {}
+
+// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message ExportPathfindingScoresResponse {
+  // The serialized pathfinding scores data.
+  bytes scores = 1;
 }
 
 // Retrieves an overview of all known balances.
