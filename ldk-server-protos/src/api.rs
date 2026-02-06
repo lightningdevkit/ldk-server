@@ -59,6 +59,21 @@ pub struct GetNodeInfoResponse {
 	/// Will be `None` if we have no public channels or we haven’t broadcasted since the node was initialized.
 	#[prost(uint64, optional, tag = "8")]
 	pub latest_node_announcement_broadcast_timestamp: ::core::option::Option<u64>,
+	/// The addresses the node is currently listening on for incoming connections.
+	///
+	/// Will be empty if the node is not listening on any addresses.
+	#[prost(string, repeated, tag = "9")]
+	pub listening_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The addresses the node announces to the network.
+	///
+	/// Will be empty if no announcement addresses are configured.
+	#[prost(string, repeated, tag = "10")]
+	pub announcement_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The node alias, if configured.
+	///
+	/// Will be `None` if no alias is configured.
+	#[prost(string, optional, tag = "11")]
+	pub node_alias: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
@@ -254,6 +269,34 @@ pub struct Bolt12SendRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt12SendResponse {
+	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
+}
+/// Send a spontaneous payment, also known as "keysend", to a node.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpontaneousSendRequest {
+	/// The amount in millisatoshis to send.
+	#[prost(uint64, tag = "1")]
+	pub amount_msat: u64,
+	/// The hex-encoded public key of the node to send the payment to.
+	#[prost(string, tag = "2")]
+	pub node_id: ::prost::alloc::string::String,
+	/// Configuration options for payment routing and pathfinding.
+	#[prost(message, optional, tag = "3")]
+	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
+}
+/// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpontaneousSendResponse {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
@@ -546,6 +589,74 @@ pub struct ListForwardedPaymentsResponse {
 	/// paginated response.
 	#[prost(message, optional, tag = "2")]
 	pub next_page_token: ::core::option::Option<super::types::PageToken>,
+}
+/// Sign a message with the node's secret key.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignMessageRequest {
+	/// The message to sign, as raw bytes.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub message: ::prost::bytes::Bytes,
+}
+/// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignMessageResponse {
+	/// The signature of the message, as a zbase32-encoded string.
+	#[prost(string, tag = "1")]
+	pub signature: ::prost::alloc::string::String,
+}
+/// Verify a signature against a message and public key.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VerifySignatureRequest {
+	/// The message that was signed, as raw bytes.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub message: ::prost::bytes::Bytes,
+	/// The signature to verify, as a zbase32-encoded string.
+	#[prost(string, tag = "2")]
+	pub signature: ::prost::alloc::string::String,
+	/// The hex-encoded public key of the signer.
+	#[prost(string, tag = "3")]
+	pub public_key: ::prost::alloc::string::String,
+}
+/// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VerifySignatureResponse {
+	/// Whether the signature is valid.
+	#[prost(bool, tag = "1")]
+	pub valid: bool,
+}
+/// Export the pathfinding scores used by the router.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportPathfindingScoresRequest {}
+/// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExportPathfindingScoresResponse {
+	/// The serialized pathfinding scores data.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub scores: ::prost::bytes::Bytes,
 }
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
