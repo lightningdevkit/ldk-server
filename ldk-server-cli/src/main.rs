@@ -95,10 +95,9 @@ enum Commands {
 	OnchainReceive,
 	#[command(about = "Send an on-chain payment to the given address")]
 	OnchainSend {
-		#[arg(short, long, help = "The address to send coins to")]
+		#[arg(help = "The address to send coins to")]
 		address: String,
 		#[arg(
-			long,
 			help = "The amount in satoshis to send. Will respect any on-chain reserve needed for anchor channels"
 		)]
 		amount_sats: Option<u64>,
@@ -115,6 +114,10 @@ enum Commands {
 	},
 	#[command(about = "Create a BOLT11 invoice to receive a payment")]
 	Bolt11Receive {
+		#[arg(
+			help = "Amount in millisatoshis to request. If unset, a variable-amount invoice is returned"
+		)]
+		amount_msat: Option<u64>,
 		#[arg(short, long, help = "Description to attach along with the invoice")]
 		description: Option<String>,
 		#[arg(
@@ -124,17 +127,12 @@ enum Commands {
 		description_hash: Option<String>,
 		#[arg(short, long, help = "Invoice expiry time in seconds (default: 86400)")]
 		expiry_secs: Option<u32>,
-		#[arg(
-			long,
-			help = "Amount in millisatoshis to request. If unset, a variable-amount invoice is returned"
-		)]
-		amount_msat: Option<u64>,
 	},
 	#[command(about = "Pay a BOLT11 invoice")]
 	Bolt11Send {
-		#[arg(short, long, help = "A BOLT11 invoice for a payment within the Lightning Network")]
+		#[arg(help = "A BOLT11 invoice for a payment within the Lightning Network")]
 		invoice: String,
-		#[arg(long, help = "Amount in millisatoshis. Required when paying a zero-amount invoice")]
+		#[arg(help = "Amount in millisatoshis. Required when paying a zero-amount invoice")]
 		amount_msat: Option<u64>,
 		#[arg(
 			long,
@@ -156,13 +154,12 @@ enum Commands {
 	},
 	#[command(about = "Return a BOLT12 offer for receiving payments")]
 	Bolt12Receive {
-		#[arg(short, long, help = "Description to attach along with the offer")]
-		description: String,
 		#[arg(
-			long,
 			help = "Amount in millisatoshis to request. If unset, a variable-amount offer is returned"
 		)]
 		amount_msat: Option<u64>,
+		#[arg(help = "Description to attach along with the offer")]
+		description: String,
 		#[arg(long, help = "Offer expiry time in seconds")]
 		expiry_secs: Option<u32>,
 		#[arg(long, help = "Number of items requested. Can only be set for fixed-amount offers")]
@@ -170,9 +167,9 @@ enum Commands {
 	},
 	#[command(about = "Send a payment for a BOLT12 offer")]
 	Bolt12Send {
-		#[arg(short, long, help = "A BOLT12 offer for a payment within the Lightning Network")]
+		#[arg(help = "A BOLT12 offer for a payment within the Lightning Network")]
 		offer: String,
-		#[arg(long, help = "Amount in millisatoshis. Required when paying a zero-amount offer")]
+		#[arg(help = "Amount in millisatoshis. Required when paying a zero-amount offer")]
 		amount_msat: Option<u64>,
 		#[arg(short, long, help = "Number of items requested")]
 		quantity: Option<u64>,
@@ -202,9 +199,9 @@ enum Commands {
 	},
 	#[command(about = "Send a spontaneous payment (keysend) to a node")]
 	SpontaneousSend {
-		#[arg(short, long, help = "The hex-encoded public key of the node to send the payment to")]
+		#[arg(help = "The hex-encoded public key of the node to send the payment to")]
 		node_id: String,
-		#[arg(short, long, help = "The amount in millisatoshis to send")]
+		#[arg(help = "The amount in millisatoshis to send")]
 		amount_msat: u64,
 		#[arg(
 			long,
@@ -226,39 +223,29 @@ enum Commands {
 	},
 	#[command(about = "Cooperatively close the channel specified by the given channel ID")]
 	CloseChannel {
-		#[arg(short, long, help = "The local user_channel_id of this channel")]
+		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
-		#[arg(
-			short,
-			long,
-			help = "The hex-encoded public key of the node to close a channel with"
-		)]
+		#[arg(help = "The hex-encoded public key of the node to close a channel with")]
 		counterparty_node_id: String,
 	},
 	#[command(about = "Force close the channel specified by the given channel ID")]
 	ForceCloseChannel {
-		#[arg(short, long, help = "The local user_channel_id of this channel")]
+		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
-		#[arg(
-			short,
-			long,
-			help = "The hex-encoded public key of the node to close a channel with"
-		)]
+		#[arg(help = "The hex-encoded public key of the node to close a channel with")]
 		counterparty_node_id: String,
 		#[arg(long, help = "The reason for force-closing, defaults to \"\"")]
 		force_close_reason: Option<String>,
 	},
 	#[command(about = "Create a new outbound channel to the given remote node")]
 	OpenChannel {
-		#[arg(short, long, help = "The hex-encoded public key of the node to open a channel with")]
+		#[arg(help = "The hex-encoded public key of the node to open a channel with")]
 		node_pubkey: String,
 		#[arg(
-			short,
-			long,
 			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
 		)]
 		address: String,
-		#[arg(long, help = "The amount of satoshis to commit to the channel")]
+		#[arg(help = "The amount of satoshis to commit to the channel")]
 		channel_amount_sats: u64,
 		#[arg(
 			long,
@@ -288,20 +275,20 @@ enum Commands {
 		about = "Increase the channel balance by the given amount, funds will come from the node's on-chain wallet"
 	)]
 	SpliceIn {
-		#[arg(short, long, help = "The local user_channel_id of the channel")]
+		#[arg(help = "The local user_channel_id of the channel")]
 		user_channel_id: String,
-		#[arg(short, long, help = "The hex-encoded public key of the channel's counterparty node")]
+		#[arg(help = "The hex-encoded public key of the channel's counterparty node")]
 		counterparty_node_id: String,
-		#[arg(long, help = "The amount of sats to splice into the channel")]
+		#[arg(help = "The amount of sats to splice into the channel")]
 		splice_amount_sats: u64,
 	},
 	#[command(about = "Decrease the channel balance by the given amount")]
 	SpliceOut {
-		#[arg(short, long, help = "The local user_channel_id of this channel")]
+		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
-		#[arg(short, long, help = "The hex-encoded public key of the channel's counterparty node")]
+		#[arg(help = "The hex-encoded public key of the channel's counterparty node")]
 		counterparty_node_id: String,
-		#[arg(long, help = "The amount of sats to splice out of the channel")]
+		#[arg(help = "The amount of sats to splice out of the channel")]
 		splice_amount_sats: u64,
 		#[arg(
 			short,
@@ -325,7 +312,7 @@ enum Commands {
 	},
 	#[command(about = "Get details of a specific payment by its payment ID")]
 	GetPaymentDetails {
-		#[arg(short, long, help = "The payment ID in hex-encoded form")]
+		#[arg(help = "The payment ID in hex-encoded form")]
 		payment_id: String,
 	},
 	#[command(about = "Retrieves list of all forwarded payments")]
@@ -340,11 +327,9 @@ enum Commands {
 		page_token: Option<String>,
 	},
 	UpdateChannelConfig {
-		#[arg(short, long, help = "The local user_channel_id of this channel")]
+		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
 		#[arg(
-			short,
-			long,
 			help = "The hex-encoded public key of the counterparty node to update channel config with"
 		)]
 		counterparty_node_id: String,
@@ -366,11 +351,9 @@ enum Commands {
 	},
 	#[command(about = "Connect to a peer on the Lightning Network without opening a channel")]
 	ConnectPeer {
-		#[arg(short, long, help = "The hex-encoded public key of the node to connect to")]
+		#[arg(help = "The hex-encoded public key of the node to connect to")]
 		node_pubkey: String,
 		#[arg(
-			short,
-			long,
 			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
 		)]
 		address: String,
@@ -383,16 +366,16 @@ enum Commands {
 	},
 	#[command(about = "Sign a message with the node's secret key")]
 	SignMessage {
-		#[arg(short, long, help = "The message to sign")]
+		#[arg(help = "The message to sign")]
 		message: String,
 	},
 	#[command(about = "Verify a signature against a message and public key")]
 	VerifySignature {
-		#[arg(short, long, help = "The message that was signed")]
+		#[arg(help = "The message that was signed")]
 		message: String,
-		#[arg(short, long, help = "The zbase32-encoded signature to verify")]
+		#[arg(help = "The zbase32-encoded signature to verify")]
 		signature: String,
-		#[arg(short, long, help = "The hex-encoded public key of the signer")]
+		#[arg(help = "The hex-encoded public key of the signer")]
 		public_key: String,
 	},
 	#[command(about = "Export the pathfinding scores used by the router")]
