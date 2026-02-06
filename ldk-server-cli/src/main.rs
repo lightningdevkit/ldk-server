@@ -26,7 +26,7 @@ use ldk_server_client::ldk_server_protos::api::{
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
+	GetPaymentDetailsRequest, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
 	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
 	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
@@ -40,7 +40,10 @@ use ldk_server_client::ldk_server_protos::types::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
-use types::{CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse};
+use types::{
+	CliGetPaymentDetailsResponse, CliListForwardedPaymentsResponse, CliListPaymentsResponse,
+	CliPaginatedResponse,
+};
 
 mod config;
 mod types;
@@ -713,7 +716,7 @@ async fn main() {
 			);
 		},
 		Commands::GetPaymentDetails { payment_id } => {
-			handle_response_result::<_, GetPaymentDetailsResponse>(
+			handle_response_result::<_, CliGetPaymentDetailsResponse>(
 				client.get_payment_details(GetPaymentDetailsRequest { payment_id }).await,
 			);
 		},
