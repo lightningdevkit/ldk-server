@@ -31,9 +31,17 @@ pub struct Payment {
 	pub fee_paid_msat: ::core::option::Option<u64>,
 	/// The direction of the payment.
 	#[prost(enumeration = "PaymentDirection", tag = "4")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_payment_direction")
+	)]
 	pub direction: i32,
 	/// The status of the payment.
 	#[prost(enumeration = "PaymentStatus", tag = "5")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_payment_status")
+	)]
 	pub status: i32,
 	/// The timestamp, in seconds since start of the UNIX epoch, when this entry was last updated.
 	#[prost(uint64, tag = "6")]
@@ -138,6 +146,10 @@ pub struct Bolt11 {
 	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
 	/// The secret used by the payment.
 	#[prost(bytes = "bytes", optional, tag = "3")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
+	)]
 	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// Represents a BOLT 11 payment intended to open an LSPS 2 just-in-time channel.
@@ -154,6 +166,10 @@ pub struct Bolt11Jit {
 	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
 	/// The secret used by the payment.
 	#[prost(bytes = "bytes", optional, tag = "3")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
+	)]
 	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
 	/// Limits applying to how much fee we allow an LSP to deduct from the payment amount.
 	///
@@ -184,6 +200,10 @@ pub struct Bolt12Offer {
 	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
 	/// The secret used by the payment.
 	#[prost(bytes = "bytes", optional, tag = "3")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
+	)]
 	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
 	/// The hex-encoded ID of the offer this payment is for.
 	#[prost(string, tag = "4")]
@@ -213,6 +233,10 @@ pub struct Bolt12Refund {
 	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
 	/// The secret used by the payment.
 	#[prost(bytes = "bytes", optional, tag = "3")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
+	)]
 	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
 	/// The payer's note for the payment.
 	/// Truncated to \[PAYER_NOTE_LIMIT\](<https://docs.rs/lightning/latest/lightning/offers/invoice_request/constant.PAYER_NOTE_LIMIT.html>).
