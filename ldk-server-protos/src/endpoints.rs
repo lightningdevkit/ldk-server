@@ -30,3 +30,4 @@ pub const SPONTANEOUS_SEND_PATH: &str = "SpontaneousSend";
 pub const SIGN_MESSAGE_PATH: &str = "SignMessage";
 pub const VERIFY_SIGNATURE_PATH: &str = "VerifySignature";
 pub const EXPORT_PATHFINDING_SCORES_PATH: &str = "ExportPathfindingScores";
+pub const GET_METRICS_PATH: &str = "metrics";
