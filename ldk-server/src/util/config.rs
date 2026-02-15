@@ -185,36 +185,39 @@ impl ConfigBuilder {
 			.parse::<SocketAddr>()
 			.map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
-		let storage_dir_path =
-			self.storage_dir_path.ok_or_else(|| missing_field_err("storage_dir_path"))?;
-
-		let listening_addrs = self
+		let listening_addrs: Option<Vec<SocketAddress>> = self
 			.listening_addresses
-			.ok_or_else(|| missing_field_err("node_listening_addresses"))?
-			.into_iter()
-			.map(|addr| {
-				SocketAddress::from_str(&addr).map_err(|e| {
-					io::Error::new(
-						io::ErrorKind::InvalidInput,
-						format!("Invalid listening addresses configured: {}", e),
-					)
-				})
+			.map(|addrs| {
+				addrs
+					.into_iter()
+					.map(|addr| {
+						SocketAddress::from_str(&addr).map_err(|e| {
+							io::Error::new(
+								io::ErrorKind::InvalidInput,
+								format!("Invalid listening addresses configured: {}", e),
+							)
+						})
+					})
+					.collect::<Result<Vec<_>, _>>()
 			})
-			.collect::<Result<Vec<_>, _>>()?;
+			.transpose()?;
 
-		let announcement_addrs = self
+		let announcement_addrs: Option<Vec<SocketAddress>> = self
 			.announcement_addresses
-			.ok_or_else(|| missing_field_err("node_announcement_addresses"))?
-			.into_iter()
-			.map(|addr| {
-				SocketAddress::from_str(&addr).map_err(|e| {
-					io::Error::new(
-						io::ErrorKind::InvalidInput,
-						format!("Invalid announcement addresses configured: {}", e),
-					)
-				})
+			.map(|addrs| {
+				addrs
+					.into_iter()
+					.map(|addr| {
+						SocketAddress::from_str(&addr).map_err(|e| {
+							io::Error::new(
+								io::ErrorKind::InvalidInput,
+								format!("Invalid announcement addresses configured: {}", e),
+							)
+						})
+					})
+					.collect::<Result<Vec<_>, _>>()
 			})
-			.collect::<Result<Vec<_>, _>>()?;
+			.transpose()?;
 
 		let alias = self
 			.alias
@@ -325,12 +328,12 @@ impl ConfigBuilder {
 
 		Ok(Config {
 			network,
-			listening_addrs: Some(listening_addrs),
-			announcement_addrs: Some(announcement_addrs),
+			listening_addrs,
+			announcement_addrs,
 			alias,
 			tls_config: self.tls_config,
 			rest_service_addr,
-			storage_dir_path: Some(storage_dir_path),
+			storage_dir_path: self.storage_dir_path,
 			chain_source,
 			rabbitmq_connection_string,
 			rabbitmq_exchange_name,
@@ -650,6 +653,21 @@ mod tests {
 		}
 	}
 
+	fn empty_args_config() -> ArgsConfig {
+		ArgsConfig {
+			config_file: None,
+			node_network: None,
+			node_listening_addresses: None,
+			node_announcement_addresses: None,
+			node_rest_service_address: None,
+			node_alias: None,
+			bitcoind_rpc_address: None,
+			bitcoind_rpc_user: None,
+			bitcoind_rpc_password: None,
+			storage_dir_path: None,
+		}
+	}
+
 	fn missing_field_msg(field: &str) -> String {
 		format!(
 			"Missing `{}`. Please provide it via config file, CLI argument, or environment variable.",
@@ -663,18 +681,10 @@ mod tests {
 		let config_file_name = "test_config_from_file.toml";
 
 		fs::write(storage_path.join(config_file_name), DEFAULT_CONFIG).unwrap();
-		let args_config = ArgsConfig {
-			config_file: Some(storage_path.join(config_file_name).to_string_lossy().to_string()),
-			node_network: None,
-			node_listening_addresses: None,
-			node_announcement_addresses: None,
-			node_rest_service_address: None,
-			bitcoind_rpc_address: None,
-			bitcoind_rpc_user: None,
-			bitcoind_rpc_password: None,
-			storage_dir_path: None,
-			node_alias: None,
-		};
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
 
 		let config = load_config(&args_config).unwrap();
 
@@ -892,21 +902,53 @@ mod tests {
 	}
 
 	#[test]
+	fn test_config_optional_values() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_only_required_config.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		// Test with optional values not specified in the config file
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			rest_service_address = "127.0.0.1:3002"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"    # RPC endpoint
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[rabbitmq]
+			connection_string = "rabbitmq_connection_string"
+			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_service]
+			advertise_service = false
+			channel_opening_fee_ppm = 1000            # 0.1% fee
+			channel_over_provisioning_ppm = 500000    # 50% extra capacity
+			min_channel_opening_fee_msat = 10000000   # 10,000 satoshis
+			min_channel_lifetime = 4320               # ~30 days
+			max_client_to_self_delay = 1440           # ~10 days
+			min_payment_size_msat = 10000000          # 10,000 satoshis
+			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = true
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		assert!(load_config(&args_config).is_ok());
+	}
+
+	#[test]
 	fn test_config_missing_fields_in_file() {
 		let storage_path = std::env::temp_dir();
 		let config_file_name = "test_config_missing_fields_in_file.toml";
-		let args_config = ArgsConfig {
-			config_file: Some(storage_path.join(config_file_name).to_string_lossy().to_string()),
-			node_network: None,
-			node_listening_addresses: None,
-			node_announcement_addresses: None,
-			node_rest_service_address: None,
-			bitcoind_rpc_address: None,
-			bitcoind_rpc_user: None,
-			bitcoind_rpc_password: None,
-			storage_dir_path: None,
-			node_alias: None,
-		};
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
 
 		macro_rules! validate_missing {
 			($field:expr, $err_msg:expr) => {
@@ -940,9 +982,7 @@ mod tests {
 		validate_missing!("rpc_password", missing_field_msg("bitcoind_rpc_password"));
 		validate_missing!("rpc_user", missing_field_msg("bitcoind_rpc_user"));
 		validate_missing!("rpc_address", missing_field_msg("bitcoind_rpc_address"));
-		validate_missing!("dir_path =", missing_field_msg("storage_dir_path"));
 		validate_missing!("rest_service_address =", missing_field_msg("rest_service_address"));
-		validate_missing!("listening_addresses =", missing_field_msg("node_listening_addresses"));
 		validate_missing!("network =", missing_field_msg("network"));
 	}
 
@@ -1025,8 +1065,6 @@ mod tests {
 		validate_missing!(bitcoind_rpc_address, missing_field_msg("bitcoind_rpc_address"));
 		validate_missing!(node_network, missing_field_msg("network"));
 		validate_missing!(node_rest_service_address, missing_field_msg("rest_service_address"));
-		validate_missing!(storage_dir_path, missing_field_msg("storage_dir_path"));
-		validate_missing!(node_listening_addresses, missing_field_msg("node_listening_addresses"));
 	}
 
 	#[test]
@@ -1109,18 +1147,7 @@ mod tests {
 	#[test]
 	#[cfg(feature = "events-rabbitmq")]
 	fn test_error_if_rabbitmq_feature_without_valid_config_file() {
-		let args_config = ArgsConfig {
-			config_file: None,
-			node_network: None,
-			node_listening_addresses: None,
-			node_announcement_addresses: None,
-			node_rest_service_address: None,
-			node_alias: None,
-			bitcoind_rpc_address: None,
-			bitcoind_rpc_user: None,
-			bitcoind_rpc_password: None,
-			storage_dir_path: None,
-		};
+		let args_config = empty_args_config();
 		let result = load_config(&args_config);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -1130,18 +1157,7 @@ mod tests {
 	#[test]
 	#[cfg(feature = "experimental-lsps2-support")]
 	fn test_error_if_lsps2_feature_without_valid_config_file() {
-		let args_config = ArgsConfig {
-			config_file: None,
-			node_network: None,
-			node_listening_addresses: None,
-			node_announcement_addresses: None,
-			node_rest_service_address: None,
-			node_alias: None,
-			bitcoind_rpc_address: None,
-			bitcoind_rpc_user: None,
-			bitcoind_rpc_password: None,
-			storage_dir_path: None,
-		};
+		let args_config = empty_args_config();
 		let result = load_config(&args_config);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
