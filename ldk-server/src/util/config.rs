@@ -20,12 +20,19 @@ use ldk_node::liquidity::LSPS2ServiceConfig;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::get_default_data_dir;
-
+#[cfg(not(test))]
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 
 fn get_default_config_path() -> Option<PathBuf> {
-	get_default_data_dir().map(|data_dir| data_dir.join(DEFAULT_CONFIG_FILE))
+	// Skip the default config path during tests to avoid picking up a real ~/.ldk-server/config.toml locally
+	#[cfg(not(test))]
+	{
+		crate::get_default_data_dir().map(|data_dir| data_dir.join(DEFAULT_CONFIG_FILE))
+	}
+	#[cfg(test)]
+	{
+		None
+	}
 }
 
 /// Configuration for LDK Server.
