@@ -231,15 +231,19 @@ enum Commands {
 	CloseChannel {
 		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
-		#[arg(help = "The hex-encoded public key of the node to close a channel with")]
-		counterparty_node_id: String,
+		#[arg(
+			help = "The hex-encoded public key of the node to close a channel with. If not provided, it will be looked up from the channel list"
+		)]
+		counterparty_node_id: Option<String>,
 	},
 	#[command(about = "Force close the channel specified by the given channel ID")]
 	ForceCloseChannel {
 		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
-		#[arg(help = "The hex-encoded public key of the node to close a channel with")]
-		counterparty_node_id: String,
+		#[arg(
+			help = "The hex-encoded public key of the node to close a channel with. If not provided, it will be looked up from the channel list"
+		)]
+		counterparty_node_id: Option<String>,
 		#[arg(long, help = "The reason for force-closing, defaults to \"\"")]
 		force_close_reason: Option<String>,
 	},
@@ -339,9 +343,9 @@ enum Commands {
 		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
 		#[arg(
-			help = "The hex-encoded public key of the counterparty node to update channel config with"
+			help = "The hex-encoded public key of the counterparty node to update channel config with. If not provided, it will be looked up from the channel list"
 		)]
-		counterparty_node_id: String,
+		counterparty_node_id: Option<String>,
 		#[arg(
 			long,
 			help = "Amount (in millionths of a satoshi) charged per satoshi for payments forwarded outbound over the channel. This can be updated by using update-channel-config."

@@ -407,8 +407,9 @@ pub struct UpdateChannelConfigRequest {
 	#[prost(string, tag = "1")]
 	pub user_channel_id: ::prost::alloc::string::String,
 	/// The hex-encoded public key of the counterparty node to update channel config with.
-	#[prost(string, tag = "2")]
-	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// If not provided, it will be resolved from the channel list.
+	#[prost(string, optional, tag = "2")]
+	pub counterparty_node_id: ::core::option::Option<::prost::alloc::string::String>,
 	/// The updated channel configuration settings for a channel.
 	#[prost(message, optional, tag = "3")]
 	pub channel_config: ::core::option::Option<super::types::ChannelConfig>,
@@ -431,8 +432,9 @@ pub struct CloseChannelRequest {
 	#[prost(string, tag = "1")]
 	pub user_channel_id: ::prost::alloc::string::String,
 	/// The hex-encoded public key of the node to close a channel with.
-	#[prost(string, tag = "2")]
-	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// If not provided, it will be resolved from the channel list.
+	#[prost(string, optional, tag = "2")]
+	pub counterparty_node_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response `content` for the `CloseChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
@@ -452,8 +454,9 @@ pub struct ForceCloseChannelRequest {
 	#[prost(string, tag = "1")]
 	pub user_channel_id: ::prost::alloc::string::String,
 	/// The hex-encoded public key of the node to close a channel with.
-	#[prost(string, tag = "2")]
-	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// If not provided, it will be resolved from the channel list.
+	#[prost(string, optional, tag = "2")]
+	pub counterparty_node_id: ::core::option::Option<::prost::alloc::string::String>,
 	/// The reason for force-closing.
 	#[prost(string, optional, tag = "3")]
 	pub force_close_reason: ::core::option::Option<::prost::alloc::string::String>,

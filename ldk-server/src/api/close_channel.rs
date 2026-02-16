@@ -23,7 +23,8 @@ pub(crate) fn handle_close_channel_request(
 	context: Context, request: CloseChannelRequest,
 ) -> Result<CloseChannelResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
-	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
+	let counterparty_node_id =
+		resolve_counterparty_node_id(&context, &user_channel_id, request.counterparty_node_id)?;
 
 	context.node.close_channel(&user_channel_id, counterparty_node_id)?;
 
@@ -34,7 +35,8 @@ pub(crate) fn handle_force_close_channel_request(
 	context: Context, request: ForceCloseChannelRequest,
 ) -> Result<ForceCloseChannelResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
-	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
+	let counterparty_node_id =
+		resolve_counterparty_node_id(&context, &user_channel_id, request.counterparty_node_id)?;
 
 	context.node.force_close_channel(
 		&user_channel_id,
@@ -59,4 +61,24 @@ fn parse_counterparty_node_id(id: &str) -> Result<PublicKey, LdkServerError> {
 			format!("Invalid counterparty node ID, error: {}", e),
 		)
 	})
+}
+
+fn resolve_counterparty_node_id(
+	context: &Context, user_channel_id: &UserChannelId, counterparty_node_id: Option<String>,
+) -> Result<PublicKey, LdkServerError> {
+	match counterparty_node_id {
+		Some(id) => parse_counterparty_node_id(&id),
+		None => context
+			.node
+			.list_channels()
+			.into_iter()
+			.find(|c| c.user_channel_id == *user_channel_id)
+			.map(|c| c.counterparty_node_id)
+			.ok_or_else(|| {
+				LdkServerError::new(
+					InvalidRequestError,
+					"Channel not found for given user_channel_id.".to_string(),
+				)
+			}),
+	}
 }
