@@ -1,4 +1,4 @@
-name: RabbitMQ Integration Tests
+name: Integration Tests
 
 on: [ push, pull_request ]
 
@@ -30,5 +30,10 @@ jobs:
 
       - name: Run RabbitMQ integration tests
         run: cargo test --features integration-tests-events-rabbitmq --verbose --color=always -- --nocapture
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Run end-to-end tests
+        run: cargo test --manifest-path e2e-tests/Cargo.toml --verbose --color=always -- --test-threads=4 --nocapture
         env:
           RUST_BACKTRACE: 1
