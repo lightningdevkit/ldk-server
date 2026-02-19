@@ -34,7 +34,10 @@ impl Default for TestBitcoind {
 
 impl TestBitcoind {
 	pub fn new() -> Self {
-		let bitcoind = Node::from_downloaded().unwrap();
+		let bitcoind = match std::env::var("BITCOIND_EXE") {
+			Ok(path) => Node::new(path).unwrap(),
+			Err(_) => Node::from_downloaded().unwrap(),
+		};
 		// Generate initial blocks to make coins spendable
 		let address = bitcoind.client.new_address().unwrap();
 		bitcoind.client.generate_to_address(101, &address).unwrap();
