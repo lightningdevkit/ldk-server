@@ -232,11 +232,11 @@ fn main() {
 		},
 	}
 
-	info!(
-		"CONNECTION_STRING: {}@{}",
-		node.node_id(),
-		node.config().listening_addresses.as_ref().unwrap().first().unwrap()
-	);
+	if let Some(addresses) = node.config().listening_addresses {
+		if !addresses.is_empty() {
+			info!("CONNECTION_STRING: {}@{}", node.node_id(), addresses.first().unwrap());
+		}
+	}
 
 	runtime.block_on(async {
 		// Register SIGHUP handler for log rotation
