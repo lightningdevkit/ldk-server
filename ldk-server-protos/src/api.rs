@@ -737,3 +737,21 @@ pub struct ConnectPeerRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectPeerResponse {}
+/// Disconnect from a peer and remove it from the peer store.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.disconnect>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DisconnectPeerRequest {
+	/// The hex-encoded public key of the node to disconnect from.
+	#[prost(string, tag = "1")]
+	pub node_pubkey: ::prost::alloc::string::String,
+}
+/// The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DisconnectPeerResponse {}
