@@ -24,13 +24,13 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
-	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
+	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
+	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 	VerifySignatureRequest, VerifySignatureResponse,
 };
@@ -372,6 +372,11 @@ enum Commands {
 			help = "Whether to persist the connection for automatic reconnection on restart"
 		)]
 		persist: bool,
+	},
+	#[command(about = "Disconnect from a peer and remove it from the peer store")]
+	DisconnectPeer {
+		#[arg(help = "The hex-encoded public key of the node to disconnect from")]
+		node_pubkey: String,
 	},
 	#[command(about = "Sign a message with the node's secret key")]
 	SignMessage {
@@ -767,6 +772,11 @@ async fn main() {
 		Commands::ConnectPeer { node_pubkey, address, persist } => {
 			handle_response_result::<_, ConnectPeerResponse>(
 				client.connect_peer(ConnectPeerRequest { node_pubkey, address, persist }).await,
+			);
+		},
+		Commands::DisconnectPeer { node_pubkey } => {
+			handle_response_result::<_, DisconnectPeerResponse>(
+				client.disconnect_peer(DisconnectPeerRequest { node_pubkey }).await,
 			);
 		},
 		Commands::SignMessage { message } => {
