@@ -158,12 +158,12 @@ enum Commands {
 	},
 	#[command(about = "Return a BOLT12 offer for receiving payments")]
 	Bolt12Receive {
+		#[arg(help = "Description to attach along with the offer")]
+		description: String,
 		#[arg(
 			help = "Amount to request, e.g. 50sat or 50000msat. If unset, a variable-amount offer is returned"
 		)]
 		amount: Option<Amount>,
-		#[arg(help = "Description to attach along with the offer")]
-		description: String,
 		#[arg(long, help = "Offer expiry time in seconds")]
 		expiry_secs: Option<u32>,
 		#[arg(long, help = "Number of items requested. Can only be set for fixed-amount offers")]
