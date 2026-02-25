@@ -232,9 +232,14 @@ fn main() {
 		},
 	}
 
-	if let Some(addresses) = node.config().listening_addresses {
-		if !addresses.is_empty() {
-			info!("CONNECTION_STRING: {}@{}", node.node_id(), addresses.first().unwrap());
+	let addrs = node
+		.config()
+		.announcement_addresses
+		.filter(|a| !a.is_empty())
+		.or(node.config().listening_addresses);
+	if let Some(addresses) = addrs {
+		for address in &addresses {
+			info!("NODE_URI: {}@{}", node.node_id(), address);
 		}
 	}
 
