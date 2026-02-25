@@ -152,13 +152,8 @@ fn main() {
 	}
 
 	match config_file.chain_source {
-		ChainSource::Rpc { rpc_address, rpc_user, rpc_password } => {
-			builder.set_chain_source_bitcoind_rpc(
-				rpc_address.ip().to_string(),
-				rpc_address.port(),
-				rpc_user,
-				rpc_password,
-			);
+		ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } => {
+			builder.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password);
 		},
 		ChainSource::Electrum { server_url } => {
 			builder.set_chain_source_electrum(server_url, None);
