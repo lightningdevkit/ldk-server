@@ -23,13 +23,13 @@ pub(crate) fn handle_get_node_info_request(
 		height: node_status.current_best_block.height,
 	};
 
-	let listening_addresses = context
+	let listening_addresses: Vec<String> = context
 		.node
 		.listening_addresses()
 		.map(|addrs| addrs.into_iter().map(|a| a.to_string()).collect())
 		.unwrap_or_default();
 
-	let announcement_addresses = context
+	let announcement_addresses: Vec<String> = context
 		.node
 		.announcement_addresses()
 		.map(|addrs| addrs.into_iter().map(|a| a.to_string()).collect())
@@ -37,8 +37,18 @@ pub(crate) fn handle_get_node_info_request(
 
 	let node_alias = context.node.node_alias().map(|alias| alias.to_string());
 
+	let node_id = context.node.node_id().to_string();
+
+	let node_uris = {
+		let addrs = if announcement_addresses.is_empty() {
+			listening_addresses.clone()
+		} else {
+			announcement_addresses.clone()
+		};
+		addrs.into_iter().map(|a| format!("{node_id}@{a}")).collect()
+	};
 	let response = GetNodeInfoResponse {
-		node_id: context.node.node_id().to_string(),
+		node_id,
 		current_best_block: Some(best_block),
 		latest_lightning_wallet_sync_timestamp: node_status.latest_lightning_wallet_sync_timestamp,
 		latest_onchain_wallet_sync_timestamp: node_status.latest_onchain_wallet_sync_timestamp,
@@ -49,6 +59,7 @@ pub(crate) fn handle_get_node_info_request(
 		listening_addresses,
 		announcement_addresses,
 		node_alias,
+		node_uris,
 	};
 	Ok(response)
 }

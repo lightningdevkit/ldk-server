@@ -74,6 +74,12 @@ pub struct GetNodeInfoResponse {
 	/// Will be `None` if no alias is configured.
 	#[prost(string, optional, tag = "11")]
 	pub node_alias: ::core::option::Option<::prost::alloc::string::String>,
+	/// The node URIs that can be used to connect to this node, in the format `node_id@address`.
+	///
+	/// These are constructed from the announcement addresses and the node's public key.
+	/// Will be empty if no announcement addresses are configured.
+	#[prost(string, repeated, tag = "12")]
+	pub node_uris: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
