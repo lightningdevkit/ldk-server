@@ -64,6 +64,12 @@ message GetNodeInfoResponse {
   //
   // Will be `None` if no alias is configured.
   optional string node_alias = 11;
+
+  // The node URIs that can be used to connect to this node, in the format `node_id@address`.
+  //
+  // These are constructed from the announcement addresses and the node's public key.
+  // Will be empty if no announcement addresses are configured.
+  repeated string node_uris = 12;
 }
 
 // Retrieve a new on-chain funding address.
