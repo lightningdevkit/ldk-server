@@ -943,3 +943,10 @@ message CustomTlvRecord {
   // Raw TLV value.
   bytes value = 2;
 }
+
+// The feature sets advertised by this node. Currently only node-announcement
+// features are populated.
+message Features {
+  // Serialized node-announcement features.
+  bytes node = 1;
+}

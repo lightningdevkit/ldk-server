@@ -85,6 +85,10 @@ pub struct GetNodeInfoResponse {
 	#[prost(enumeration = "super::types::Network", tag = "13")]
 	#[cfg_attr(feature = "serde", serde(serialize_with = "crate::serde_utils::serialize_network"))]
 	pub network: i32,
+	/// The feature sets advertised by this node. Currently only node-announcement
+	/// features are populated.
+	#[prost(message, optional, tag = "14")]
+	pub features: ::core::option::Option<super::types::Features>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>

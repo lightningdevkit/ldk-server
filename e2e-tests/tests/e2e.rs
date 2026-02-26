@@ -20,6 +20,8 @@ use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
+use ldk_node::lightning::util::ser::Readable;
+use ldk_node::lightning_types::features::NodeFeatures;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
@@ -56,6 +58,17 @@ async fn test_cli_get_node_info() {
 	let output = run_cli(&server, &["get-node-info"]);
 	assert!(output.get("node_id").is_some());
 	assert_eq!(output["node_id"], server.node_id());
+
+	// Ensure clients can decode advertised node capabilities from get-node-info.
+	let node_feature_bytes: Vec<u8> = output["features"]["node"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.map(|byte| byte.as_u64().unwrap() as u8)
+		.collect();
+	let mut node_feature_bytes = node_feature_bytes.as_slice();
+	let node_features = NodeFeatures::read(&mut node_feature_bytes).unwrap();
+	assert!(node_features.supports_keysend());
 }
 
 #[tokio::test]

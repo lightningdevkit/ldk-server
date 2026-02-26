@@ -1243,6 +1243,18 @@ pub struct CustomTlvRecord {
 	#[prost(bytes = "bytes", tag = "2")]
 	pub value: ::prost::bytes::Bytes,
 }
+/// The feature sets advertised by this node. Currently only node-announcement
+/// features are populated.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Features {
+	/// Serialized node-announcement features.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub node: ::prost::bytes::Bytes,
+}
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

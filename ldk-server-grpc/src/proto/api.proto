@@ -73,6 +73,10 @@ message GetNodeInfoResponse {
 
   // The Bitcoin network the node is running on (e.g., "bitcoin", "testnet", "signet", "regtest").
   types.Network network = 13;
+
+  // The feature sets advertised by this node. Currently only node-announcement
+  // features are populated.
+  types.Features features = 14;
 }
 
 // Retrieve a new on-chain funding address.
