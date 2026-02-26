@@ -56,6 +56,11 @@ async fn test_cli_get_node_info() {
 	let output = run_cli(&server, &["get-node-info"]);
 	assert!(output.get("node_id").is_some());
 	assert_eq!(output["node_id"], server.node_id());
+
+	// Ensure clients can inspect advertised node capabilities from get-node-info.
+	let keysend = &output["features"]["55"];
+	assert_eq!(keysend["name"], "Keysend");
+	assert_eq!(keysend["is_required"], false);
 }
 
 #[tokio::test]
@@ -207,32 +212,26 @@ async fn test_cli_decode_invoice() {
 	// Verify features — LDK BOLT11 invoices always set VariableLengthOnion, PaymentSecret,
 	// and BasicMPP.
 	let features = decoded["features"].as_object().unwrap();
-	assert!(!features.is_empty(), "Expected at least one feature");
 
-	let feature_names: Vec<&str> = features.values().filter_map(|f| f["name"].as_str()).collect();
-	assert!(
-		feature_names.contains(&"VariableLengthOnion"),
-		"Expected VariableLengthOnion in features: {:?}",
-		feature_names
-	);
-	assert!(
-		feature_names.contains(&"PaymentSecret"),
-		"Expected PaymentSecret in features: {:?}",
-		feature_names
-	);
-	assert!(
-		feature_names.contains(&"BasicMPP"),
-		"Expected BasicMPP in features: {:?}",
-		feature_names
-	);
-
-	// Every entry should have the expected structure
+	// Every entry should be keyed by the signaled bit and expose the decoded name
+	// plus whether that bit is required.
 	for (bit, feature) in features {
-		assert!(bit.parse::<u32>().is_ok(), "Feature key should be a bit number: {}", bit);
+		assert!(bit.parse::<u32>().is_ok(), "Feature key is not a bit number: {bit}");
 		assert!(feature.get("name").is_some(), "Feature missing name field");
 		assert!(feature.get("is_required").is_some(), "Feature missing is_required field");
-		assert!(feature.get("is_known").is_some(), "Feature missing is_known field");
 	}
+
+	let variable_length_onion = &features["8"];
+	assert_eq!(variable_length_onion["name"], "VariableLengthOnion");
+	assert_eq!(variable_length_onion["is_required"], true);
+
+	let payment_secret = &features["14"];
+	assert_eq!(payment_secret["name"], "PaymentSecret");
+	assert_eq!(payment_secret["is_required"], true);
+
+	let basic_mpp = &features["17"];
+	assert_eq!(basic_mpp["name"], "BasicMPP");
+	assert_eq!(basic_mpp["is_required"], false);
 
 	// Also test a variable-amount invoice
 	let output_var = run_cli(&server, &["bolt11-receive", "-d", "no amount"]);
@@ -927,17 +926,13 @@ async fn test_cli_spontaneous_send_with_custom_tlvs() {
 	assert!(!output["payment_id"].as_str().unwrap().is_empty());
 
 	// The receiver must observe both TLVs in PaymentReceived.
-	let event_b =
-		wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
+	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
 	let Some(Event::PaymentReceived(pr)) = event_b.event else {
 		panic!("expected PaymentReceived");
 	};
 	assert_eq!(pr.custom_records.len(), 2);
-	let by_type: HashMap<u64, Vec<u8>> = pr
-		.custom_records
-		.into_iter()
-		.map(|r| (r.type_num, r.value.to_vec()))
-		.collect();
+	let by_type: HashMap<u64, Vec<u8>> =
+		pr.custom_records.into_iter().map(|r| (r.type_num, r.value.to_vec())).collect();
 	assert_eq!(by_type.get(&65537).cloned(), Some(vec![0xde, 0xad, 0xbe, 0xef]));
 	assert_eq!(by_type.get(&65539).cloned(), Some(vec![0xca, 0xfe]));
 }
@@ -1177,8 +1172,7 @@ async fn test_forwarded_payment_event() {
 	builder_c.set_liquidity_source_lsps2(b_node_id, b_addr, None);
 
 	let mnemonic_c = ldk_node::entropy::generate_entropy_mnemonic(None);
-	let node_entropy_c =
-		ldk_node::entropy::NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
+	let node_entropy_c = ldk_node::entropy::NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
 	let node_c = builder_c.build(node_entropy_c).unwrap();
 
 	node_c.start().unwrap();

@@ -1212,22 +1212,19 @@ pub struct DirectedShortChannelId {
 	)]
 	pub direction: i32,
 }
-/// A feature bit advertised in a BOLT11 invoice.
+/// A feature advertised in a BOLT feature context.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11Feature {
+pub struct Feature {
 	/// Human-readable feature name.
 	#[prost(string, tag = "1")]
 	pub name: ::prost::alloc::string::String,
-	/// Whether this feature is required.
+	/// Whether the signaled feature bit is required.
 	#[prost(bool, tag = "2")]
 	pub is_required: bool,
-	/// Whether this feature is known.
-	#[prost(bool, tag = "3")]
-	pub is_known: bool,
 }
 /// Custom TLV record attached to a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
