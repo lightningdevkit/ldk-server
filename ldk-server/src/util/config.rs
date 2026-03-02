@@ -62,7 +62,7 @@ pub struct TlsConfig {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChainSource {
-	Rpc { rpc_address: SocketAddr, rpc_user: String, rpc_password: String },
+	Rpc { rpc_host: String, rpc_port: u16, rpc_user: String, rpc_password: String },
 	Electrum { server_url: String },
 	Esplora { server_url: String },
 }
@@ -79,7 +79,7 @@ struct ConfigBuilder {
 	storage_dir_path: Option<String>,
 	electrum_url: Option<String>,
 	esplora_url: Option<String>,
-	bitcoind_rpc_addr: Option<String>,
+	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
 	rabbitmq_connection_string: Option<String>,
@@ -108,7 +108,7 @@ impl ConfigBuilder {
 		}
 
 		if let Some(bitcoind) = toml.bitcoind {
-			self.bitcoind_rpc_addr = bitcoind.rpc_address.or(self.bitcoind_rpc_addr.clone());
+			self.bitcoind_rpc_address = bitcoind.rpc_address.or(self.bitcoind_rpc_address.clone());
 			self.bitcoind_rpc_user = bitcoind.rpc_user.or(self.bitcoind_rpc_user.clone());
 			self.bitcoind_rpc_password =
 				bitcoind.rpc_password.or(self.bitcoind_rpc_password.clone());
@@ -167,7 +167,7 @@ impl ConfigBuilder {
 		}
 
 		if let Some(bitcoind_rpc_address) = &args.bitcoind_rpc_address {
-			self.bitcoind_rpc_addr = Some(bitcoind_rpc_address.clone());
+			self.bitcoind_rpc_address = Some(bitcoind_rpc_address.clone());
 		}
 
 		if let Some(bitcoind_rpc_user) = &args.bitcoind_rpc_user {
@@ -236,7 +236,7 @@ impl ConfigBuilder {
 			})
 			.transpose()?;
 
-		let rpc_configured = self.bitcoind_rpc_addr.is_some()
+		let rpc_configured = self.bitcoind_rpc_address.is_some()
 			|| self.bitcoind_rpc_user.is_some()
 			|| self.bitcoind_rpc_password.is_some();
 		let electrum_configured = self.electrum_url.is_some();
@@ -256,12 +256,9 @@ impl ConfigBuilder {
 
 		let chain_source = if rpc_configured {
 			let rpc_address = self
-				.bitcoind_rpc_addr
-				.ok_or_else(|| missing_field_err("bitcoind_rpc_address"))?
-				.parse::<SocketAddr>()
-				.map_err(|e| {
-					io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid RPC addr: {}", e))
-				})?;
+				.bitcoind_rpc_address
+				.ok_or_else(|| missing_field_err("bitcoind_rpc_address"))?;
+			let (rpc_host, rpc_port) = parse_host_port(&rpc_address)?;
 
 			let rpc_user =
 				self.bitcoind_rpc_user.ok_or_else(|| missing_field_err("bitcoind_rpc_user"))?;
@@ -270,7 +267,7 @@ impl ConfigBuilder {
 				.bitcoind_rpc_password
 				.ok_or_else(|| missing_field_err("bitcoind_rpc_password"))?;
 
-			ChainSource::Rpc { rpc_address, rpc_user, rpc_password }
+			ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password }
 		} else if let Some(url) = self.electrum_url {
 			ChainSource::Electrum { server_url: url }
 		} else if let Some(url) = self.esplora_url {
@@ -518,7 +515,7 @@ pub struct ArgsConfig {
 	#[arg(
 		long,
 		env = "LDK_SERVER_BITCOIND_RPC_ADDRESS",
-		help = "The underlying Bitcoin node RPC address."
+		help = "The underlying Bitcoin node RPC address (host:port)."
 	)]
 	bitcoind_rpc_address: Option<String>,
 
@@ -593,6 +590,16 @@ fn parse_alias(alias_str: &str) -> Result<NodeAlias, io::Error> {
 	}
 	bytes[..alias_bytes.len()].copy_from_slice(alias_bytes);
 	Ok(NodeAlias(bytes))
+}
+
+fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
+	let (host, port_str) = addr.rsplit_once(':').ok_or_else(|| {
+		io::Error::new(io::ErrorKind::InvalidInput, "Invalid address format, expected host:port")
+	})?;
+	let port = port_str
+		.parse::<u16>()
+		.map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid port: {}", e)))?;
+	Ok((host.to_string(), port))
 }
 
 #[cfg(test)]
@@ -717,7 +724,8 @@ mod tests {
 				hosts: vec!["example.com".to_string(), "ldk-server.local".to_string()],
 			}),
 			chain_source: ChainSource::Rpc {
-				rpc_address: SocketAddr::from_str("127.0.0.1:8332").unwrap(),
+				rpc_host: "127.0.0.1".to_string(),
+				rpc_port: 8332,
 				rpc_user: "bitcoind-testuser".to_string(),
 				rpc_password: "bitcoind-testpassword".to_string(),
 			},
@@ -826,7 +834,7 @@ mod tests {
 			file = "/var/log/ldk-server.log"
 
 			[bitcoind]
-			rpc_address = "127.0.0.1:8332"    # RPC endpoint
+			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
 
@@ -849,11 +857,13 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let config = load_config(&args_config).unwrap();
 
-		let ChainSource::Rpc { rpc_address, rpc_user, rpc_password } = config.chain_source else {
+		let ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } = config.chain_source
+		else {
 			panic!("unexpected chain source");
 		};
 
-		assert_eq!(rpc_address, SocketAddr::from_str("127.0.0.1:8332").unwrap());
+		assert_eq!(rpc_host, "127.0.0.1");
+		assert_eq!(rpc_port, 8332);
 		assert_eq!(rpc_user, "bitcoind-testuser");
 		assert_eq!(rpc_password, "bitcoind-testpassword");
 
@@ -880,7 +890,7 @@ mod tests {
 			file = "/var/log/ldk-server.log"
 
 			[bitcoind]
-			rpc_address = "127.0.0.1:8332"    # RPC endpoint
+			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
 
@@ -924,7 +934,7 @@ mod tests {
 			rest_service_address = "127.0.0.1:3002"
 
 			[bitcoind]
-			rpc_address = "127.0.0.1:8332"    # RPC endpoint
+			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
 
@@ -1007,6 +1017,8 @@ mod tests {
 	fn test_config_from_args_config() {
 		let args_config = default_args_config();
 		let config = load_config(&args_config).unwrap();
+		let (host, port) =
+			parse_host_port(args_config.bitcoind_rpc_address.unwrap().as_str()).unwrap();
 
 		let expected = Config {
 			listening_addrs: Some(vec![SocketAddress::from_str(
@@ -1026,10 +1038,8 @@ mod tests {
 			storage_dir_path: Some(args_config.storage_dir_path.unwrap()),
 			tls_config: None,
 			chain_source: ChainSource::Rpc {
-				rpc_address: SocketAddr::from_str(
-					args_config.bitcoind_rpc_address.as_deref().unwrap(),
-				)
-				.unwrap(),
+				rpc_host: host,
+				rpc_port: port,
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
@@ -1091,6 +1101,9 @@ mod tests {
 		#[cfg(not(feature = "events-rabbitmq"))]
 		let (expected_rabbit_conn, expected_rabbit_exchange) = (String::new(), String::new());
 
+		let (host, port) =
+			parse_host_port(args_config.bitcoind_rpc_address.clone().unwrap().as_str()).unwrap();
+
 		let config = load_config(&args_config).unwrap();
 		let expected = Config {
 			listening_addrs: Some(vec![SocketAddress::from_str(
@@ -1114,10 +1127,8 @@ mod tests {
 				hosts: vec!["example.com".to_string(), "ldk-server.local".to_string()],
 			}),
 			chain_source: ChainSource::Rpc {
-				rpc_address: SocketAddr::from_str(
-					args_config.bitcoind_rpc_address.as_deref().unwrap(),
-				)
-				.unwrap(),
+				rpc_host: host,
+				rpc_port: port,
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
