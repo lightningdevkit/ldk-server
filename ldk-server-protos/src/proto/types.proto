@@ -523,6 +523,25 @@ message ClaimableAwaitingConfirmations {
 
   // The height at which we start tracking it as  `SpendableOutput`.
   uint32 confirmation_height = 4;
+
+  // Whether this balance is a result of cooperative close, a force-close, or an HTLC.
+  BalanceSource source = 5;
+}
+
+// Indicates whether the balance is derived from a cooperative close, a force-close (for holder or counterparty),
+// or whether it is for an HTLC.
+enum BalanceSource {
+  // The channel was force closed by the holder.
+  HOLDER_FORCE_CLOSED = 0;
+
+  // The channel was force closed by the counterparty.
+  COUNTERPARTY_FORCE_CLOSED = 1;
+
+  // The channel was cooperatively closed.
+  COOP_CLOSE = 2;
+
+  // This balance is the result of an HTLC.
+  HTLC = 3;
 }
 
 // The channel has been closed, and the given balance should be ours but awaiting spending transaction confirmation.

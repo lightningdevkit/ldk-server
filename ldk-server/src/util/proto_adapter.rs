@@ -13,6 +13,7 @@ use hyper::StatusCode;
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
+use ldk_node::lightning::chain::channelmonitor::BalanceSource;
 use ldk_node::lightning::ln::types::ChannelId;
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
 use ldk_node::payment::{
@@ -255,7 +256,7 @@ pub(crate) fn lightning_balance_to_proto(
 			counterparty_node_id,
 			amount_satoshis,
 			confirmation_height,
-			..
+			source,
 		} => ldk_server_protos::types::LightningBalance {
 			balance_type: Some(ClaimableAwaitingConfirmations(
 				ldk_server_protos::types::ClaimableAwaitingConfirmations {
@@ -263,6 +264,18 @@ pub(crate) fn lightning_balance_to_proto(
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
 					confirmation_height,
+					source: match source {
+						BalanceSource::HolderForceClosed => {
+							ldk_server_protos::types::BalanceSource::HolderForceClosed.into()
+						},
+						BalanceSource::CounterpartyForceClosed => {
+							ldk_server_protos::types::BalanceSource::CounterpartyForceClosed.into()
+						},
+						BalanceSource::CoopClose => {
+							ldk_server_protos::types::BalanceSource::CoopClose.into()
+						},
+						BalanceSource::Htlc => ldk_server_protos::types::BalanceSource::Htlc.into(),
+					},
 				},
 			)),
 		},

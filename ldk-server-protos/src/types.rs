@@ -661,6 +661,13 @@ pub struct ClaimableAwaitingConfirmations {
 	/// The height at which we start tracking it as  `SpendableOutput`.
 	#[prost(uint32, tag = "4")]
 	pub confirmation_height: u32,
+	/// Whether this balance is a result of cooperative close, a force-close, or an HTLC.
+	#[prost(enumeration = "BalanceSource", tag = "5")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_balance_source")
+	)]
+	pub source: i32,
 }
 /// The channel has been closed, and the given balance should be ours but awaiting spending transaction confirmation.
 /// If the spending transaction does not confirm in time, it is possible our counterparty can take the funds by
@@ -971,6 +978,48 @@ impl PaymentStatus {
 			"PENDING" => Some(Self::Pending),
 			"SUCCEEDED" => Some(Self::Succeeded),
 			"FAILED" => Some(Self::Failed),
+			_ => None,
+		}
+	}
+}
+
+/// Indicates whether the balance is derived from a cooperative close, a force-close (for holder or counterparty),
+/// or whether it is for an HTLC.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BalanceSource {
+	/// The channel was force closed by the holder.
+	HolderForceClosed = 0,
+	/// The channel was force closed by the counterparty.
+	CounterpartyForceClosed = 1,
+	/// The channel was cooperatively closed.
+	CoopClose = 2,
+	/// This balance is the result of an HTLC.
+	Htlc = 3,
+}
+
+impl BalanceSource {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			BalanceSource::HolderForceClosed => "HOLDER_FORCE_CLOSED",
+			BalanceSource::CounterpartyForceClosed => "COUNTERPARTY_FORCE_CLOSED",
+			BalanceSource::CoopClose => "COOP_CLOSE",
+			BalanceSource::Htlc => "HTLC",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"HOLDER_FORCE_CLOSED" => Some(Self::HolderForceClosed),
+			"COUNTERPARTY_FORCE_CLOSED" => Some(Self::CounterpartyForceClosed),
+			"COOP_CLOSE" => Some(Self::CoopClose),
+			"HTLC" => Some(Self::Htlc),
 			_ => None,
 		}
 	}
