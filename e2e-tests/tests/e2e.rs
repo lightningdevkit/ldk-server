@@ -215,31 +215,21 @@ async fn test_cli_decode_invoice() {
 	// serde_json escapes control chars (U+0000–U+001F) as \uXXXX in JSON.
 	let desc_with_ansi = "pay me\x1b[31m RED \x1b[0m";
 	let output_ansi = run_cli(&server, &["bolt11-receive", "-d", desc_with_ansi]);
-	let raw_decoded = run_cli_raw(
-		&server,
-		&["decode-invoice", output_ansi["invoice"].as_str().unwrap()],
-	);
-	assert!(
-		!raw_decoded.contains('\x1b'),
-		"Raw CLI output must not contain ANSI escape bytes"
-	);
+	let raw_decoded =
+		run_cli_raw(&server, &["decode-invoice", output_ansi["invoice"].as_str().unwrap()]);
+	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
 	// Test that Unicode bidi override characters in the description are escaped
 	// (sanitize_for_terminal replaces them with \uXXXX in CLI output)
 	let desc_with_bidi = "pay me\u{202E}evil";
 	let output_bidi = run_cli(&server, &["bolt11-receive", "-d", desc_with_bidi]);
-	let raw_bidi = run_cli_raw(
-		&server,
-		&["decode-invoice", output_bidi["invoice"].as_str().unwrap()],
-	);
+	let raw_bidi =
+		run_cli_raw(&server, &["decode-invoice", output_bidi["invoice"].as_str().unwrap()]);
 	assert!(
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(
-		raw_bidi.contains("\\u202E"),
-		"Bidi characters should be escaped as \\uXXXX in output"
-	);
+	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]
@@ -307,30 +297,20 @@ async fn test_cli_decode_offer() {
 	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
 	let desc_with_ansi = "offer\x1b[31m RED \x1b[0m";
 	let output_ansi = run_cli(&server_a, &["bolt12-receive", desc_with_ansi]);
-	let raw_decoded = run_cli_raw(
-		&server_a,
-		&["decode-offer", output_ansi["offer"].as_str().unwrap()],
-	);
-	assert!(
-		!raw_decoded.contains('\x1b'),
-		"Raw CLI output must not contain ANSI escape bytes"
-	);
+	let raw_decoded =
+		run_cli_raw(&server_a, &["decode-offer", output_ansi["offer"].as_str().unwrap()]);
+	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
 	// Test that Unicode bidi override characters in the description are escaped
 	let desc_with_bidi = "offer\u{202E}evil";
 	let output_bidi = run_cli(&server_a, &["bolt12-receive", desc_with_bidi]);
-	let raw_bidi = run_cli_raw(
-		&server_a,
-		&["decode-offer", output_bidi["offer"].as_str().unwrap()],
-	);
+	let raw_bidi =
+		run_cli_raw(&server_a, &["decode-offer", output_bidi["offer"].as_str().unwrap()]);
 	assert!(
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(
-		raw_bidi.contains("\\u202E"),
-		"Bidi characters should be escaped as \\uXXXX in output"
-	);
+	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]
