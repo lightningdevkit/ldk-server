@@ -27,10 +27,13 @@ use ldk_server_client::ldk_server_protos::api::{
 	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
 	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
 	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
+	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
+	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
+	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
+	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 	VerifySignatureRequest, VerifySignatureResponse,
 };
@@ -394,6 +397,20 @@ enum Commands {
 	},
 	#[command(about = "Export the pathfinding scores used by the router")]
 	ExportPathfindingScores,
+	#[command(about = "List all known short channel IDs in the network graph")]
+	GraphListChannels,
+	#[command(about = "Get channel information from the network graph by short channel ID")]
+	GraphGetChannel {
+		#[arg(help = "The short channel ID to look up")]
+		short_channel_id: u64,
+	},
+	#[command(about = "List all known node IDs in the network graph")]
+	GraphListNodes,
+	#[command(about = "Get node information from the network graph by node ID")]
+	GraphGetNode {
+		#[arg(help = "The hex-encoded node ID to look up")]
+		node_id: String,
+	},
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -805,6 +822,26 @@ async fn main() {
 						json!({ "pathfinding_scores": scores_hex })
 					},
 				),
+			);
+		},
+		Commands::GraphListChannels => {
+			handle_response_result::<_, GraphListChannelsResponse>(
+				client.graph_list_channels(GraphListChannelsRequest {}).await,
+			);
+		},
+		Commands::GraphGetChannel { short_channel_id } => {
+			handle_response_result::<_, GraphGetChannelResponse>(
+				client.graph_get_channel(GraphGetChannelRequest { short_channel_id }).await,
+			);
+		},
+		Commands::GraphListNodes => {
+			handle_response_result::<_, GraphListNodesResponse>(
+				client.graph_list_nodes(GraphListNodesRequest {}).await,
+			);
+		},
+		Commands::GraphGetNode { node_id } => {
+			handle_response_result::<_, GraphGetNodeResponse>(
+				client.graph_get_node(GraphGetNodeRequest { node_id }).await,
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),
