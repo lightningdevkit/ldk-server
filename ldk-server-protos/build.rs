@@ -65,6 +65,10 @@ fn generate_protos() {
 			"types.Payment.status",
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_payment_status\"))]",
 		)
+		.field_attribute(
+			"types.ClaimableAwaitingConfirmations.source",
+			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_balance_source\"))]",
+		)
 		.compile_protos(
 			&[
 				"src/proto/api.proto",
