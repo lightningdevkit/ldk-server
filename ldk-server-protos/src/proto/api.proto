@@ -596,3 +596,53 @@ message DisconnectPeerRequest {
 // The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
 // When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
 message DisconnectPeerResponse {}
+
+// Returns a list of all known short channel IDs in the network graph.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels
+message GraphListChannelsRequest {}
+
+// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message GraphListChannelsResponse {
+  // List of short channel IDs known to the network graph.
+  repeated uint64 short_channel_ids = 1;
+}
+
+// Returns information on a channel with the given short channel ID from the network graph.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.channel
+message GraphGetChannelRequest {
+  // The short channel ID to look up.
+  uint64 short_channel_id = 1;
+}
+
+// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message GraphGetChannelResponse {
+  // The channel information.
+  types.GraphChannel channel = 1;
+}
+
+// Returns a list of all known node IDs in the network graph.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes
+message GraphListNodesRequest {}
+
+// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message GraphListNodesResponse {
+  // List of hex-encoded node IDs known to the network graph.
+  repeated string node_ids = 1;
+}
+
+// Returns information on a node with the given ID from the network graph.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node
+message GraphGetNodeRequest {
+  // The hex-encoded node ID to look up.
+  string node_id = 1;
+}
+
+// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message GraphGetNodeResponse {
+  // The node information.
+  types.GraphNode node = 1;
+}
