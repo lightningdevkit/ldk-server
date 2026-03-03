@@ -1429,7 +1429,7 @@ async fn test_metrics_endpoint_with_auth() {
 	let config =
 		LdkServerConfig { metrics_auth: Some((username.to_string(), password.to_string())) };
 
-	let server = LdkServerHandle::start_with_config(&bitcoind, config).await;
+	let server = LdkServerHandle::start_with_options(&bitcoind, config).await;
 	let client = server.client();
 
 	// Should fail because auth is provided in the config

@@ -16,11 +16,11 @@ use std::time::Duration;
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
-use serde_json::Value;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_grpc::api::{
 	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
+use serde_json::Value;
 
 /// Wrapper around a managed bitcoind process for regtest.
 pub struct TestBitcoind {
@@ -103,42 +103,159 @@ pub struct LdkServerConfig {
 	pub metrics_auth: Option<(String, String)>,
 }
 
-impl LdkServerHandle {
-	/// Starts a new ldk-server instance against the given bitcoind.
-	/// Waits until the server is ready to accept requests.
-	pub async fn start(bitcoind: &TestBitcoind) -> Self {
-		Self::start_with_config(bitcoind, LdkServerConfig::default()).await
+/// Dynamic parameters available when building test configs.
+pub struct TestServerParams {
+	pub grpc_port: u16,
+	pub p2p_port: u16,
+	pub storage_dir: PathBuf,
+	pub rpc_address: String,
+	pub rpc_user: String,
+	pub rpc_password: String,
+}
+
+/// A chain source for the test config, mirroring the server's supported backends.
+pub enum ChainSource {
+	Bitcoind { rpc_address: String, rpc_user: String, rpc_password: String },
+	Electrum { server_url: String },
+	Esplora { server_url: String },
+}
+
+impl ChainSource {
+	/// Render the chain source as its TOML section.
+	fn to_toml(&self) -> String {
+		match self {
+			ChainSource::Bitcoind { rpc_address, rpc_user, rpc_password } => format!(
+				"[bitcoind]\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
+				rpc_address, rpc_user, rpc_password
+			),
+			ChainSource::Electrum { server_url } => {
+				format!("[electrum]\nserver_url = \"{}\"", server_url)
+			},
+			ChainSource::Esplora { server_url } => {
+				format!("[esplora]\nserver_url = \"{}\"", server_url)
+			},
+		}
+	}
+}
+
+/// Builder for the ldk-server config TOML used in tests.
+///
+/// Tests tweak named, typed knobs and call [`TestConfigBuilder::build`] once to
+/// produce the TOML. This keeps tests from doing string surgery on rendered output.
+pub struct TestConfigBuilder {
+	listening_addresses: Vec<String>,
+	announcement_addresses: Vec<String>,
+	grpc_service_address: String,
+	alias: Option<String>,
+	storage_dir: PathBuf,
+	chain_source: ChainSource,
+	metrics_auth: Option<(String, String)>,
+	log: Option<(Option<String>, String)>,
+	tls_hosts: Option<Vec<String>>,
+}
+
+impl TestConfigBuilder {
+	/// Start from the default test config: a single localhost listening address, the
+	/// `e2e-test-node` alias, and a bitcoind RPC chain source derived from `params`.
+	pub fn new(params: &TestServerParams) -> Self {
+		Self {
+			listening_addresses: vec![format!("127.0.0.1:{}", params.p2p_port)],
+			announcement_addresses: Vec::new(),
+			grpc_service_address: format!("127.0.0.1:{}", params.grpc_port),
+			alias: Some("e2e-test-node".to_string()),
+			storage_dir: params.storage_dir.clone(),
+			chain_source: ChainSource::Bitcoind {
+				rpc_address: params.rpc_address.clone(),
+				rpc_user: params.rpc_user.clone(),
+				rpc_password: params.rpc_password.clone(),
+			},
+			metrics_auth: None,
+			log: None,
+			tls_hosts: None,
+		}
 	}
 
-	pub async fn start_with_config(bitcoind: &TestBitcoind, config: LdkServerConfig) -> Self {
-		#[allow(deprecated)]
-		let storage_dir = tempfile::tempdir().unwrap().into_path();
-		let grpc_port = find_available_port();
-		let p2p_port = find_available_port();
+	/// Set the node alias, or `None` to omit it entirely.
+	pub fn alias(mut self, alias: Option<&str>) -> Self {
+		self.alias = alias.map(str::to_string);
+		self
+	}
 
-		let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
-		let rpc_address = format!("{rpc_host}:{rpc_port_num}");
+	/// Set the listening addresses. An empty vec omits the key entirely.
+	pub fn listening_addresses(mut self, addresses: Vec<String>) -> Self {
+		self.listening_addresses = addresses;
+		self
+	}
 
-		let metrics_auth_config = if let Some((user, pass)) = config.metrics_auth {
-			format!("username = \"{}\"\npassword = \"{}\"", user, pass)
-		} else {
-			String::new()
+	/// Set the announcement addresses. An empty vec (the default) omits the key.
+	pub fn announcement_addresses(mut self, addresses: Vec<String>) -> Self {
+		self.announcement_addresses = addresses;
+		self
+	}
+
+	/// Replace the chain source backend.
+	pub fn chain_source(mut self, chain_source: ChainSource) -> Self {
+		self.chain_source = chain_source;
+		self
+	}
+
+	/// Add HTTP basic auth credentials to the `[metrics]` section.
+	pub fn metrics_auth(mut self, username: &str, password: &str) -> Self {
+		self.metrics_auth = Some((username.to_string(), password.to_string()));
+		self
+	}
+
+	/// Add a `[log]` section with the given file path and optional level.
+	pub fn log(mut self, level: Option<&str>, file: &str) -> Self {
+		self.log = Some((level.map(str::to_string), file.to_string()));
+		self
+	}
+
+	/// Add a `[tls]` section advertising the given hosts.
+	pub fn tls_hosts(mut self, hosts: Vec<String>) -> Self {
+		self.tls_hosts = Some(hosts);
+		self
+	}
+
+	/// Build the config into a TOML string.
+	pub fn build(&self) -> String {
+		fn toml_string_array(values: &[String]) -> String {
+			let quoted: Vec<String> = values.iter().map(|v| format!("\"{}\"", v)).collect();
+			format!("[{}]", quoted.join(", "))
+		}
+
+		let mut node = vec!["[node]".to_string(), "network = \"regtest\"".to_string()];
+		if !self.listening_addresses.is_empty() {
+			node.push(format!(
+				"listening_addresses = {}",
+				toml_string_array(&self.listening_addresses)
+			));
+		}
+		node.push(format!("grpc_service_address = \"{}\"", self.grpc_service_address));
+		if let Some(alias) = &self.alias {
+			node.push(format!("alias = \"{}\"", alias));
+		}
+		if !self.announcement_addresses.is_empty() {
+			node.push(format!(
+				"announcement_addresses = {}",
+				toml_string_array(&self.announcement_addresses)
+			));
+		}
+
+		let metrics_auth = match &self.metrics_auth {
+			Some((user, pass)) => {
+				format!("\nusername = \"{}\"\npassword = \"{}\"", user, pass)
+			},
+			None => String::new(),
 		};
 
-		let config_content = format!(
-			r#"[node]
-network = "regtest"
-listening_addresses = ["127.0.0.1:{p2p_port}"]
-grpc_service_address = "127.0.0.1:{grpc_port}"
-alias = "e2e-test-node"
+		let mut config = format!(
+			r#"{node}
 
 [storage.disk]
 dir_path = "{storage_dir}"
 
-[bitcoind]
-rpc_address = "{rpc_address}"
-rpc_user = "{rpc_user}"
-rpc_password = "{rpc_password}"
+{chain_source}
 
 [liquidity.lsps2_service]
 advertise_service = false
@@ -154,24 +271,53 @@ disable_client_reserve = false
 
 [metrics]
 enabled = true
-poll_metrics_interval = 1
-{metrics_auth_config}
+poll_metrics_interval = 1{metrics_auth}
 "#,
-			storage_dir = storage_dir.display(),
+			node = node.join("\n"),
+			storage_dir = self.storage_dir.display(),
+			chain_source = self.chain_source.to_toml(),
+			metrics_auth = metrics_auth,
 		);
 
-		let config_path = storage_dir.join("config.toml");
-		std::fs::write(&config_path, &config_content).unwrap();
+		if let Some((level, file)) = &self.log {
+			config.push_str("\n[log]\n");
+			if let Some(level) = level {
+				config.push_str(&format!("level = \"{}\"\n", level));
+			}
+			config.push_str(&format!("file = \"{}\"\n", file));
+		}
 
-		let server_binary = server_binary_path();
-		let mut child = Command::new(&server_binary)
-			.arg(config_path.to_str().unwrap())
-			.stdout(Stdio::piped())
-			.stderr(Stdio::piped())
-			.spawn()
-			.unwrap_or_else(|e| {
-				panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
-			});
+		if let Some(hosts) = &self.tls_hosts {
+			config.push_str(&format!("\n[tls]\nhosts = {}\n", toml_string_array(hosts)));
+		}
+
+		config
+	}
+}
+
+impl LdkServerHandle {
+	/// Starts a new ldk-server instance against the given bitcoind.
+	/// Waits until the server is ready to accept requests.
+	pub async fn start(bitcoind: &TestBitcoind) -> Self {
+		Self::start_with_options(bitcoind, LdkServerConfig::default()).await
+	}
+
+	pub async fn start_with_options(bitcoind: &TestBitcoind, config: LdkServerConfig) -> Self {
+		Self::start_with_config(bitcoind, |params| {
+			let mut builder = TestConfigBuilder::new(params);
+			if let Some((user, pass)) = &config.metrics_auth {
+				builder = builder.metrics_auth(user, pass);
+			}
+			builder.build()
+		})
+		.await
+	}
+
+	pub async fn start_with_config(
+		config_bitcoind: &TestBitcoind, config: impl FnOnce(&TestServerParams) -> String,
+	) -> Self {
+		let (mut child, params, config_path) = spawn_server(config_bitcoind, config);
+		let TestServerParams { grpc_port, p2p_port, storage_dir, .. } = params;
 
 		// Spawn threads to forward stdout and stderr for debugging
 		let stdout = child.stdout.take().unwrap();
@@ -251,6 +397,78 @@ impl Drop for LdkServerHandle {
 	}
 }
 
+/// Prepare test server params and spawn the ldk-server process.
+fn spawn_server(
+	bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
+) -> (Child, TestServerParams, PathBuf) {
+	#[allow(deprecated)]
+	let storage_dir = tempfile::tempdir().unwrap().into_path();
+	let grpc_port = find_available_port();
+	let p2p_port = find_available_port();
+
+	let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
+	let rpc_address = format!("{rpc_host}:{rpc_port_num}");
+
+	let params =
+		TestServerParams { grpc_port, p2p_port, storage_dir, rpc_address, rpc_user, rpc_password };
+
+	let config_content = config_fn(&params);
+
+	let config_path = params.storage_dir.join("config.toml");
+	std::fs::write(&config_path, &config_content).unwrap();
+
+	let server_binary = server_binary_path();
+	let child = Command::new(&server_binary)
+		.arg(config_path.to_str().unwrap())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.unwrap_or_else(|e| {
+			panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
+		});
+
+	(child, params, config_path)
+}
+
+/// Start ldk-server with the given config and expect it to fail (exit non-zero).
+/// Returns the stderr output for assertion in tests.
+pub fn start_expect_failure(
+	bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
+) -> String {
+	let (mut child, ..) = spawn_server(bitcoind, config_fn);
+
+	let timeout = Duration::from_secs(30);
+	let start = std::time::Instant::now();
+	loop {
+		match child.try_wait() {
+			Ok(Some(_)) => break,
+			Ok(None) => {
+				if start.elapsed() > timeout {
+					let _ = child.kill();
+					panic!(
+						"Server did not exit within {:?} — it may have started successfully \
+						 instead of failing",
+						timeout
+					);
+				}
+				std::thread::sleep(Duration::from_millis(100));
+			},
+			Err(e) => panic!("Failed to wait for ldk-server process: {}", e),
+		}
+	}
+
+	let output = child
+		.wait_with_output()
+		.unwrap_or_else(|e| panic!("Failed to read ldk-server output: {}", e));
+
+	assert!(
+		!output.status.success(),
+		"Expected server to fail but it exited with status: {}",
+		output.status
+	);
+
+	String::from_utf8_lossy(&output.stderr).to_string()
+}
 /// Find an available TCP port by binding to port 0.
 pub fn find_available_port() -> u16 {
 	let listener = TcpListener::bind("127.0.0.1:0").unwrap();
