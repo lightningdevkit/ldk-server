@@ -354,6 +354,26 @@ fn spawn_server(
 	(child, params)
 }
 
+/// Start ldk-server with the given config and expect it to fail (exit non-zero).
+/// Returns the stderr output for assertion in tests.
+pub fn start_expect_failure(
+	bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
+) -> String {
+	let (child, ..) = spawn_server(bitcoind, config_fn);
+
+	let output = child
+		.wait_with_output()
+		.unwrap_or_else(|e| panic!("Failed to wait for ldk-server process: {}", e));
+
+	assert!(
+		!output.status.success(),
+		"Expected server to fail but it exited with status: {}",
+		output.status
+	);
+
+	String::from_utf8_lossy(&output.stderr).to_string()
+}
+
 /// Find an available TCP port by binding to port 0.
 pub fn find_available_port() -> u16 {
 	let listener = TcpListener::bind("127.0.0.1:0").unwrap();
