@@ -84,35 +84,54 @@ impl TestBitcoind {
 	}
 }
 
-/// Handle to a running ldk-server child process.
-pub struct LdkServerHandle {
-	child: Option<Child>,
+/// Wrapper around an electrsd process providing both Electrum and Esplora endpoints.
+pub struct TestElectrs {
+	pub electrsd: electrsd::ElectrsD,
+}
+
+impl TestElectrs {
+	/// Start an electrs instance connected to the given bitcoind with Esplora HTTP enabled.
+	pub fn new(bitcoind: &TestBitcoind) -> Self {
+		let mut conf = electrsd::Conf::default();
+		conf.http_enabled = true;
+		let electrsd =
+			electrsd::ElectrsD::with_conf(electrsd::exe_path().unwrap(), &bitcoind.bitcoind, &conf)
+				.unwrap();
+		Self { electrsd }
+	}
+
+	pub fn electrum_url(&self) -> String {
+		// electrsd binds to 0.0.0.0 but that's not a connectable address for clients
+		self.electrsd.electrum_url.replace("0.0.0.0", "127.0.0.1")
+	}
+
+	pub fn esplora_url(&self) -> String {
+		let url = self.electrsd.esplora_url.as_ref().expect("esplora not enabled");
+		// electrsd binds to 0.0.0.0 but that's not a connectable address for clients
+		format!("http://{}", url.replace("0.0.0.0", "127.0.0.1"))
+	}
+
+	/// Trigger electrs to sync with bitcoind.
+	pub fn trigger(&self) {
+		self.electrsd.trigger().unwrap();
+	}
+}
+
+/// Dynamic parameters available when building test configs.
+pub struct TestServerParams {
 	pub rest_port: u16,
 	pub p2p_port: u16,
 	pub storage_dir: PathBuf,
-	pub api_key: String,
-	pub tls_cert_path: PathBuf,
-	pub node_id: String,
+	pub rpc_address: String,
+	pub rpc_user: String,
+	pub rpc_password: String,
 	pub exchange_name: String,
-	client: LdkServerClient,
 }
 
-impl LdkServerHandle {
-	/// Starts a new ldk-server instance against the given bitcoind.
-	/// Waits until the server is ready to accept requests.
-	pub async fn start(bitcoind: &TestBitcoind) -> Self {
-		#[allow(deprecated)]
-		let storage_dir = tempfile::tempdir().unwrap().into_path();
-		let rest_port = find_available_port();
-		let p2p_port = find_available_port();
-
-		let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
-		let rpc_address = format!("{rpc_host}:{rpc_port_num}");
-
-		let exchange_name = format!("e2e_test_exchange_{rest_port}");
-
-		let config_content = format!(
-			r#"[node]
+/// Generate a test config TOML with a custom chain source section.
+pub fn test_config_with_chain_source(params: &TestServerParams, chain_source_toml: &str) -> String {
+	format!(
+		r#"[node]
 network = "regtest"
 listening_addresses = ["127.0.0.1:{p2p_port}"]
 rest_service_address = "127.0.0.1:{rest_port}"
@@ -121,10 +140,7 @@ alias = "e2e-test-node"
 [storage.disk]
 dir_path = "{storage_dir}"
 
-[bitcoind]
-rpc_address = "{rpc_address}"
-rpc_user = "{rpc_user}"
-rpc_password = "{rpc_password}"
+{chain_source}
 
 [rabbitmq]
 connection_string = "amqp://guest:guest@localhost:5672/%2f"
@@ -141,21 +157,81 @@ min_payment_size_msat = 0
 max_payment_size_msat = 1000000000
 client_trusts_lsp = true
 "#,
-			storage_dir = storage_dir.display(),
-		);
+		p2p_port = params.p2p_port,
+		rest_port = params.rest_port,
+		storage_dir = params.storage_dir.display(),
+		chain_source = chain_source_toml,
+		exchange_name = params.exchange_name,
+	)
+}
 
-		let config_path = storage_dir.join("config.toml");
-		std::fs::write(&config_path, &config_content).unwrap();
+/// Generate the default test config TOML with bitcoind RPC chain source.
+pub fn default_test_config(params: &TestServerParams) -> String {
+	let chain_source = format!(
+		"[bitcoind]\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
+		params.rpc_address, params.rpc_user, params.rpc_password
+	);
+	test_config_with_chain_source(params, &chain_source)
+}
 
-		let server_binary = server_binary_path();
-		let mut child = Command::new(&server_binary)
-			.arg(config_path.to_str().unwrap())
-			.stdout(Stdio::piped())
-			.stderr(Stdio::piped())
-			.spawn()
-			.unwrap_or_else(|e| {
-				panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
-			});
+/// Handle to a running ldk-server child process.
+pub struct LdkServerHandle {
+	child: Option<Child>,
+	pub rest_port: u16,
+	pub p2p_port: u16,
+	pub storage_dir: PathBuf,
+	pub api_key: String,
+	pub tls_cert_path: PathBuf,
+	pub node_id: String,
+	pub exchange_name: String,
+	client: LdkServerClient,
+	// Kept alive so the electrs process doesn't get dropped
+	_electrs: Option<TestElectrs>,
+}
+
+impl LdkServerHandle {
+	/// Starts a new ldk-server instance against the given bitcoind.
+	/// Randomly picks between bitcoind RPC, electrum, and esplora as the chain source.
+	pub async fn start(bitcoind: &TestBitcoind) -> Self {
+		match rand::random::<u8>() % 3 {
+			0 => Self::start_with_config(bitcoind, default_test_config).await,
+			1 => {
+				let electrs = TestElectrs::new(bitcoind);
+				let url = electrs.electrum_url();
+				let mut handle = Self::start_with_config(bitcoind, move |params| {
+					test_config_with_chain_source(
+						params,
+						&format!("[electrum]\nserver_url = \"{}\"\nonchain_wallet_sync_interval_secs = 10\nlightning_wallet_sync_interval_secs = 10", url),
+					)
+				})
+				.await;
+				handle._electrs = Some(electrs);
+				handle
+			},
+			2 => {
+				let electrs = TestElectrs::new(bitcoind);
+				let url = electrs.esplora_url();
+				let mut handle = Self::start_with_config(bitcoind, move |params| {
+					test_config_with_chain_source(
+						params,
+						&format!("[esplora]\nserver_url = \"{}\"\nonchain_wallet_sync_interval_secs = 10\nlightning_wallet_sync_interval_secs = 10", url),
+					)
+				})
+				.await;
+				handle._electrs = Some(electrs);
+				handle
+			},
+			_ => unreachable!(),
+		}
+	}
+
+	/// Starts a new ldk-server instance with a custom config.
+	/// The `config_fn` receives dynamic test parameters and returns the full TOML config string.
+	pub async fn start_with_config(
+		bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
+	) -> Self {
+		let (mut child, params) = spawn_server(bitcoind, config_fn);
+		let TestServerParams { rest_port, p2p_port, storage_dir, exchange_name, .. } = params;
 
 		// Spawn threads to forward stdout and stderr for debugging
 		let stdout = child.stdout.take().unwrap();
@@ -204,6 +280,7 @@ client_trusts_lsp = true
 			node_id: String::new(),
 			exchange_name,
 			client,
+			_electrs: None,
 		};
 
 		// Wait for server to be ready and get node info
@@ -233,6 +310,48 @@ impl Drop for LdkServerHandle {
 			let _ = child.wait();
 		}
 	}
+}
+
+/// Prepare test server params and spawn the ldk-server process.
+fn spawn_server(
+	bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
+) -> (Child, TestServerParams) {
+	#[allow(deprecated)]
+	let storage_dir = tempfile::tempdir().unwrap().into_path();
+	let rest_port = find_available_port();
+	let p2p_port = find_available_port();
+
+	let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
+	let rpc_address = format!("{rpc_host}:{rpc_port_num}");
+
+	let exchange_name = format!("e2e_test_exchange_{rest_port}");
+
+	let params = TestServerParams {
+		rest_port,
+		p2p_port,
+		storage_dir,
+		rpc_address,
+		rpc_user,
+		rpc_password,
+		exchange_name,
+	};
+
+	let config_content = config_fn(&params);
+
+	let config_path = params.storage_dir.join("config.toml");
+	std::fs::write(&config_path, &config_content).unwrap();
+
+	let server_binary = server_binary_path();
+	let child = Command::new(&server_binary)
+		.arg(config_path.to_str().unwrap())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.unwrap_or_else(|e| {
+			panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
+		});
+
+	(child, params)
 }
 
 /// Find an available TCP port by binding to port 0.
