@@ -15,3 +15,5 @@ lapin = { version = "2.4.0", features = ["rustls"], default-features = false }
 prost = { version = "0.11.6", default-features = false, features = ["std"] }
 futures-util = "0.3"
 ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "d1bbf978c8b7abe87ae2e40793556c1fe4e7ea49" }
+electrsd = { version = "0.36", features = ["esplora_a33e97e1", "corepc-node_29_0"] }
+rand = "0.9"
