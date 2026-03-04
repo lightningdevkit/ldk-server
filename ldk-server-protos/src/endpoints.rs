@@ -31,3 +31,7 @@ pub const SPONTANEOUS_SEND_PATH: &str = "SpontaneousSend";
 pub const SIGN_MESSAGE_PATH: &str = "SignMessage";
 pub const VERIFY_SIGNATURE_PATH: &str = "VerifySignature";
 pub const EXPORT_PATHFINDING_SCORES_PATH: &str = "ExportPathfindingScores";
+pub const GRAPH_LIST_CHANNELS_PATH: &str = "GraphListChannels";
+pub const GRAPH_GET_CHANNEL_PATH: &str = "GraphGetChannel";
+pub const GRAPH_LIST_NODES_PATH: &str = "GraphListNodes";
+pub const GRAPH_GET_NODE_PATH: &str = "GraphGetNode";

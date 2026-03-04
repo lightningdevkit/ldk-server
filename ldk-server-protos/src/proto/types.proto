@@ -718,8 +718,87 @@ message RouteParametersConfig {
   // Defaults to 10.
   uint32 max_path_count = 3;
 
-  // Selects the maximum share of a channel's total capacity which will be 
+  // Selects the maximum share of a channel's total capacity which will be
   // sent over a channel, as a power of 1/2.
   // Default value: 2
   uint32 max_channel_saturation_power_of_half = 4;
+}
+
+// Routing fees for a channel as part of the network graph.
+message GraphRoutingFees {
+  // Flat routing fee in millisatoshis.
+  uint32 base_msat = 1;
+
+  // Liquidity-based routing fee in millionths of a routed amount.
+  uint32 proportional_millionths = 2;
+}
+
+// Details about one direction of a channel in the network graph,
+// as received within a `ChannelUpdate`.
+message GraphChannelUpdate {
+  // When the last update to the channel direction was issued.
+  // Value is opaque, as set in the announcement.
+  uint32 last_update = 1;
+
+  // Whether the channel can be currently used for payments (in this one direction).
+  bool enabled = 2;
+
+  // The difference in CLTV values that you must have when routing through this channel.
+  uint32 cltv_expiry_delta = 3;
+
+  // The minimum value, which must be relayed to the next hop via the channel.
+  uint64 htlc_minimum_msat = 4;
+
+  // The maximum value which may be relayed to the next hop via the channel.
+  uint64 htlc_maximum_msat = 5;
+
+  // Fees charged when the channel is used for routing.
+  GraphRoutingFees fees = 6;
+}
+
+// Details about a channel in the network graph (both directions).
+// Received within a channel announcement.
+message GraphChannel {
+  // Source node of the first direction of the channel (hex-encoded public key).
+  string node_one = 1;
+
+  // Source node of the second direction of the channel (hex-encoded public key).
+  string node_two = 2;
+
+  // The channel capacity as seen on-chain, if chain lookup is available.
+  optional uint64 capacity_sats = 3;
+
+  // Details about the first direction of a channel.
+  GraphChannelUpdate one_to_two = 4;
+
+  // Details about the second direction of a channel.
+  GraphChannelUpdate two_to_one = 5;
+}
+
+// Information received in the latest node_announcement from this node.
+message GraphNodeAnnouncement {
+  // When the last known update to the node state was issued.
+  // Value is opaque, as set in the announcement.
+  uint32 last_update = 1;
+
+  // Moniker assigned to the node.
+  // May be invalid or malicious (eg control chars), should not be exposed to the user.
+  string alias = 2;
+
+  // Color assigned to the node as a hex-encoded RGB string, e.g. "ff0000".
+  string rgb = 3;
+
+  // List of addresses on which this node is reachable.
+  repeated string addresses = 4;
+}
+
+// Details about a node in the network graph, known from the network announcement.
+message GraphNode {
+  // All valid channels a node has announced.
+  repeated uint64 channels = 1;
+
+  // More information about a node from node_announcement.
+  // Optional because we store a node entry after learning about it from
+  // a channel announcement, but before receiving a node announcement.
+  GraphNodeAnnouncement announcement_info = 2;
 }

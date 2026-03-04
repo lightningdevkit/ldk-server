@@ -916,6 +916,105 @@ pub struct RouteParametersConfig {
 	#[prost(uint32, tag = "4")]
 	pub max_channel_saturation_power_of_half: u32,
 }
+/// Routing fees for a channel as part of the network graph.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphRoutingFees {
+	/// Flat routing fee in millisatoshis.
+	#[prost(uint32, tag = "1")]
+	pub base_msat: u32,
+	/// Liquidity-based routing fee in millionths of a routed amount.
+	#[prost(uint32, tag = "2")]
+	pub proportional_millionths: u32,
+}
+/// Details about one direction of a channel in the network graph,
+/// as received within a `ChannelUpdate`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphChannelUpdate {
+	/// When the last update to the channel direction was issued.
+	/// Value is opaque, as set in the announcement.
+	#[prost(uint32, tag = "1")]
+	pub last_update: u32,
+	/// Whether the channel can be currently used for payments (in this one direction).
+	#[prost(bool, tag = "2")]
+	pub enabled: bool,
+	/// The difference in CLTV values that you must have when routing through this channel.
+	#[prost(uint32, tag = "3")]
+	pub cltv_expiry_delta: u32,
+	/// The minimum value, which must be relayed to the next hop via the channel.
+	#[prost(uint64, tag = "4")]
+	pub htlc_minimum_msat: u64,
+	/// The maximum value which may be relayed to the next hop via the channel.
+	#[prost(uint64, tag = "5")]
+	pub htlc_maximum_msat: u64,
+	/// Fees charged when the channel is used for routing.
+	#[prost(message, optional, tag = "6")]
+	pub fees: ::core::option::Option<GraphRoutingFees>,
+}
+/// Details about a channel in the network graph (both directions).
+/// Received within a channel announcement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphChannel {
+	/// Source node of the first direction of the channel (hex-encoded public key).
+	#[prost(string, tag = "1")]
+	pub node_one: ::prost::alloc::string::String,
+	/// Source node of the second direction of the channel (hex-encoded public key).
+	#[prost(string, tag = "2")]
+	pub node_two: ::prost::alloc::string::String,
+	/// The channel capacity as seen on-chain, if chain lookup is available.
+	#[prost(uint64, optional, tag = "3")]
+	pub capacity_sats: ::core::option::Option<u64>,
+	/// Details about the first direction of a channel.
+	#[prost(message, optional, tag = "4")]
+	pub one_to_two: ::core::option::Option<GraphChannelUpdate>,
+	/// Details about the second direction of a channel.
+	#[prost(message, optional, tag = "5")]
+	pub two_to_one: ::core::option::Option<GraphChannelUpdate>,
+}
+/// Information received in the latest node_announcement from this node.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphNodeAnnouncement {
+	/// When the last known update to the node state was issued.
+	/// Value is opaque, as set in the announcement.
+	#[prost(uint32, tag = "1")]
+	pub last_update: u32,
+	/// Moniker assigned to the node.
+	/// May be invalid or malicious (eg control chars), should not be exposed to the user.
+	#[prost(string, tag = "2")]
+	pub alias: ::prost::alloc::string::String,
+	/// Color assigned to the node as a hex-encoded RGB string, e.g. "ff0000".
+	#[prost(string, tag = "3")]
+	pub rgb: ::prost::alloc::string::String,
+	/// List of addresses on which this node is reachable.
+	#[prost(string, repeated, tag = "4")]
+	pub addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Details about a node in the network graph, known from the network announcement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphNode {
+	/// All valid channels a node has announced.
+	#[prost(uint64, repeated, tag = "1")]
+	pub channels: ::prost::alloc::vec::Vec<u64>,
+	/// More information about a node from node_announcement.
+	/// Optional because we store a node entry after learning about it from
+	/// a channel announcement, but before receiving a node announcement.
+	#[prost(message, optional, tag = "2")]
+	pub announcement_info: ::core::option::Option<GraphNodeAnnouncement>,
+}
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

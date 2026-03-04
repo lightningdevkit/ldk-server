@@ -761,3 +761,83 @@ pub struct DisconnectPeerRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisconnectPeerResponse {}
+/// Returns a list of all known short channel IDs in the network graph.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphListChannelsRequest {}
+/// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphListChannelsResponse {
+	/// List of short channel IDs known to the network graph.
+	#[prost(uint64, repeated, tag = "1")]
+	pub short_channel_ids: ::prost::alloc::vec::Vec<u64>,
+}
+/// Returns information on a channel with the given short channel ID from the network graph.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.channel>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphGetChannelRequest {
+	/// The short channel ID to look up.
+	#[prost(uint64, tag = "1")]
+	pub short_channel_id: u64,
+}
+/// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphGetChannelResponse {
+	/// The channel information.
+	#[prost(message, optional, tag = "1")]
+	pub channel: ::core::option::Option<super::types::GraphChannel>,
+}
+/// Returns a list of all known node IDs in the network graph.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphListNodesRequest {}
+/// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphListNodesResponse {
+	/// List of hex-encoded node IDs known to the network graph.
+	#[prost(string, repeated, tag = "1")]
+	pub node_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Returns information on a node with the given ID from the network graph.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphGetNodeRequest {
+	/// The hex-encoded node ID to look up.
+	#[prost(string, tag = "1")]
+	pub node_id: ::prost::alloc::string::String,
+}
+/// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GraphGetNodeResponse {
+	/// The node information.
+	#[prost(message, optional, tag = "1")]
+	pub node: ::core::option::Option<super::types::GraphNode>,
+}

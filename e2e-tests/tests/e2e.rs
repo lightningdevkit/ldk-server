@@ -458,6 +458,70 @@ async fn test_cli_splice_out() {
 }
 
 #[tokio::test]
+async fn test_cli_graph_list_channels_empty() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let output = run_cli(&server, &["graph-list-channels"]);
+	assert!(output["short_channel_ids"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cli_graph_list_nodes_empty() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let output = run_cli(&server, &["graph-list-nodes"]);
+	assert!(output["node_ids"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cli_graph_with_channel() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Wait for the channel announcement to appear in the network graph.
+	let scid = {
+		let start = std::time::Instant::now();
+		loop {
+			let output = run_cli(&server_a, &["graph-list-channels"]);
+			let scids = output["short_channel_ids"].as_array().unwrap();
+			if !scids.is_empty() {
+				break scids[0].as_u64().unwrap().to_string();
+			}
+			if start.elapsed() > Duration::from_secs(30) {
+				panic!("Timed out waiting for channel to appear in network graph");
+			}
+			tokio::time::sleep(Duration::from_secs(1)).await;
+		}
+	};
+
+	// Test GraphGetChannel: should return channel info with both our nodes.
+	let output = run_cli(&server_a, &["graph-get-channel", &scid]);
+	let channel = &output["channel"];
+	let node_one = channel["node_one"].as_str().unwrap();
+	let node_two = channel["node_two"].as_str().unwrap();
+	let nodes = [server_a.node_id(), server_b.node_id()];
+	assert!(nodes.contains(&node_one), "node_one {} not one of our nodes", node_one);
+	assert!(nodes.contains(&node_two), "node_two {} not one of our nodes", node_two);
+
+	// Test GraphListNodes: should contain both node IDs.
+	let output = run_cli(&server_a, &["graph-list-nodes"]);
+	let node_ids: Vec<&str> =
+		output["node_ids"].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect();
+	assert!(node_ids.contains(&server_a.node_id()), "Expected server_a in graph nodes");
+	assert!(node_ids.contains(&server_b.node_id()), "Expected server_b in graph nodes");
+
+	// Test GraphGetNode: should return node info with at least one channel.
+	let output = run_cli(&server_a, &["graph-get-node", server_b.node_id()]);
+	let node = &output["node"];
+	let channels = node["channels"].as_array().unwrap();
+	assert!(!channels.is_empty(), "Expected node to have at least one channel");
+}
+
+#[tokio::test]
 async fn test_cli_completions() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;

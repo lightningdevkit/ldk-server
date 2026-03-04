@@ -22,6 +22,7 @@ use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
+	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
@@ -41,6 +42,10 @@ use crate::api::export_pathfinding_scores::handle_export_pathfinding_scores_requ
 use crate::api::get_balances::handle_get_balances_request;
 use crate::api::get_node_info::handle_get_node_info_request;
 use crate::api::get_payment_details::handle_get_payment_details_request;
+use crate::api::graph_get_channel::handle_graph_get_channel_request;
+use crate::api::graph_get_node::handle_graph_get_node_request;
+use crate::api::graph_list_channels::handle_graph_list_channels_request;
+use crate::api::graph_list_nodes::handle_graph_list_nodes_request;
 use crate::api::list_channels::handle_list_channels_request;
 use crate::api::list_forwarded_payments::handle_list_forwarded_payments_request;
 use crate::api::list_payments::handle_list_payments_request;
@@ -332,6 +337,34 @@ impl Service<Request<Incoming>> for NodeService {
 				auth_params,
 				api_key,
 				handle_export_pathfinding_scores_request,
+			)),
+			GRAPH_LIST_CHANNELS_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_graph_list_channels_request,
+			)),
+			GRAPH_GET_CHANNEL_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_graph_get_channel_request,
+			)),
+			GRAPH_LIST_NODES_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_graph_list_nodes_request,
+			)),
+			GRAPH_GET_NODE_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_graph_get_node_request,
 			)),
 			path => {
 				let error = format!("Unknown request: {}", path).into_bytes();

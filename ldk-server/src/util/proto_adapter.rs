@@ -15,6 +15,9 @@ use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::chain::channelmonitor::BalanceSource;
 use ldk_node::lightning::ln::types::ChannelId;
+use ldk_node::lightning::routing::gossip::{
+	ChannelInfo, ChannelUpdateInfo, NodeAnnouncementInfo, NodeInfo, RoutingFees,
+};
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
@@ -452,6 +455,59 @@ pub(crate) fn proto_to_bolt11_description(
 			})?)
 		},
 	})
+}
+
+pub(crate) fn graph_routing_fees_to_proto(
+	fees: RoutingFees,
+) -> ldk_server_protos::types::GraphRoutingFees {
+	ldk_server_protos::types::GraphRoutingFees {
+		base_msat: fees.base_msat,
+		proportional_millionths: fees.proportional_millionths,
+	}
+}
+
+pub(crate) fn graph_channel_update_to_proto(
+	update: ChannelUpdateInfo,
+) -> ldk_server_protos::types::GraphChannelUpdate {
+	ldk_server_protos::types::GraphChannelUpdate {
+		last_update: update.last_update,
+		enabled: update.enabled,
+		cltv_expiry_delta: update.cltv_expiry_delta as u32,
+		htlc_minimum_msat: update.htlc_minimum_msat,
+		htlc_maximum_msat: update.htlc_maximum_msat,
+		fees: Some(graph_routing_fees_to_proto(update.fees)),
+	}
+}
+
+pub(crate) fn graph_channel_to_proto(
+	channel: ChannelInfo,
+) -> ldk_server_protos::types::GraphChannel {
+	ldk_server_protos::types::GraphChannel {
+		node_one: channel.node_one.to_string(),
+		node_two: channel.node_two.to_string(),
+		capacity_sats: channel.capacity_sats,
+		one_to_two: channel.one_to_two.map(graph_channel_update_to_proto),
+		two_to_one: channel.two_to_one.map(graph_channel_update_to_proto),
+	}
+}
+
+pub(crate) fn graph_node_announcement_to_proto(
+	announcement: NodeAnnouncementInfo,
+) -> ldk_server_protos::types::GraphNodeAnnouncement {
+	let rgb = announcement.rgb();
+	ldk_server_protos::types::GraphNodeAnnouncement {
+		last_update: announcement.last_update(),
+		alias: announcement.alias().to_string(),
+		rgb: format!("{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]),
+		addresses: announcement.addresses().iter().map(|a| a.to_string()).collect(),
+	}
+}
+
+pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_protos::types::GraphNode {
+	ldk_server_protos::types::GraphNode {
+		channels: node.channels,
+		announcement_info: node.announcement_info.map(graph_node_announcement_to_proto),
+	}
 }
 
 pub(crate) fn to_error_response(ldk_error: LdkServerError) -> (ErrorResponse, StatusCode) {

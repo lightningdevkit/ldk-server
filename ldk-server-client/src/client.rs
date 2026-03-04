@@ -18,18 +18,21 @@ use ldk_server_protos::api::{
 	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
 	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
-	ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
+	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
+	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
+	ListChannelsResponse, ListForwardedPaymentsRequest, ListForwardedPaymentsResponse,
+	ListPaymentsRequest, ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse,
+	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
+	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
+	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
@@ -307,6 +310,42 @@ impl LdkServerClient {
 		&self, request: ExportPathfindingScoresRequest,
 	) -> Result<ExportPathfindingScoresResponse, LdkServerError> {
 		let url = format!("https://{}/{EXPORT_PATHFINDING_SCORES_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Returns a list of all known short channel IDs in the network graph.
+	/// For API contract/usage, refer to docs for [`GraphListChannelsRequest`] and [`GraphListChannelsResponse`].
+	pub async fn graph_list_channels(
+		&self, request: GraphListChannelsRequest,
+	) -> Result<GraphListChannelsResponse, LdkServerError> {
+		let url = format!("https://{}/{GRAPH_LIST_CHANNELS_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Returns information on a channel with the given short channel ID from the network graph.
+	/// For API contract/usage, refer to docs for [`GraphGetChannelRequest`] and [`GraphGetChannelResponse`].
+	pub async fn graph_get_channel(
+		&self, request: GraphGetChannelRequest,
+	) -> Result<GraphGetChannelResponse, LdkServerError> {
+		let url = format!("https://{}/{GRAPH_GET_CHANNEL_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Returns a list of all known node IDs in the network graph.
+	/// For API contract/usage, refer to docs for [`GraphListNodesRequest`] and [`GraphListNodesResponse`].
+	pub async fn graph_list_nodes(
+		&self, request: GraphListNodesRequest,
+	) -> Result<GraphListNodesResponse, LdkServerError> {
+		let url = format!("https://{}/{GRAPH_LIST_NODES_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Returns information on a node with the given ID from the network graph.
+	/// For API contract/usage, refer to docs for [`GraphGetNodeRequest`] and [`GraphGetNodeResponse`].
+	pub async fn graph_get_node(
+		&self, request: GraphGetNodeRequest,
+	) -> Result<GraphGetNodeResponse, LdkServerError> {
+		let url = format!("https://{}/{GRAPH_GET_NODE_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 
