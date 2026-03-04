@@ -23,7 +23,7 @@ use hex::DisplayHex;
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use ldk_node::bitcoin::Network;
-use ldk_node::config::Config;
+use ldk_node::config::{BackgroundSyncConfig, Config, ElectrumSyncConfig, EsploraSyncConfig};
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
@@ -71,6 +71,24 @@ pub fn get_default_data_dir() -> Option<PathBuf> {
 		#[allow(deprecated)] // todo can remove once we update MSRV to 1.87+
 		std::env::home_dir().map(|home| home.join(".ldk-server"))
 	}
+}
+
+fn build_background_sync_config(
+	onchain_wallet_sync_interval_secs: Option<u64>,
+	lightning_wallet_sync_interval_secs: Option<u64>,
+) -> Option<BackgroundSyncConfig> {
+	if onchain_wallet_sync_interval_secs.is_none() && lightning_wallet_sync_interval_secs.is_none()
+	{
+		return None;
+	}
+	let mut bg = BackgroundSyncConfig::default();
+	if let Some(interval) = onchain_wallet_sync_interval_secs {
+		bg.onchain_wallet_sync_interval_secs = interval;
+	}
+	if let Some(interval) = lightning_wallet_sync_interval_secs {
+		bg.lightning_wallet_sync_interval_secs = interval;
+	}
+	Some(bg)
 }
 
 fn main() {
@@ -156,11 +174,32 @@ fn main() {
 		ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } => {
 			builder.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password);
 		},
-		ChainSource::Electrum { server_url } => {
-			builder.set_chain_source_electrum(server_url, None);
+		ChainSource::Electrum {
+			server_url,
+			onchain_wallet_sync_interval_secs,
+			lightning_wallet_sync_interval_secs,
+		} => {
+			let sync_config = build_background_sync_config(
+				onchain_wallet_sync_interval_secs,
+				lightning_wallet_sync_interval_secs,
+			)
+			.map(|bg| ElectrumSyncConfig {
+				background_sync_config: Some(bg),
+				..Default::default()
+			});
+			builder.set_chain_source_electrum(server_url, sync_config);
 		},
-		ChainSource::Esplora { server_url } => {
-			builder.set_chain_source_esplora(server_url, None);
+		ChainSource::Esplora {
+			server_url,
+			onchain_wallet_sync_interval_secs,
+			lightning_wallet_sync_interval_secs,
+		} => {
+			let sync_config = build_background_sync_config(
+				onchain_wallet_sync_interval_secs,
+				lightning_wallet_sync_interval_secs,
+			)
+			.map(|bg| EsploraSyncConfig { background_sync_config: Some(bg), ..Default::default() });
+			builder.set_chain_source_esplora(server_url, sync_config);
 		},
 	}
 

@@ -78,9 +78,22 @@ pub struct TlsConfig {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChainSource {
-	Rpc { rpc_host: String, rpc_port: u16, rpc_user: String, rpc_password: String },
-	Electrum { server_url: String },
-	Esplora { server_url: String },
+	Rpc {
+		rpc_host: String,
+		rpc_port: u16,
+		rpc_user: String,
+		rpc_password: String,
+	},
+	Electrum {
+		server_url: String,
+		onchain_wallet_sync_interval_secs: Option<u64>,
+		lightning_wallet_sync_interval_secs: Option<u64>,
+	},
+	Esplora {
+		server_url: String,
+		onchain_wallet_sync_interval_secs: Option<u64>,
+		lightning_wallet_sync_interval_secs: Option<u64>,
+	},
 }
 
 /// A builder for `Config`.
@@ -95,6 +108,8 @@ struct ConfigBuilder {
 	storage_dir_path: Option<String>,
 	electrum_url: Option<String>,
 	esplora_url: Option<String>,
+	onchain_wallet_sync_interval_secs: Option<u64>,
+	lightning_wallet_sync_interval_secs: Option<u64>,
 	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
@@ -137,10 +152,22 @@ impl ConfigBuilder {
 
 		if let Some(electrum) = toml.electrum {
 			self.electrum_url = Some(electrum.server_url);
+			self.onchain_wallet_sync_interval_secs = electrum
+				.onchain_wallet_sync_interval_secs
+				.or(self.onchain_wallet_sync_interval_secs);
+			self.lightning_wallet_sync_interval_secs = electrum
+				.lightning_wallet_sync_interval_secs
+				.or(self.lightning_wallet_sync_interval_secs);
 		}
 
 		if let Some(esplora) = toml.esplora {
 			self.esplora_url = Some(esplora.server_url);
+			self.onchain_wallet_sync_interval_secs = esplora
+				.onchain_wallet_sync_interval_secs
+				.or(self.onchain_wallet_sync_interval_secs);
+			self.lightning_wallet_sync_interval_secs = esplora
+				.lightning_wallet_sync_interval_secs
+				.or(self.lightning_wallet_sync_interval_secs);
 		}
 
 		if let Some(log) = toml.log {
@@ -294,9 +321,17 @@ impl ConfigBuilder {
 
 			ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password }
 		} else if let Some(url) = self.electrum_url {
-			ChainSource::Electrum { server_url: url }
+			ChainSource::Electrum {
+				server_url: url,
+				onchain_wallet_sync_interval_secs: self.onchain_wallet_sync_interval_secs,
+				lightning_wallet_sync_interval_secs: self.lightning_wallet_sync_interval_secs,
+			}
 		} else if let Some(url) = self.esplora_url {
-			ChainSource::Esplora { server_url: url }
+			ChainSource::Esplora {
+				server_url: url,
+				onchain_wallet_sync_interval_secs: self.onchain_wallet_sync_interval_secs,
+				lightning_wallet_sync_interval_secs: self.lightning_wallet_sync_interval_secs,
+			}
 		} else {
 			return Err(io::Error::new(io::ErrorKind::InvalidInput, "No valid Chain Source configured. Provide Bitcoind RPC, Electrum, or Esplora details."));
 		};
@@ -430,11 +465,15 @@ struct BitcoindConfig {
 #[derive(Deserialize, Serialize)]
 struct ElectrumConfig {
 	server_url: String,
+	onchain_wallet_sync_interval_secs: Option<u64>,
+	lightning_wallet_sync_interval_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct EsploraConfig {
 	server_url: String,
+	onchain_wallet_sync_interval_secs: Option<u64>,
+	lightning_wallet_sync_interval_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -907,7 +946,7 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let config = load_config(&args_config).unwrap();
 
-		let ChainSource::Electrum { server_url } = config.chain_source else {
+		let ChainSource::Electrum { server_url, .. } = config.chain_source else {
 			panic!("unexpected chain source");
 		};
 
