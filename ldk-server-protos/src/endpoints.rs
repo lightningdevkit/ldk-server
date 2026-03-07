@@ -15,6 +15,9 @@ pub const BOLT11_RECEIVE_PATH: &str = "Bolt11Receive";
 pub const BOLT11_RECEIVE_FOR_HASH_PATH: &str = "Bolt11ReceiveForHash";
 pub const BOLT11_CLAIM_FOR_HASH_PATH: &str = "Bolt11ClaimForHash";
 pub const BOLT11_FAIL_FOR_HASH_PATH: &str = "Bolt11FailForHash";
+pub const BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH: &str = "Bolt11ReceiveViaJitChannel";
+pub const BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH: &str =
+	"Bolt11ReceiveVariableAmountViaJitChannel";
 pub const BOLT11_SEND_PATH: &str = "Bolt11Send";
 pub const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
 pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
