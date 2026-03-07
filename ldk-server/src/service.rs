@@ -84,12 +84,23 @@ const AUTH_TIMESTAMP_TOLERANCE_SECS: u64 = 60;
 
 #[derive(Debug, Clone)]
 pub(crate) struct AuthParams {
+	key_id: String,
 	timestamp: u64,
 	hmac_hex: String,
 }
 
+/// Computes the key_id for an API key: first 8 bytes of SHA256(api_key), hex-encoded (16 chars).
+fn compute_key_id(api_key: &str) -> String {
+	let hash = sha256::Hash::hash(api_key.as_bytes());
+	hash[..8].iter().fold(String::with_capacity(16), |mut acc, b| {
+		use std::fmt::Write;
+		let _ = write!(acc, "{:02x}", b);
+		acc
+	})
+}
+
 /// Extracts authentication parameters from request headers.
-/// Returns (timestamp, hmac_hex) if valid format, or error.
+/// Returns (key_id, timestamp, hmac_hex) if valid format, or error.
 fn extract_auth_params<B>(req: &Request<B>) -> Result<AuthParams, LdkServerError> {
 	let auth_header = req
 		.headers()
@@ -97,14 +108,24 @@ fn extract_auth_params<B>(req: &Request<B>) -> Result<AuthParams, LdkServerError
 		.and_then(|v| v.to_str().ok())
 		.ok_or_else(|| LdkServerError::new(AuthError, "Missing X-Auth header"))?;
 
-	// Format: "HMAC <timestamp>:<hmac_hex>"
+	// Format: "HMAC <key_id>:<timestamp>:<hmac_hex>"
 	let auth_data = auth_header
 		.strip_prefix("HMAC ")
 		.ok_or_else(|| LdkServerError::new(AuthError, "Invalid X-Auth header format"))?;
 
-	let (timestamp_str, hmac_hex) = auth_data
-		.split_once(':')
-		.ok_or_else(|| LdkServerError::new(AuthError, "Invalid X-Auth header format"))?;
+	let parts: Vec<&str> = auth_data.splitn(3, ':').collect();
+	if parts.len() != 3 {
+		return Err(LdkServerError::new(AuthError, "Invalid X-Auth header format"));
+	}
+
+	let key_id = parts[0];
+	let timestamp_str = parts[1];
+	let hmac_hex = parts[2];
+
+	// Validate key_id is 16 hex chars
+	if key_id.len() != 16 || !key_id.chars().all(|c| c.is_ascii_hexdigit()) {
+		return Err(LdkServerError::new(AuthError, "Invalid key_id in X-Auth header"));
+	}
 
 	let timestamp = timestamp_str
 		.parse::<u64>()
@@ -115,13 +136,19 @@ fn extract_auth_params<B>(req: &Request<B>) -> Result<AuthParams, LdkServerError
 		return Err(LdkServerError::new(AuthError, "Invalid HMAC in X-Auth header"));
 	}
 
-	Ok(AuthParams { timestamp, hmac_hex: hmac_hex.to_string() })
+	Ok(AuthParams { key_id: key_id.to_string(), timestamp, hmac_hex: hmac_hex.to_string() })
 }
 
 /// Validates the HMAC authentication after the request body has been read.
 fn validate_hmac_auth(
-	timestamp: u64, provided_hmac_hex: &str, body: &[u8], api_key: &str,
+	key_id: &str, timestamp: u64, provided_hmac_hex: &str, body: &[u8], api_key: &str,
 ) -> Result<(), LdkServerError> {
+	// Verify the key_id matches the api_key
+	let expected_key_id = compute_key_id(api_key);
+	if key_id != expected_key_id {
+		return Err(LdkServerError::new(AuthError, "Invalid credentials"));
+	}
+
 	// Validate timestamp is within acceptable window
 	let now = std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
@@ -406,9 +433,13 @@ async fn handle_request<
 	};
 
 	// Validate HMAC authentication with the request body
-	if let Err(e) =
-		validate_hmac_auth(auth_params.timestamp, &auth_params.hmac_hex, &bytes, &api_key)
-	{
+	if let Err(e) = validate_hmac_auth(
+		&auth_params.key_id,
+		auth_params.timestamp,
+		&auth_params.hmac_hex,
+		&bytes,
+		&api_key,
+	) {
 		let (error_response, status_code) = to_error_response(e);
 		return Ok(Response::builder()
 			.status(status_code)
@@ -468,13 +499,15 @@ mod tests {
 		let timestamp =
 			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 		let hmac = "8f5a33c2c68fb253899a588308fd13dcaf162d2788966a1fb6cc3aa2e0c51a93";
-		let auth_header = format!("HMAC {timestamp}:{hmac}");
+		let key_id = "abcdef0123456789";
+		let auth_header = format!("HMAC {key_id}:{timestamp}:{hmac}");
 
 		let req = create_test_request(Some(auth_header));
 
 		let result = extract_auth_params(&req);
 		assert!(result.is_ok());
-		let AuthParams { timestamp: ts, hmac_hex } = result.unwrap();
+		let AuthParams { key_id: kid, timestamp: ts, hmac_hex } = result.unwrap();
+		assert_eq!(kid, key_id);
 		assert_eq!(ts, timestamp);
 		assert_eq!(hmac_hex, hmac);
 	}
@@ -501,25 +534,41 @@ mod tests {
 	#[test]
 	fn test_validate_hmac_auth_success() {
 		let api_key = "test_api_key".to_string();
+		let key_id = compute_key_id(&api_key);
 		let body = b"test request body";
 		let timestamp =
 			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 		let hmac = compute_hmac(&api_key, timestamp, body);
 
-		let result = validate_hmac_auth(timestamp, &hmac, body, &api_key);
+		let result = validate_hmac_auth(&key_id, timestamp, &hmac, body, &api_key);
 		assert!(result.is_ok());
 	}
 
 	#[test]
 	fn test_validate_hmac_auth_wrong_key() {
 		let api_key = "test_api_key".to_string();
+		let key_id = compute_key_id(&api_key);
 		let body = b"test request body";
 		let timestamp =
 			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 		// Compute HMAC with wrong key
 		let hmac = compute_hmac("wrong_key", timestamp, body);
 
-		let result = validate_hmac_auth(timestamp, &hmac, body, &api_key);
+		let result = validate_hmac_auth(&key_id, timestamp, &hmac, body, &api_key);
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().error_code, AuthError);
+	}
+
+	#[test]
+	fn test_validate_hmac_auth_wrong_key_id() {
+		let api_key = "test_api_key".to_string();
+		let wrong_key_id = "0000000000000000";
+		let body = b"test request body";
+		let timestamp =
+			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+		let hmac = compute_hmac(&api_key, timestamp, body);
+
+		let result = validate_hmac_auth(wrong_key_id, timestamp, &hmac, body, &api_key);
 		assert!(result.is_err());
 		assert_eq!(result.unwrap_err().error_code, AuthError);
 	}
@@ -527,6 +576,7 @@ mod tests {
 	#[test]
 	fn test_validate_hmac_auth_expired_timestamp() {
 		let api_key = "test_api_key".to_string();
+		let key_id = compute_key_id(&api_key);
 		let body = b"test request body";
 		// Use a timestamp from 10 minutes ago
 		let timestamp =
@@ -534,7 +584,7 @@ mod tests {
 				- 600;
 		let hmac = compute_hmac(&api_key, timestamp, body);
 
-		let result = validate_hmac_auth(timestamp, &hmac, body, &api_key);
+		let result = validate_hmac_auth(&key_id, timestamp, &hmac, body, &api_key);
 		assert!(result.is_err());
 		assert_eq!(result.unwrap_err().error_code, AuthError);
 	}
@@ -542,6 +592,7 @@ mod tests {
 	#[test]
 	fn test_validate_hmac_auth_tampered_body() {
 		let api_key = "test_api_key".to_string();
+		let key_id = compute_key_id(&api_key);
 		let original_body = b"test request body";
 		let tampered_body = b"tampered body";
 		let timestamp =
@@ -550,7 +601,7 @@ mod tests {
 		let hmac = compute_hmac(&api_key, timestamp, original_body);
 
 		// Try to validate with tampered body
-		let result = validate_hmac_auth(timestamp, &hmac, tampered_body, &api_key);
+		let result = validate_hmac_auth(&key_id, timestamp, &hmac, tampered_body, &api_key);
 		assert!(result.is_err());
 		assert_eq!(result.unwrap_err().error_code, AuthError);
 	}

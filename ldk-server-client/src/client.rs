@@ -59,6 +59,7 @@ pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
 	api_key: String,
+	key_id: String,
 }
 
 impl LdkServerClient {
@@ -77,11 +78,19 @@ impl LdkServerClient {
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, api_key })
+		// Compute key_id as first 8 bytes of SHA256(api_key), hex-encoded (16 chars)
+		let hash = sha256::Hash::hash(api_key.as_bytes());
+		let key_id = hash[..8].iter().fold(String::with_capacity(16), |mut acc, b| {
+			use std::fmt::Write;
+			let _ = write!(acc, "{:02x}", b);
+			acc
+		});
+
+		Ok(Self { base_url, client, api_key, key_id })
 	}
 
 	/// Computes the HMAC-SHA256 authentication header value.
-	/// Format: "HMAC <timestamp>:<hmac_hex>"
+	/// Format: "HMAC <key_id>:<timestamp>:<hmac_hex>"
 	fn compute_auth_header(&self, body: &[u8]) -> String {
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
@@ -94,7 +103,7 @@ impl LdkServerClient {
 		hmac_engine.input(body);
 		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
 
-		format!("HMAC {}:{}", timestamp, hmac_result)
+		format!("HMAC {}:{}:{}", self.key_id, timestamp, hmac_result)
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
