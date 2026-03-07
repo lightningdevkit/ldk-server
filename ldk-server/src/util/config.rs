@@ -13,6 +13,7 @@ use std::str::FromStr;
 use std::{fs, io};
 
 use clap::Parser;
+use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
@@ -47,12 +48,23 @@ pub struct Config {
 	pub storage_dir_path: Option<String>,
 	pub chain_source: ChainSource,
 	pub rgs_server_url: Option<String>,
+	#[cfg_attr(not(feature = "events-rabbitmq"), allow(dead_code))]
 	pub rabbitmq_connection_string: String,
+	#[cfg_attr(not(feature = "events-rabbitmq"), allow(dead_code))]
 	pub rabbitmq_exchange_name: String,
+	pub lsps2_client_config: Option<LSPSClientConfig>,
+	#[cfg_attr(not(feature = "experimental-lsps2-support"), allow(dead_code))]
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
 	pub pathfinding_scores_source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LSPSClientConfig {
+	pub node_id: PublicKey,
+	pub address: SocketAddress,
+	pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,6 +337,13 @@ impl ConfigBuilder {
 		#[cfg(not(feature = "events-rabbitmq"))]
 		let (rabbitmq_connection_string, rabbitmq_exchange_name) = (String::new(), String::new());
 
+		let lsps2_client_config = self
+			.lsps2
+			.as_ref()
+			.and_then(|liquidity| liquidity.lsps2_client.as_ref())
+			.map(LSPSClientConfig::try_from)
+			.transpose()?;
+
 		#[cfg(feature = "experimental-lsps2-support")]
 		let lsps2_service_config = {
 			let liquidity = self.lsps2.ok_or_else(|| io::Error::new(
@@ -355,6 +374,7 @@ impl ConfigBuilder {
 			rgs_server_url: self.rgs_server_url,
 			rabbitmq_connection_string,
 			rabbitmq_exchange_name,
+			lsps2_client_config,
 			lsps2_service_config,
 			log_level,
 			log_file_path: self.log_file_path,
@@ -436,7 +456,15 @@ struct TomlTlsConfig {
 
 #[derive(Deserialize, Serialize)]
 struct LiquidityConfig {
+	lsps2_client: Option<LSPSClientTomlConfig>,
 	lsps2_service: Option<LSPS2ServiceTomlConfig>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+struct LSPSClientTomlConfig {
+	node_pubkey: String,
+	address: String,
+	token: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -480,6 +508,27 @@ impl From<LSPS2ServiceTomlConfig> for LSPS2ServiceConfig {
 			client_trusts_lsp,
 			require_token,
 		}
+	}
+}
+
+impl TryFrom<&LSPSClientTomlConfig> for LSPSClientConfig {
+	type Error = io::Error;
+
+	fn try_from(value: &LSPSClientTomlConfig) -> Result<Self, Self::Error> {
+		let node_id = PublicKey::from_str(&value.node_pubkey).map_err(|e| {
+			io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!("Invalid liquidity client node pubkey configured: {e}"),
+			)
+		})?;
+		let address = SocketAddress::from_str(&value.address).map_err(|e| {
+			io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!("Invalid liquidity client address configured: {e}"),
+			)
+		})?;
+
+		Ok(Self { node_id, address, token: value.token.clone() })
 	}
 }
 
@@ -630,6 +679,7 @@ fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
 mod tests {
 	use std::str::FromStr;
 
+	use ldk_node::bitcoin::secp256k1::PublicKey;
 	use ldk_node::bitcoin::Network;
 	use ldk_node::lightning::ln::msgs::SocketAddress;
 
@@ -664,6 +714,11 @@ mod tests {
 				[rabbitmq]
 				connection_string = "rabbitmq_connection_string"
 				exchange_name = "rabbitmq_exchange_name"
+
+				[liquidity.lsps2_client]
+				node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+				address = "127.0.0.1:39735"
+				token = "lsps2-token"
 
 				[liquidity.lsps2_service]
 				advertise_service = false
@@ -759,6 +814,14 @@ mod tests {
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
 			rabbitmq_connection_string: expected_rabbit_conn,
 			rabbitmq_exchange_name: expected_rabbit_exchange,
+			lsps2_client_config: Some(LSPSClientConfig {
+				node_id: PublicKey::from_str(
+					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
+				)
+				.unwrap(),
+				address: SocketAddress::from_str("127.0.0.1:39735").unwrap(),
+				token: Some("lsps2-token".to_string()),
+			}),
 			lsps2_service_config: Some(LSPS2ServiceConfig {
 				require_token: None,
 				advertise_service: false,
@@ -786,6 +849,7 @@ mod tests {
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
+		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.log_level, expected.log_level);
@@ -821,6 +885,10 @@ mod tests {
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_client]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -874,6 +942,10 @@ mod tests {
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_client]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -934,6 +1006,10 @@ mod tests {
 			[rabbitmq]
 			connection_string = "rabbitmq_connection_string"
 			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_client]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1080,6 +1156,7 @@ mod tests {
 			rgs_server_url: None,
 			rabbitmq_connection_string: String::new(),
 			rabbitmq_exchange_name: String::new(),
+			lsps2_client_config: None,
 			lsps2_service_config: None,
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
@@ -1173,6 +1250,14 @@ mod tests {
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
 			rabbitmq_connection_string: expected_rabbit_conn,
 			rabbitmq_exchange_name: expected_rabbit_exchange,
+			lsps2_client_config: Some(LSPSClientConfig {
+				node_id: PublicKey::from_str(
+					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
+				)
+				.unwrap(),
+				address: SocketAddress::from_str("127.0.0.1:39735").unwrap(),
+				token: Some("lsps2-token".to_string()),
+			}),
 			lsps2_service_config: Some(LSPS2ServiceConfig {
 				require_token: None,
 				advertise_service: false,
@@ -1199,6 +1284,7 @@ mod tests {
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
+		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
