@@ -12,7 +12,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use ldk_server_protos::api::{
-	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
+	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
+	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
 	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
@@ -29,7 +31,8 @@ use ldk_server_protos::api::{
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
-	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
+	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
+	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
@@ -139,6 +142,30 @@ impl LdkServerClient {
 		&self, request: Bolt11ReceiveRequest,
 	) -> Result<Bolt11ReceiveResponse, LdkServerError> {
 		let url = format!("https://{}/{BOLT11_RECEIVE_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieve a new fixed-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.
+	/// For API contract/usage, refer to docs for [`Bolt11ReceiveViaJitChannelRequest`] and
+	/// [`Bolt11ReceiveViaJitChannelResponse`].
+	pub async fn bolt11_receive_via_jit_channel(
+		&self, request: Bolt11ReceiveViaJitChannelRequest,
+	) -> Result<Bolt11ReceiveViaJitChannelResponse, LdkServerError> {
+		let url = format!("https://{}/{BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieve a new variable-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.
+	/// For API contract/usage, refer to docs for
+	/// [`Bolt11ReceiveVariableAmountViaJitChannelRequest`] and
+	/// [`Bolt11ReceiveVariableAmountViaJitChannelResponse`].
+	pub async fn bolt11_receive_variable_amount_via_jit_channel(
+		&self, request: Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	) -> Result<Bolt11ReceiveVariableAmountViaJitChannelResponse, LdkServerError> {
+		let url = format!(
+			"https://{}/{BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH}",
+			self.base_url,
+		);
 		self.post_request(&request, &url).await
 	}
 

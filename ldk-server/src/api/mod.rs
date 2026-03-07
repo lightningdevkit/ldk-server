@@ -15,6 +15,7 @@ use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 
 pub(crate) mod bolt11_receive;
+pub(crate) mod bolt11_receive_via_jit_channel;
 pub(crate) mod bolt11_send;
 pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_send;

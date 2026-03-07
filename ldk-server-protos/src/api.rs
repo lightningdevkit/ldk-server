@@ -174,6 +174,70 @@ pub struct Bolt11ReceiveResponse {
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
 }
+/// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
+/// LSPS2 just-in-time channel.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveViaJitChannelRequest {
+	/// The amount in millisatoshi to request.
+	#[prost(uint64, tag = "1")]
+	pub amount_msat: u64,
+	/// An optional description to attach along with the invoice.
+	/// Will be set in the description field of the encoded payment request.
+	#[prost(message, optional, tag = "2")]
+	pub description: ::core::option::Option<super::types::Bolt11InvoiceDescription>,
+	/// Invoice expiry time in seconds.
+	#[prost(uint32, tag = "3")]
+	pub expiry_secs: u32,
+	/// Optional upper bound for the total fee an LSP may deduct when opening the JIT channel.
+	#[prost(uint64, optional, tag = "4")]
+	pub max_total_lsp_fee_limit_msat: ::core::option::Option<u64>,
+}
+/// The response `content` for the `Bolt11ReceiveViaJitChannel` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveViaJitChannelResponse {
+	/// An invoice for a payment within the Lightning Network.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+}
+/// Return a variable-amount BOLT11 invoice that can be used to receive a payment via an LSPS2
+/// just-in-time channel.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
+	/// An optional description to attach along with the invoice.
+	/// Will be set in the description field of the encoded payment request.
+	#[prost(message, optional, tag = "1")]
+	pub description: ::core::option::Option<super::types::Bolt11InvoiceDescription>,
+	/// Invoice expiry time in seconds.
+	#[prost(uint32, tag = "2")]
+	pub expiry_secs: u32,
+	/// Optional upper bound for the proportional fee, in parts-per-million millisatoshis, that an
+	/// LSP may deduct when opening the JIT channel.
+	#[prost(uint64, optional, tag = "3")]
+	pub max_proportional_lsp_fee_limit_ppm_msat: ::core::option::Option<u64>,
+}
+/// The response `content` for the `Bolt11ReceiveVariableAmountViaJitChannel` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
+	/// An invoice for a payment within the Lightning Network.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+}
 /// Send a payment for a BOLT11 invoice.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
