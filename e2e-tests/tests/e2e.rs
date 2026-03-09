@@ -11,12 +11,14 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use e2e_tests::{
-	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, LdkServerHandle, RabbitMqEventConsumer, TestBitcoind,
+	create_restricted_client, find_available_port, make_client, mine_and_sync, run_cli,
+	run_cli_raw, setup_funded_channel, wait_for_onchain_balance, LdkServerHandle,
+	RabbitMqEventConsumer, TestBitcoind,
 };
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_server_client::ldk_server_protos::api::{
-	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
+	Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetNodeInfoRequest, GetPermissionsRequest,
+	OnchainReceiveRequest,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
@@ -610,4 +612,163 @@ async fn test_forwarded_payment_event() {
 	);
 
 	node_c.stop().unwrap();
+}
+
+#[tokio::test]
+async fn test_get_permissions_admin() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let resp = server.client().get_permissions(GetPermissionsRequest {}).await.unwrap();
+	assert!(
+		resp.endpoints.contains(&"*".to_string()),
+		"Expected admin key to have wildcard permission"
+	);
+}
+
+#[tokio::test]
+async fn test_create_api_key_and_get_permissions() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let restricted_client = create_restricted_client(
+		&server,
+		"read-only",
+		vec!["GetNodeInfo".to_string(), "GetBalances".to_string()],
+	)
+	.await;
+
+	let resp = restricted_client.get_permissions(GetPermissionsRequest {}).await.unwrap();
+	assert_eq!(resp.endpoints, vec!["GetBalances", "GetNodeInfo"]);
+}
+
+#[tokio::test]
+async fn test_restricted_key_allowed_endpoint() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let restricted_client =
+		create_restricted_client(&server, "node-info-only", vec!["GetNodeInfo".to_string()]).await;
+
+	let resp = restricted_client.get_node_info(GetNodeInfoRequest {}).await;
+	assert!(resp.is_ok(), "Restricted key should be able to call allowed endpoint");
+	assert_eq!(resp.unwrap().node_id, server.node_id());
+}
+
+#[tokio::test]
+async fn test_restricted_key_denied_endpoint() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let restricted_client =
+		create_restricted_client(&server, "info-only", vec!["GetNodeInfo".to_string()]).await;
+
+	let resp = restricted_client.onchain_receive(OnchainReceiveRequest {}).await;
+	assert!(resp.is_err(), "Restricted key should be denied access to unauthorized endpoint");
+}
+
+#[tokio::test]
+async fn test_restricted_key_get_permissions_always_allowed() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	// Create key with no endpoints at all (except GetPermissions which is always allowed)
+	let restricted_client =
+		create_restricted_client(&server, "perms-only", vec!["GetNodeInfo".to_string()]).await;
+
+	let resp = restricted_client.get_permissions(GetPermissionsRequest {}).await;
+	assert!(resp.is_ok(), "GetPermissions should always be allowed");
+}
+
+#[tokio::test]
+async fn test_create_api_key_via_cli() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let output =
+		run_cli(&server, &["create-api-key", "cli-test-key", "-e", "GetNodeInfo", "GetBalances"]);
+	let api_key = output["api_key"].as_str().unwrap();
+	assert_eq!(api_key.len(), 64);
+	assert!(api_key.chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+#[tokio::test]
+async fn test_invalid_api_key_rejected() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let bad_key = "ff".repeat(32);
+	let bad_client = make_client(&server, &bad_key);
+
+	let resp = bad_client.get_node_info(GetNodeInfoRequest {}).await;
+	assert!(resp.is_err(), "Invalid API key should be rejected");
+}
+
+#[tokio::test]
+async fn test_restricted_key_cannot_create_api_key() {
+	use ldk_server_client::ldk_server_protos::api::CreateApiKeyRequest;
+
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let restricted = create_restricted_client(&server, "limited", vec!["GetNodeInfo".to_string()])
+		.await;
+
+	// Restricted key should not be able to create new keys
+	let result = restricted
+		.create_api_key(CreateApiKeyRequest {
+			name: "sneaky".to_string(),
+			endpoints: vec!["*".to_string()],
+		})
+		.await;
+	assert!(result.is_err(), "Restricted key should not be able to create API keys");
+	assert_eq!(
+		result.unwrap_err().error_code,
+		ldk_server_client::error::LdkServerErrorCode::AuthError
+	);
+}
+
+#[tokio::test]
+async fn test_create_api_key_duplicate_name_rejected() {
+	use ldk_server_client::ldk_server_protos::api::CreateApiKeyRequest;
+
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	// First creation should succeed
+	let result = server
+		.client()
+		.create_api_key(CreateApiKeyRequest {
+			name: "my-key".to_string(),
+			endpoints: vec!["GetNodeInfo".to_string()],
+		})
+		.await;
+	assert!(result.is_ok());
+
+	// Duplicate name should fail
+	let result = server
+		.client()
+		.create_api_key(CreateApiKeyRequest {
+			name: "my-key".to_string(),
+			endpoints: vec!["GetNodeInfo".to_string()],
+		})
+		.await;
+	assert!(result.is_err(), "Duplicate API key name should be rejected");
+}
+
+#[tokio::test]
+async fn test_create_api_key_invalid_endpoint_rejected() {
+	use ldk_server_client::ldk_server_protos::api::CreateApiKeyRequest;
+
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let result = server
+		.client()
+		.create_api_key(CreateApiKeyRequest {
+			name: "bad-key".to_string(),
+			endpoints: vec!["NonExistentEndpoint".to_string()],
+		})
+		.await;
+	assert!(result.is_err(), "Unknown endpoint should be rejected");
 }

@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
-const API_KEY_FILE: &str = "api_key";
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -40,8 +39,12 @@ pub fn get_default_cert_path() -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(DEFAULT_CERT_FILE))
 }
 
-pub fn get_default_api_key_path(network: &str) -> Option<PathBuf> {
-	get_default_data_dir().map(|path| path.join(network).join(API_KEY_FILE))
+/// Reads the admin API key from `api_keys/admin.toml` in the network directory.
+pub fn get_default_admin_api_key(network: &str) -> Option<String> {
+	let admin_toml_path = get_default_data_dir()?.join(network).join("api_keys").join("admin.toml");
+	let contents = std::fs::read_to_string(&admin_toml_path).ok()?;
+	let parsed: toml::Value = toml::from_str(&contents).ok()?;
+	parsed.get("key").and_then(|v| v.as_str()).map(String::from)
 }
 
 #[derive(Debug, Deserialize)]

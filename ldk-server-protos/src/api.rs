@@ -841,3 +841,49 @@ pub struct GraphGetNodeResponse {
 	#[prost(message, optional, tag = "1")]
 	pub node: ::core::option::Option<super::types::GraphNode>,
 }
+/// Create a new API key with specific endpoint permissions.
+/// Admin-only: requires an admin API key.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateApiKeyRequest {
+	/// A human-readable name for the API key. Must be unique and consist of
+	/// alphanumeric characters, hyphens, or underscores.
+	#[prost(string, tag = "1")]
+	pub name: ::prost::alloc::string::String,
+	/// The list of endpoint names this key is permitted to access.
+	/// An empty list means the key can only access GetPermissions.
+	#[prost(string, repeated, tag = "2")]
+	pub endpoints: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// The response `content` for the `CreateApiKey` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateApiKeyResponse {
+	/// The hex-encoded API key. This is only returned once at creation time.
+	#[prost(string, tag = "1")]
+	pub api_key: ::prost::alloc::string::String,
+}
+/// Retrieve the permissions of the current API key.
+/// This endpoint is always accessible regardless of key permissions.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsRequest {}
+/// The response `content` for the `GetPermissions` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsResponse {
+	/// The list of endpoint names this key is permitted to access.
+	/// An empty list means the key is an admin key with access to all endpoints.
+	#[prost(string, repeated, tag = "1")]
+	pub endpoints: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}

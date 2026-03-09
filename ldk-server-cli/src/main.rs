@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use config::{
-	get_default_api_key_path, get_default_cert_path, get_default_config_path, load_config,
+	get_default_admin_api_key, get_default_cert_path, get_default_config_path, load_config,
 };
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
@@ -24,12 +24,13 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	CreateApiKeyRequest, CreateApiKeyResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
+	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
+	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
 	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
 	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
@@ -411,6 +412,20 @@ enum Commands {
 		#[arg(help = "The hex-encoded node ID to look up")]
 		node_id: String,
 	},
+	#[command(about = "Create a new API key with specific endpoint permissions (admin-only)")]
+	CreateApiKey {
+		#[arg(help = "A human-readable name for the API key")]
+		name: String,
+		#[arg(
+			short,
+			long,
+			num_args = 1..,
+			help = "List of endpoint names this key is permitted to access"
+		)]
+		endpoints: Vec<String>,
+	},
+	#[command(about = "Retrieve the permissions of the current API key")]
+	GetPermissions,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -434,18 +449,16 @@ async fn main() {
 	let config_path = cli.config.map(PathBuf::from).or_else(get_default_config_path);
 	let config = config_path.as_ref().and_then(|p| load_config(p).ok());
 
-	// Get API key from argument, then from api_key file
+	// Get API key from argument, then from admin.toml
 	let api_key = cli
 		.api_key
 		.or_else(|| {
-			// Try to read from api_key file based on network (file contains raw bytes)
-			let network = config.as_ref().and_then(|c| c.network().ok()).unwrap_or("bitcoin".to_string());
-			get_default_api_key_path(&network)
-				.and_then(|path| std::fs::read(&path).ok())
-				.map(|bytes| bytes.to_lower_hex_string())
+			let network =
+				config.as_ref().and_then(|c| c.network().ok()).unwrap_or("bitcoin".to_string());
+			get_default_admin_api_key(&network)
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at ~/.ldk-server/[network]/api_key");
+			eprintln!("API key not provided. Use --api-key or ensure api_keys/admin.toml exists at ~/.ldk-server/[network]/api_keys/admin.toml");
 			std::process::exit(1);
 		});
 
@@ -842,6 +855,16 @@ async fn main() {
 		Commands::GraphGetNode { node_id } => {
 			handle_response_result::<_, GraphGetNodeResponse>(
 				client.graph_get_node(GraphGetNodeRequest { node_id }).await,
+			);
+		},
+		Commands::CreateApiKey { name, endpoints } => {
+			handle_response_result::<_, CreateApiKeyResponse>(
+				client.create_api_key(CreateApiKeyRequest { name, endpoints }).await,
+			);
+		},
+		Commands::GetPermissions => {
+			handle_response_result::<_, GetPermissionsResponse>(
+				client.get_permissions(GetPermissionsRequest {}).await,
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),

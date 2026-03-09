@@ -14,7 +14,6 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use corepc_node::Node;
-use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_protos::api::{
@@ -176,17 +175,21 @@ client_trusts_lsp = true
 			}
 		});
 
-		// Wait for the api_key and tls.crt files to appear in the network subdir
+		// Wait for the api_keys/admin.toml and tls.crt files to appear
 		let network_dir = storage_dir.join("regtest");
-		let api_key_path = network_dir.join("api_key");
+		let admin_toml_path = network_dir.join("api_keys").join("admin.toml");
 		let tls_cert_path = storage_dir.join("tls.crt");
 
-		wait_for_file(&api_key_path, Duration::from_secs(30)).await;
+		wait_for_file(&admin_toml_path, Duration::from_secs(30)).await;
 		wait_for_file(&tls_cert_path, Duration::from_secs(30)).await;
 
-		// Read the API key (raw bytes -> hex)
-		let api_key_bytes = std::fs::read(&api_key_path).unwrap();
-		let api_key = api_key_bytes.to_lower_hex_string();
+		// Read the API key from admin.toml
+		let admin_toml_contents = std::fs::read_to_string(&admin_toml_path).unwrap();
+		let api_key = admin_toml_contents
+			.lines()
+			.find_map(|line| line.strip_prefix("key = \"")?.strip_suffix('"'))
+			.unwrap()
+			.to_string();
 
 		// Read TLS cert
 		let tls_cert_pem = std::fs::read(&tls_cert_path).unwrap();
@@ -311,6 +314,12 @@ pub fn run_cli(handle: &LdkServerHandle, args: &[&str]) -> serde_json::Value {
 		.unwrap_or_else(|e| panic!("Failed to parse CLI output as JSON: {e}\nOutput: {stdout}"))
 }
 
+/// Create a client with a specific API key.
+pub fn make_client(handle: &LdkServerHandle, api_key: &str) -> LdkServerClient {
+	let tls_cert_pem = std::fs::read(&handle.tls_cert_path).unwrap();
+	LdkServerClient::new(handle.base_url(), api_key.to_string(), &tls_cert_pem).unwrap()
+}
+
 /// Mine blocks and wait for all servers to sync to the new chain tip.
 pub async fn mine_and_sync(
 	bitcoind: &TestBitcoind, servers: &[&LdkServerHandle], block_count: u64,
@@ -426,6 +435,21 @@ pub async fn setup_funded_channel(
 	wait_for_usable_channel(server_a.client(), bitcoind, Duration::from_secs(60)).await;
 
 	open_resp.user_channel_id
+}
+
+/// Create a restricted API key by calling the CreateApiKey RPC on the server.
+pub async fn create_restricted_client(
+	handle: &LdkServerHandle, name: &str, endpoints: Vec<String>,
+) -> LdkServerClient {
+	use ldk_server_client::ldk_server_protos::api::CreateApiKeyRequest;
+
+	let resp = handle
+		.client()
+		.create_api_key(CreateApiKeyRequest { name: name.to_string(), endpoints })
+		.await
+		.unwrap();
+
+	make_client(handle, &resp.api_key)
 }
 
 /// RabbitMQ event consumer for verifying events published by ldk-server.
