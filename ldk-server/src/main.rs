@@ -264,12 +264,17 @@ fn main() {
 		let metrics_bg = Arc::clone(&metrics);
 		let event_metrics = Arc::clone(&metrics);
 
-		runtime.spawn(async move {
-			loop {
-				interval.tick().await;
-				metrics_bg.update_all_pollable_metrics(&metrics_node);
-			}
-		});
+		if config_file.metrics_enabled {
+			// Initialize metrics that are event-driven to ensure they start with correct values from persistence
+			metrics.initialize_payment_metrics(&metrics_node);
+
+			runtime.spawn(async move {
+				loop {
+					interval.tick().await;
+					metrics_bg.update_all_pollable_metrics(&metrics_node);
+				}
+			});
+		}
 
 		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
 			.await
@@ -336,7 +341,7 @@ fn main() {
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
 
-							event_metrics.update_total_successful_payments_count(&event_node);
+							event_metrics.update_payments_count(true);
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -349,7 +354,7 @@ fn main() {
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
 
-							event_metrics.update_total_failed_payments_count(&event_node);
+							event_metrics.update_payments_count(false);
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							if let Some(payment_details) = event_node.payment(&payment_id) {
@@ -434,7 +439,7 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone(), Arc::clone(&metrics));
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone(), Arc::clone(&metrics), config_file.metrics_enabled);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {

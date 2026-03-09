@@ -72,14 +72,15 @@ pub struct NodeService {
 	paginated_kv_store: Arc<dyn PaginatedKVStore>,
 	api_key: String,
 	metrics: Arc<Metrics>,
+	metrics_enabled: bool,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
-		metrics: Arc<Metrics>,
+		metrics: Arc<Metrics>, metrics_enabled: bool,
 	) -> Self {
-		Self { node, paginated_kv_store, api_key, metrics }
+		Self { node, paginated_kv_store, api_key, metrics, metrics_enabled }
 	}
 }
 
@@ -164,7 +165,18 @@ impl Service<Request<Incoming>> for NodeService {
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
 		// Handle metrics endpoint separately to bypass auth and return plain text
-		if req.uri().path().len() > 1 && &req.uri().path()[1..] == GET_METRICS_PATH {
+		if req.method() == hyper::Method::GET
+			&& req.uri().path().len() > 1
+			&& &req.uri().path()[1..] == GET_METRICS_PATH
+		{
+			if !self.metrics_enabled {
+				return Box::pin(async move {
+					Ok(Response::builder()
+						.status(StatusCode::NOT_FOUND)
+						.body(Full::new(Bytes::from("Not Found")))
+						.unwrap())
+				});
+			}
 			let metrics = Arc::clone(&self.metrics);
 			return Box::pin(async move {
 				Ok(Response::builder()

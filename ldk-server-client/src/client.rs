@@ -386,9 +386,8 @@ impl LdkServerClient {
 			RequestType::Post => self.client.post(url),
 		};
 
-		let body_for_auth = body.as_deref().unwrap_or(&[]);
-
 		let builder = if authenticated {
+			let body_for_auth = body.as_deref().unwrap_or(&[]);
 			let auth_header = self.compute_auth_header(body_for_auth);
 			builder.header("X-Auth", auth_header)
 		} else {
