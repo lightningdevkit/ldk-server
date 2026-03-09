@@ -71,16 +71,15 @@ pub struct NodeService {
 	node: Arc<Node>,
 	paginated_kv_store: Arc<dyn PaginatedKVStore>,
 	api_key: String,
-	metrics: Arc<Metrics>,
-	metrics_enabled: bool,
+	metrics: Option<Arc<Metrics>>,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
-		metrics: Arc<Metrics>, metrics_enabled: bool,
+		metrics: Option<Arc<Metrics>>,
 	) -> Self {
-		Self { node, paginated_kv_store, api_key, metrics, metrics_enabled }
+		Self { node, paginated_kv_store, api_key, metrics }
 	}
 }
 
@@ -169,7 +168,15 @@ impl Service<Request<Incoming>> for NodeService {
 			&& req.uri().path().len() > 1
 			&& &req.uri().path()[1..] == GET_METRICS_PATH
 		{
-			if !self.metrics_enabled {
+			if let Some(metrics) = &self.metrics {
+				let metrics = Arc::clone(metrics);
+				return Box::pin(async move {
+					Ok(Response::builder()
+						.header("Content-Type", "text/plain")
+						.body(Full::new(Bytes::from(metrics.gather_metrics())))
+						.unwrap())
+				});
+			} else {
 				return Box::pin(async move {
 					Ok(Response::builder()
 						.status(StatusCode::NOT_FOUND)
@@ -177,13 +184,6 @@ impl Service<Request<Incoming>> for NodeService {
 						.unwrap())
 				});
 			}
-			let metrics = Arc::clone(&self.metrics);
-			return Box::pin(async move {
-				Ok(Response::builder()
-					.header("Content-Type", "text/plain")
-					.body(Full::new(Bytes::from(metrics.gather_metrics())))
-					.unwrap())
-			});
 		}
 
 		// Extract auth params from headers (validation happens after body is read)

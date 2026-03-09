@@ -188,8 +188,8 @@ impl ConfigBuilder {
 			self.storage_dir_path = Some(storage_dir_path.clone());
 		}
 
-		if let Some(metrics_enabled) = args.metrics_enabled {
-			self.metrics_enabled = Some(metrics_enabled);
+		if args.metrics_enabled {
+			self.metrics_enabled = Some(true);
 		}
 	}
 
@@ -562,9 +562,9 @@ pub struct ArgsConfig {
 	#[arg(
 		long,
 		env = "LDK_SERVER_METRICS_ENABLED",
-		help = "The option to enable the metrics endpoint."
+		help = "The option to enable the metrics endpoint. WARNING: This endpoint is unauthenticated."
 	)]
-	metrics_enabled: Option<bool>,
+	metrics_enabled: bool,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
@@ -690,7 +690,7 @@ mod tests {
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
-			metrics_enabled: None,
+			metrics_enabled: false,
 		}
 	}
 
@@ -706,7 +706,7 @@ mod tests {
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
-			metrics_enabled: None,
+			metrics_enabled: false,
 		}
 	}
 

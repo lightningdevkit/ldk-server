@@ -611,3 +611,19 @@ async fn test_forwarded_payment_event() {
 
 	node_c.stop().unwrap();
 }
+
+#[tokio::test]
+async fn test_metrics_endpoint() {
+	let bitcoind = TestBitcoind::new();
+
+	// Test with metrics enabled
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let client = server.client();
+	let metrics_result = client.get_metrics().await;
+
+	assert!(metrics_result.is_ok(), "Expected metrics to succeed when enabled");
+	let metrics = metrics_result.unwrap();
+
+	assert!(metrics.contains("# HELP ldk_server_total_peers_count Total number of peers"));
+	assert!(metrics.contains("# TYPE ldk_server_total_peers_count gauge"));
+}
