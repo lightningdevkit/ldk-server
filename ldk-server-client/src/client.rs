@@ -15,27 +15,29 @@ use ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
-	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
-	ListChannelsResponse, ListForwardedPaymentsRequest, ListForwardedPaymentsResponse,
-	ListPaymentsRequest, ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse,
-	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
-	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	CreateApiKeyRequest, CreateApiKeyResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
+	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GetPermissionsRequest, GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse,
+	GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
+	ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
+	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
-	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
-	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
-	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, CREATE_API_KEY_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
+	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH,
+	OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -59,6 +61,7 @@ pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
 	api_key: String,
+	key_id: String,
 }
 
 impl LdkServerClient {
@@ -77,11 +80,19 @@ impl LdkServerClient {
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, api_key })
+		// Compute key_id as first 8 bytes of SHA256(api_key), hex-encoded (16 chars)
+		let hash = sha256::Hash::hash(api_key.as_bytes());
+		let key_id = hash[..8].iter().fold(String::with_capacity(16), |mut acc, b| {
+			use std::fmt::Write;
+			let _ = write!(acc, "{:02x}", b);
+			acc
+		});
+
+		Ok(Self { base_url, client, api_key, key_id })
 	}
 
 	/// Computes the HMAC-SHA256 authentication header value.
-	/// Format: "HMAC <timestamp>:<hmac_hex>"
+	/// Format: "HMAC <key_id>:<timestamp>:<hmac_hex>"
 	fn compute_auth_header(&self, body: &[u8]) -> String {
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
@@ -94,7 +105,7 @@ impl LdkServerClient {
 		hmac_engine.input(body);
 		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
 
-		format!("HMAC {}:{}", timestamp, hmac_result)
+		format!("HMAC {}:{}:{}", self.key_id, timestamp, hmac_result)
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
@@ -346,6 +357,24 @@ impl LdkServerClient {
 		&self, request: GraphGetNodeRequest,
 	) -> Result<GraphGetNodeResponse, LdkServerError> {
 		let url = format!("https://{}/{GRAPH_GET_NODE_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Create a new API key with specific endpoint permissions (admin-only).
+	/// For API contract/usage, refer to docs for [`CreateApiKeyRequest`] and [`CreateApiKeyResponse`].
+	pub async fn create_api_key(
+		&self, request: CreateApiKeyRequest,
+	) -> Result<CreateApiKeyResponse, LdkServerError> {
+		let url = format!("https://{}/{CREATE_API_KEY_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieve the permissions of the current API key.
+	/// For API contract/usage, refer to docs for [`GetPermissionsRequest`] and [`GetPermissionsResponse`].
+	pub async fn get_permissions(
+		&self, request: GetPermissionsRequest,
+	) -> Result<GetPermissionsResponse, LdkServerError> {
+		let url = format!("https://{}/{GET_PERMISSIONS_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

@@ -8,14 +8,13 @@
 // licenses.
 
 mod api;
+mod api_keys;
 mod io;
 mod service;
 mod util;
 
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
@@ -30,12 +29,13 @@ use ldk_node::{Builder, Event, Node};
 use ldk_server_protos::events;
 use ldk_server_protos::events::{event_envelope, EventEnvelope};
 use ldk_server_protos::types::Payment;
-use log::{debug, error, info};
+use log::{error, info};
 use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
 
+use crate::api_keys::ApiKeyStore;
 use crate::io::events::event_publisher::EventPublisher;
 use crate::io::events::get_event_name;
 #[cfg(feature = "events-rabbitmq")]
@@ -52,8 +52,6 @@ use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
-
-const API_KEY_FILE: &str = "api_key";
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -128,10 +126,18 @@ fn main() {
 		},
 	};
 
-	let api_key = match load_or_generate_api_key(&network_dir) {
-		Ok(key) => key,
+	let api_keys_dir = match ApiKeyStore::init(&network_dir) {
+		Ok(dir) => dir,
 		Err(e) => {
-			eprintln!("Failed to load or generate API key: {e}");
+			eprintln!("Failed to initialize API keys: {e}");
+			std::process::exit(-1);
+		},
+	};
+
+	let api_key_store = match ApiKeyStore::load_from_dir(&api_keys_dir) {
+		Ok(store) => Arc::new(RwLock::new(store)),
+		Err(e) => {
+			eprintln!("Failed to load API keys: {e}");
 			std::process::exit(-1);
 		},
 	};
@@ -415,7 +421,7 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone());
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), Arc::clone(&api_key_store));
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
@@ -498,33 +504,5 @@ fn upsert_payment_details(
 		Err(e) => {
 			error!("Failed to write payment to persistence: {e}");
 		},
-	}
-}
-
-/// Loads the API key from a file, or generates a new one if it doesn't exist.
-/// The API key file is stored with 0400 permissions (read-only for owner).
-fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
-	let api_key_path = storage_dir.join(API_KEY_FILE);
-
-	if api_key_path.exists() {
-		let key_bytes = fs::read(&api_key_path)?;
-		Ok(key_bytes.to_lower_hex_string())
-	} else {
-		// Ensure the storage directory exists
-		fs::create_dir_all(storage_dir)?;
-
-		// Generate a 32-byte random API key
-		let mut key_bytes = [0u8; 32];
-		getrandom::getrandom(&mut key_bytes).map_err(std::io::Error::other)?;
-
-		// Write the raw bytes to the file
-		fs::write(&api_key_path, key_bytes)?;
-
-		// Set permissions to 0400 (read-only for owner)
-		let permissions = fs::Permissions::from_mode(0o400);
-		fs::set_permissions(&api_key_path, permissions)?;
-
-		debug!("Generated new API key at {}", api_key_path.display());
-		Ok(key_bytes.to_lower_hex_string())
 	}
 }
