@@ -13,7 +13,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventEnvelope {
-	#[prost(oneof = "event_envelope::Event", tags = "2, 3, 4, 6")]
+	#[prost(oneof = "event_envelope::Event", tags = "2, 3, 4, 6, 7")]
 	pub event: ::core::option::Option<event_envelope::Event>,
 }
 /// Nested message and enum types in `EventEnvelope`.
@@ -31,6 +31,8 @@ pub mod event_envelope {
 		PaymentFailed(super::PaymentFailed),
 		#[prost(message, tag = "6")]
 		PaymentForwarded(super::PaymentForwarded),
+		#[prost(message, tag = "7")]
+		PaymentClaimable(super::PaymentClaimable),
 	}
 }
 /// PaymentReceived indicates a payment has been received.
@@ -60,6 +62,17 @@ pub struct PaymentSuccessful {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaymentFailed {
 	/// The payment details for the payment in event.
+	#[prost(message, optional, tag = "1")]
+	pub payment: ::core::option::Option<super::types::Payment>,
+}
+/// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
+/// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaymentClaimable {
+	/// The payment details for the claimable payment.
 	#[prost(message, optional, tag = "1")]
 	pub payment: ::core::option::Option<super::types::Payment>,
 }

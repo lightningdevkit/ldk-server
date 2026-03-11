@@ -19,6 +19,7 @@ use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
 use ldk_server_protos::endpoints::{
+	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
@@ -29,7 +30,10 @@ use ldk_server_protos::endpoints::{
 };
 use prost::Message;
 
+use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
+use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
 use crate::api::bolt11_receive::handle_bolt11_receive_request;
+use crate::api::bolt11_receive_for_hash::handle_bolt11_receive_for_hash_request;
 use crate::api::bolt11_send::handle_bolt11_send_request;
 use crate::api::bolt12_receive::handle_bolt12_receive_request;
 use crate::api::bolt12_send::handle_bolt12_send_request;
@@ -216,6 +220,27 @@ impl Service<Request<Incoming>> for NodeService {
 				auth_params,
 				api_key,
 				handle_bolt11_receive_request,
+			)),
+			BOLT11_RECEIVE_FOR_HASH_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_bolt11_receive_for_hash_request,
+			)),
+			BOLT11_CLAIM_FOR_HASH_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_bolt11_claim_for_hash_request,
+			)),
+			BOLT11_FAIL_FOR_HASH_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_bolt11_fail_for_hash_request,
 			)),
 			BOLT11_SEND_PATH => Box::pin(handle_request(
 				context,
