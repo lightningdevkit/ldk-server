@@ -12,7 +12,8 @@ use std::path::PathBuf;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use config::{
-	get_default_api_key_path, get_default_cert_path, get_default_config_path, load_config,
+	api_key_path_for_storage_dir, cert_path_for_storage_dir, get_default_api_key_path,
+	get_default_cert_path, get_default_config_path, load_config,
 };
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
@@ -433,15 +434,22 @@ async fn main() {
 
 	let config_path = cli.config.map(PathBuf::from).or_else(get_default_config_path);
 	let config = config_path.as_ref().and_then(|p| load_config(p).ok());
+	let storage_dir =
+		config.as_ref().and_then(|c| c.storage.as_ref()?.disk.as_ref()?.dir_path.as_deref());
 
-	// Get API key from argument, then from api_key file
+	// Get API key from argument, then from api_key file in storage dir, then from default location
 	let api_key = cli
 		.api_key
 		.or_else(|| {
-			// Try to read from api_key file based on network (file contains raw bytes)
-			let network = config.as_ref().and_then(|c| c.network().ok()).unwrap_or("bitcoin".to_string());
-			get_default_api_key_path(&network)
+			let network =
+				config.as_ref().and_then(|c| c.network().ok()).unwrap_or("bitcoin".to_string());
+			storage_dir
+				.map(|dir| api_key_path_for_storage_dir(dir, &network))
 				.and_then(|path| std::fs::read(&path).ok())
+				.or_else(|| {
+					get_default_api_key_path(&network)
+						.and_then(|path| std::fs::read(&path).ok())
+				})
 				.map(|bytes| bytes.to_lower_hex_string())
 		})
 		.unwrap_or_else(|| {
@@ -457,11 +465,15 @@ async fn main() {
 				std::process::exit(1);
 			});
 
-	// Get TLS cert path from argument, then from config file, then try default location
+	// Get TLS cert path from argument, then from config tls.cert_path, then from storage dir,
+	// then try default location.
 	let tls_cert_path = cli.tls_cert.map(PathBuf::from).or_else(|| {
 		config
 			.as_ref()
 			.and_then(|c| c.tls.as_ref().and_then(|t| t.cert_path.as_ref().map(PathBuf::from)))
+			.or_else(|| {
+				storage_dir.map(cert_path_for_storage_dir).filter(|path| path.exists())
+			})
 			.or_else(get_default_cert_path)
 	})
 		.unwrap_or_else(|| {
