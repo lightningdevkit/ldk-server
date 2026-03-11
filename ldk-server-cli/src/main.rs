@@ -364,12 +364,14 @@ enum Commands {
 	},
 	#[command(about = "Connect to a peer on the Lightning Network without opening a channel")]
 	ConnectPeer {
-		#[arg(help = "The hex-encoded public key of the node to connect to")]
+		#[arg(
+			help = "The peer to connect to in pubkey@address format, or just the pubkey if address is provided separately"
+		)]
 		node_pubkey: String,
 		#[arg(
-			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
+			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port). Optional if address is included in pubkey via @ separator."
 		)]
-		address: String,
+		address: Option<String>,
 		#[arg(
 			long,
 			default_value_t = false,
@@ -799,6 +801,14 @@ async fn main() {
 			);
 		},
 		Commands::ConnectPeer { node_pubkey, address, persist } => {
+			let (node_pubkey, address) = if let Some(address) = address {
+				(node_pubkey, address)
+			} else if let Some((pubkey, addr)) = node_pubkey.split_once('@') {
+				(pubkey.to_string(), addr.to_string())
+			} else {
+				eprintln!("Error: address is required. Provide it as pubkey@address or as a separate argument.");
+				std::process::exit(1);
+			};
 			handle_response_result::<_, ConnectPeerResponse>(
 				client.connect_peer(ConnectPeerRequest { node_pubkey, address, persist }).await,
 			);
