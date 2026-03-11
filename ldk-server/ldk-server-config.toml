@@ -5,6 +5,7 @@ listening_addresses = ["localhost:3001"]      # Lightning node listening address
 announcement_addresses = ["54.3.7.81:3001"]   # Lightning node announcement addresses
 rest_service_address = "127.0.0.1:3002"       # LDK Server REST address
 alias = "ldk_server"                          # Lightning node alias
+#rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/"  # Optional: RGS URL for rapid gossip sync
 
 # Storage settings
 [storage.disk]
