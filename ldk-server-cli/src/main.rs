@@ -338,6 +338,7 @@ enum Commands {
 		#[arg(long, help = "Page token to continue from a previous page (format: token:index)")]
 		page_token: Option<String>,
 	},
+	#[command(about = "Update the forwarding fees and CLTV expiry delta for an existing channel")]
 	UpdateChannelConfig {
 		#[arg(help = "The local user_channel_id of this channel")]
 		user_channel_id: String,
