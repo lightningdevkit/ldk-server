@@ -14,7 +14,10 @@ use ldk_server_protos::types::channel_config::MaxDustHtlcExposure;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 
+pub(crate) mod bolt11_claim_for_hash;
+pub(crate) mod bolt11_fail_for_hash;
 pub(crate) mod bolt11_receive;
+pub(crate) mod bolt11_receive_for_hash;
 pub(crate) mod bolt11_send;
 pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_send;

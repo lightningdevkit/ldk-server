@@ -12,6 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use ldk_server_protos::api::{
+	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
+	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
@@ -30,6 +32,7 @@ use ldk_server_protos::api::{
 	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
+	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
@@ -140,6 +143,34 @@ impl LdkServerClient {
 		&self, request: Bolt11ReceiveRequest,
 	) -> Result<Bolt11ReceiveResponse, LdkServerError> {
 		let url = format!("https://{}/{BOLT11_RECEIVE_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieve a new BOLT11 payable invoice for a given payment hash.
+	/// The inbound payment will NOT be automatically claimed upon arrival.
+	/// For API contract/usage, refer to docs for [`Bolt11ReceiveForHashRequest`] and [`Bolt11ReceiveForHashResponse`].
+	pub async fn bolt11_receive_for_hash(
+		&self, request: Bolt11ReceiveForHashRequest,
+	) -> Result<Bolt11ReceiveForHashResponse, LdkServerError> {
+		let url = format!("https://{}/{BOLT11_RECEIVE_FOR_HASH_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Manually claim a payment for a given payment hash with the corresponding preimage.
+	/// For API contract/usage, refer to docs for [`Bolt11ClaimForHashRequest`] and [`Bolt11ClaimForHashResponse`].
+	pub async fn bolt11_claim_for_hash(
+		&self, request: Bolt11ClaimForHashRequest,
+	) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
+		let url = format!("https://{}/{BOLT11_CLAIM_FOR_HASH_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Manually fail a payment for a given payment hash.
+	/// For API contract/usage, refer to docs for [`Bolt11FailForHashRequest`] and [`Bolt11FailForHashResponse`].
+	pub async fn bolt11_fail_for_hash(
+		&self, request: Bolt11FailForHashRequest,
+	) -> Result<Bolt11FailForHashResponse, LdkServerError> {
+		let url = format!("https://{}/{BOLT11_FAIL_FOR_HASH_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

@@ -148,6 +148,73 @@ message Bolt11ReceiveResponse {
   string invoice = 1;
 }
 
+// Return a BOLT11 payable invoice for a given payment hash.
+// The inbound payment will NOT be automatically claimed upon arrival.
+// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForHash`
+// or manually failed by calling `Bolt11FailForHash`.
+// See more:
+// - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash
+// - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash
+message Bolt11ReceiveForHashRequest {
+
+  // The amount in millisatoshi to receive. If unset, a "zero-amount" or variable-amount invoice is returned.
+  optional uint64 amount_msat = 1;
+
+  // An optional description to attach along with the invoice.
+  // Will be set in the description field of the encoded payment request.
+  types.Bolt11InvoiceDescription description = 2;
+
+  // Invoice expiry time in seconds.
+  uint32 expiry_secs = 3;
+
+  // The hex-encoded 32-byte payment hash to use for the invoice.
+  string payment_hash = 4;
+}
+
+// The response `content` for the `Bolt11ReceiveForHash` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message Bolt11ReceiveForHashResponse {
+
+  // An invoice for a payment within the Lightning Network.
+  // With the details of the invoice, the sender has all the data necessary to send a payment
+  // to the recipient.
+  string invoice = 1;
+}
+
+// Manually claim a payment for a given payment hash with the corresponding preimage.
+// This should be used to claim payments created via `Bolt11ReceiveForHash`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash
+message Bolt11ClaimForHashRequest {
+
+  // The hex-encoded 32-byte payment hash.
+  // If provided, it will be used to verify that the preimage matches.
+  optional string payment_hash = 1;
+
+  // The amount in millisatoshi that is claimable.
+  // If not provided, skips amount verification.
+  optional uint64 claimable_amount_msat = 2;
+
+  // The hex-encoded 32-byte payment preimage.
+  string preimage = 3;
+}
+
+// The response `content` for the `Bolt11ClaimForHash` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message Bolt11ClaimForHashResponse {}
+
+// Manually fail a payment for a given payment hash.
+// This should be used to reject payments created via `Bolt11ReceiveForHash`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash
+message Bolt11FailForHashRequest {
+
+  // The hex-encoded 32-byte payment hash.
+  string payment_hash = 1;
+}
+
+// The response `content` for the `Bolt11FailForHash` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message Bolt11FailForHashResponse {}
+
 // Send a payment for a BOLT11 invoice.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send
 message Bolt11SendRequest {
