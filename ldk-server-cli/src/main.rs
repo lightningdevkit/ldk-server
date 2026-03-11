@@ -31,10 +31,10 @@ use ldk_server_client::ldk_server_protos::api::{
 	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
 	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
 	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
-	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
+	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
+	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
 	VerifySignatureRequest, VerifySignatureResponse,
 };
@@ -384,6 +384,8 @@ enum Commands {
 		#[arg(help = "The hex-encoded public key of the node to disconnect from")]
 		node_pubkey: String,
 	},
+	#[command(about = "Return a list of peers")]
+	ListPeers,
 	#[command(about = "Sign a message with the node's secret key")]
 	SignMessage {
 		#[arg(help = "The message to sign")]
@@ -816,6 +818,11 @@ async fn main() {
 		Commands::DisconnectPeer { node_pubkey } => {
 			handle_response_result::<_, DisconnectPeerResponse>(
 				client.disconnect_peer(DisconnectPeerRequest { node_pubkey }).await,
+			);
+		},
+		Commands::ListPeers => {
+			handle_response_result::<_, ListPeersResponse>(
+				client.list_peers(ListPeersRequest {}).await,
 			);
 		},
 		Commands::SignMessage { message } => {

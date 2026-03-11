@@ -182,6 +182,33 @@ async fn test_cli_connect_peer() {
 	assert!(output.is_object());
 }
 
+#[tokio::test]
+async fn test_cli_list_peers_empty() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let output = run_cli(&server, &["list-peers"]);
+	assert!(output["peers"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cli_list_peers() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
+	run_cli(&server_a, &["connect-peer", server_b.node_id(), &addr]);
+
+	let output = run_cli(&server_a, &["list-peers"]);
+	let peers = output["peers"].as_array().unwrap();
+	assert_eq!(peers.len(), 1);
+	assert_eq!(peers[0]["node_id"], server_b.node_id());
+	assert_eq!(peers[0]["address"], addr);
+	assert_eq!(peers[0]["is_persisted"], false);
+	assert_eq!(peers[0]["is_connected"], true);
+}
+
 // === CLI tests: Group 4 — Two-node with channel ===
 
 #[tokio::test]

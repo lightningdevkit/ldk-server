@@ -22,7 +22,7 @@ use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256}
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
-use ldk_node::{ChannelDetails, LightningBalance, PendingSweepBalance, UserChannelId};
+use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance, UserChannelId};
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use ldk_server_protos::types::confirmation_status::Status::{Confirmed, Unconfirmed};
 use ldk_server_protos::types::lightning_balance::BalanceType::{
@@ -36,13 +36,22 @@ use ldk_server_protos::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
 use ldk_server_protos::types::{
-	bolt11_invoice_description, Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment,
+	bolt11_invoice_description, Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment, Peer,
 };
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{
 	AuthError, InternalServerError, InvalidRequestError, LightningError,
 };
+
+pub(crate) fn peer_to_proto(peer: PeerDetails) -> Peer {
+	Peer {
+		node_id: peer.node_id.to_string(),
+		address: peer.address.to_string(),
+		is_persisted: peer.is_persisted,
+		is_connected: peer.is_connected,
+	}
+}
 
 pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 	Channel {
