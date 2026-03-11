@@ -167,6 +167,10 @@ fn main() {
 		builder.set_pathfinding_scores_source(pathfinding_scores_source);
 	}
 
+	if let Some(rgs_server_url) = config_file.rgs_server_url {
+		builder.set_gossip_source_rgs(rgs_server_url);
+	}
+
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
 	builder.set_liquidity_provider_lsps2(
