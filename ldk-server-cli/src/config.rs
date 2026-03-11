@@ -44,10 +44,19 @@ pub fn get_default_api_key_path(network: &str) -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(network).join(API_KEY_FILE))
 }
 
+pub fn api_key_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
+	PathBuf::from(storage_dir).join(network).join(API_KEY_FILE)
+}
+
+pub fn cert_path_for_storage_dir(storage_dir: &str) -> PathBuf {
+	PathBuf::from(storage_dir).join(DEFAULT_CERT_FILE)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
 	pub node: NodeConfig,
 	pub tls: Option<TlsConfig>,
+	pub storage: Option<StorageConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -59,6 +68,16 @@ pub struct TlsConfig {
 pub struct NodeConfig {
 	pub rest_service_address: String,
 	network: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StorageConfig {
+	pub disk: Option<DiskConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DiskConfig {
+	pub dir_path: Option<String>,
 }
 
 impl Config {
