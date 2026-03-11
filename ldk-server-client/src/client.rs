@@ -22,20 +22,21 @@ use ldk_server_protos::api::{
 	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
 	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
 	ListChannelsResponse, ListForwardedPaymentsRequest, ListForwardedPaymentsResponse,
-	ListPaymentsRequest, ListPaymentsResponse, OnchainReceiveRequest, OnchainReceiveResponse,
-	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
-	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
+	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
+	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
-	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -274,6 +275,15 @@ impl LdkServerClient {
 		&self, request: DisconnectPeerRequest,
 	) -> Result<DisconnectPeerResponse, LdkServerError> {
 		let url = format!("https://{}/{DISCONNECT_PEER_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Retrieves list of peers.
+	/// For API contract/usage, refer to docs for [`ListPeersRequest`] and [`ListPeersResponse`].
+	pub async fn list_peers(
+		&self, request: ListPeersRequest,
+	) -> Result<ListPeersResponse, LdkServerError> {
+		let url = format!("https://{}/{LIST_PEERS_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

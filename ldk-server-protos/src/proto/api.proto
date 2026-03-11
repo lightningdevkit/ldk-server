@@ -597,6 +597,18 @@ message DisconnectPeerRequest {
 // When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
 message DisconnectPeerResponse {}
 
+// Returns a list of peers.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers
+message ListPeersRequest {}
+
+// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message ListPeersResponse {
+
+  // List of peers.
+  repeated types.Peer peers = 1;
+}
+
 // Returns a list of all known short channel IDs in the network graph.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels
 message GraphListChannelsRequest {}

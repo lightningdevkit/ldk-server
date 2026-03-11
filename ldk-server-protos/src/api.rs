@@ -761,6 +761,24 @@ pub struct DisconnectPeerRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisconnectPeerResponse {}
+/// Returns a list of peers.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListPeersRequest {}
+/// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListPeersResponse {
+	/// List of peers.
+	#[prost(message, repeated, tag = "1")]
+	pub peers: ::prost::alloc::vec::Vec<super::types::Peer>,
+}
 /// Returns a list of all known short channel IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

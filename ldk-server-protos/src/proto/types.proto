@@ -792,6 +792,22 @@ message GraphNodeAnnouncement {
   repeated string addresses = 4;
 }
 
+// Details of a known Lightning peer.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers
+message Peer {
+  // The hex-encoded node ID of the peer.
+  string node_id = 1;
+
+  // The network address of the peer.
+  string address = 2;
+
+  // Indicates whether we'll try to reconnect to this peer after restarts.
+  bool is_persisted = 3;
+
+  // Indicates whether we currently have an active connection with the peer.
+  bool is_connected = 4;
+}
+
 // Details about a node in the network graph, known from the network announcement.
 message GraphNode {
   // All valid channels a node has announced.
