@@ -163,6 +163,10 @@ fn main() {
 		},
 	}
 
+	if let Some(pathfinding_scores_source) = config_file.pathfinding_scores_source {
+		builder.set_pathfinding_scores_source(pathfinding_scores_source.url);
+	}
+
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
 	builder.set_liquidity_provider_lsps2(
