@@ -163,6 +163,14 @@ fn main() {
 		},
 	}
 
+	if let Some(lsps2_client_config) = config_file.lsps2_client_config {
+		builder.set_liquidity_source_lsps2(
+			lsps2_client_config.node_id,
+			lsps2_client_config.address,
+			lsps2_client_config.token,
+		);
+	}
+
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
 	builder.set_liquidity_provider_lsps2(
