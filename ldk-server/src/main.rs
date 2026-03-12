@@ -50,6 +50,7 @@ use crate::io::persist::{
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
+use crate::util::metrics::{Metrics, BUILD_METRICS_INTERVAL};
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
 
@@ -256,6 +257,27 @@ fn main() {
 			}
 		};
 		let event_node = Arc::clone(&node);
+
+		let metrics: Option<Arc<Metrics>> = if config_file.metrics_enabled {
+			let metrics_node = Arc::clone(&node);
+			let mut interval = tokio::time::interval(BUILD_METRICS_INTERVAL);
+			let metrics = Arc::new(Metrics::new());
+			let metrics_bg = Arc::clone(&metrics);
+
+			// Initialize metrics that are event-driven to ensure they start with correct values from persistence
+			metrics.initialize_payment_metrics(&metrics_node);
+
+			runtime.spawn(async move {
+				loop {
+					interval.tick().await;
+					metrics_bg.update_all_pollable_metrics(&metrics_node);
+				}
+			});
+			Some(metrics)
+		} else {
+			None
+		};
+
 		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
 			.await
 			.expect("Failed to bind listening port");
@@ -320,6 +342,10 @@ fn main() {
 								&event_node,
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
+
+							if let Some(metrics) = &metrics {
+								metrics.update_payments_count(true);
+							}
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -331,6 +357,10 @@ fn main() {
 								&event_node,
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
+
+							if let Some(metrics) = &metrics {
+								metrics.update_payments_count(false);
+							}
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							if let Some(payment_details) = event_node.payment(&payment_id) {
@@ -415,7 +445,7 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone());
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone(), metrics.clone());
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
