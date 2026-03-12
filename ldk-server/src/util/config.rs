@@ -51,6 +51,7 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+	pub pathfinding_scores_source_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +88,7 @@ struct ConfigBuilder {
 	lsps2: Option<LiquidityConfig>,
 	log_level: Option<String>,
 	log_file_path: Option<String>,
+	pathfinding_scores_source_url: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -100,6 +102,8 @@ impl ConfigBuilder {
 			self.rest_service_address =
 				node.rest_service_address.or(self.rest_service_address.clone());
 			self.alias = node.alias.or(self.alias.clone());
+			self.pathfinding_scores_source_url =
+				node.pathfinding_scores_source_url.or(self.pathfinding_scores_source_url.clone());
 		}
 
 		if let Some(storage) = toml.storage {
@@ -180,6 +184,10 @@ impl ConfigBuilder {
 
 		if let Some(storage_dir_path) = &args.storage_dir_path {
 			self.storage_dir_path = Some(storage_dir_path.clone());
+		}
+
+		if let Some(pathfinding_scores_source_url) = &args.pathfinding_scores_source_url {
+			self.pathfinding_scores_source_url = Some(pathfinding_scores_source_url.clone());
 		}
 	}
 
@@ -330,6 +338,8 @@ impl ConfigBuilder {
 		#[cfg(not(feature = "experimental-lsps2-support"))]
 		let lsps2_service_config = None;
 
+		let pathfinding_scores_source_url = self.pathfinding_scores_source_url;
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -344,6 +354,7 @@ impl ConfigBuilder {
 			lsps2_service_config,
 			log_level,
 			log_file_path: self.log_file_path,
+			pathfinding_scores_source_url,
 		})
 	}
 }
@@ -369,6 +380,7 @@ struct NodeConfig {
 	announcement_addresses: Option<Vec<String>>,
 	rest_service_address: Option<String>,
 	alias: Option<String>,
+	pathfinding_scores_source_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -539,6 +551,13 @@ pub struct ArgsConfig {
 		help = "The path where the underlying LDK and BDK persist their data."
 	)]
 	storage_dir_path: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_PATHFINDING_SCORES_SOURCE_URL",
+		help = "The external scores source that is merged into the local scoring system to improve routing."
+	)]
+	pathfinding_scores_source_url: Option<String>,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
@@ -664,6 +683,7 @@ mod tests {
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
+			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
 		}
 	}
 
@@ -679,6 +699,7 @@ mod tests {
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
+			pathfinding_scores_source_url: None,
 		}
 	}
 
@@ -745,6 +766,7 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source_url: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -760,6 +782,7 @@ mod tests {
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.log_level, expected.log_level);
 		assert_eq!(config.log_file_path, expected.log_file_path);
+		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 
 		// Test case where only electrum is set
 
@@ -770,6 +793,7 @@ mod tests {
 			announcement_addresses = ["54.3.7.81:3001"]
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
+			pathfinding_scores_source_url = "https://example.com/"
 
 			[tls]
 			cert_path = "/path/to/tls.crt"
@@ -820,6 +844,7 @@ mod tests {
 			announcement_addresses = ["54.3.7.81:3001"]
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
+			pathfinding_scores_source_url = "https://example.com/"
 
 			[tls]
 			cert_path = "/path/to/tls.crt"
@@ -876,6 +901,7 @@ mod tests {
 			announcement_addresses = ["54.3.7.81:3001"]
 			rest_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
+			pathfinding_scores_source_url = "https://example.com/"
 
 			[tls]
 			cert_path = "/path/to/tls.crt"
@@ -1048,6 +1074,7 @@ mod tests {
 			lsps2_service_config: None,
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1059,6 +1086,7 @@ mod tests {
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert!(config.lsps2_service_config.is_none());
+		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 	}
 
 	#[test]
@@ -1148,6 +1176,7 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1160,6 +1189,7 @@ mod tests {
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
+		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 	}
 
 	#[test]
