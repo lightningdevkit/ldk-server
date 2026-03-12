@@ -51,6 +51,7 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+	pub pathfinding_scores_source: Option<PathfindingScoresSource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +66,11 @@ pub enum ChainSource {
 	Rpc { rpc_host: String, rpc_port: u16, rpc_user: String, rpc_password: String },
 	Electrum { server_url: String },
 	Esplora { server_url: String },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PathfindingScoresSource {
+	pub url: String,
 }
 
 /// A builder for `Config`.
@@ -87,6 +93,7 @@ struct ConfigBuilder {
 	lsps2: Option<LiquidityConfig>,
 	log_level: Option<String>,
 	log_file_path: Option<String>,
+	pathfinding_scores_source: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -143,6 +150,11 @@ impl ConfigBuilder {
 				hosts: tls.hosts.unwrap_or_default(),
 			});
 		}
+
+		if let Some(pathfinding) = toml.pathfinding {
+			self.pathfinding_scores_source =
+				pathfinding.scores_source_url.or(self.pathfinding_scores_source.clone());
+		}
 	}
 
 	fn merge_args(&mut self, args: &ArgsConfig) {
@@ -180,6 +192,10 @@ impl ConfigBuilder {
 
 		if let Some(storage_dir_path) = &args.storage_dir_path {
 			self.storage_dir_path = Some(storage_dir_path.clone());
+		}
+
+		if let Some(pathfinding_scores_source) = &args.pathfinding_scores_source {
+			self.pathfinding_scores_source = Some(pathfinding_scores_source.clone());
 		}
 	}
 
@@ -330,6 +346,11 @@ impl ConfigBuilder {
 		#[cfg(not(feature = "experimental-lsps2-support"))]
 		let lsps2_service_config = None;
 
+		let pathfinding_scores_source = self
+			.pathfinding_scores_source
+			.filter(|s| !s.is_empty())
+			.map(|url| PathfindingScoresSource { url });
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -344,6 +365,7 @@ impl ConfigBuilder {
 			lsps2_service_config,
 			log_level,
 			log_file_path: self.log_file_path,
+			pathfinding_scores_source,
 		})
 	}
 }
@@ -360,6 +382,7 @@ pub struct TomlConfig {
 	liquidity: Option<LiquidityConfig>,
 	log: Option<LogConfig>,
 	tls: Option<TomlTlsConfig>,
+	pathfinding: Option<PathfindingTomlConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -415,6 +438,11 @@ struct TomlTlsConfig {
 	cert_path: Option<String>,
 	key_path: Option<String>,
 	hosts: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct PathfindingTomlConfig {
+	scores_source_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -539,6 +567,13 @@ pub struct ArgsConfig {
 		help = "The path where the underlying LDK and BDK persist their data."
 	)]
 	storage_dir_path: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_PATHFINDING_SCORES_SOURCE",
+		help = "The external scores source that is merged into the local scoring system to improve routing."
+	)]
+	pathfinding_scores_source: Option<String>,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
@@ -650,6 +685,9 @@ mod tests {
 				min_payment_size_msat = 10000000          # 10,000 satoshis
 				max_payment_size_msat = 25000000000       # 0.25 BTC
 				client_trusts_lsp = true
+
+				[pathfinding]
+				scores_source_url = ""
 				"#;
 
 	fn default_args_config() -> ArgsConfig {
@@ -664,6 +702,7 @@ mod tests {
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
+			pathfinding_scores_source: Some(String::from("https://rapidsync.lightningdevkit.org/")),
 		}
 	}
 
@@ -679,6 +718,7 @@ mod tests {
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
+			pathfinding_scores_source: None,
 		}
 	}
 
@@ -745,6 +785,7 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -760,6 +801,7 @@ mod tests {
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.log_level, expected.log_level);
 		assert_eq!(config.log_file_path, expected.log_file_path);
+		assert_eq!(config.pathfinding_scores_source, expected.pathfinding_scores_source);
 
 		// Test case where only electrum is set
 
@@ -800,6 +842,9 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+
+			[pathfinding]
+			scores_source_url = "https://rapidsync.lightningdevkit.org/"
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -852,6 +897,9 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+
+			[pathfinding]
+			scores_source_url = "https://rapidsync.lightningdevkit.org/"
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -911,6 +959,9 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+
+			[pathfinding]
+			scores_source_url = "https://rapidsync.lightningdevkit.org/"
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1048,6 +1099,9 @@ mod tests {
 			lsps2_service_config: None,
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source: Some(PathfindingScoresSource {
+				url: "https://rapidsync.lightningdevkit.org/".to_string(),
+			}),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1059,6 +1113,7 @@ mod tests {
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert!(config.lsps2_service_config.is_none());
+		assert_eq!(config.pathfinding_scores_source, expected.pathfinding_scores_source);
 	}
 
 	#[test]
@@ -1148,6 +1203,9 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			pathfinding_scores_source: Some(PathfindingScoresSource {
+				url: "https://rapidsync.lightningdevkit.org/".to_string(),
+			}),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1160,6 +1218,7 @@ mod tests {
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
+		assert_eq!(config.pathfinding_scores_source, expected.pathfinding_scores_source);
 	}
 
 	#[test]

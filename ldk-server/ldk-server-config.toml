@@ -77,3 +77,7 @@ client_trusts_lsp = false
 ## A token we may require to be sent by the clients.
 ## If set, only requests matching this token will be accepted. (uncomment and set if required)
 # require_token = ""
+
+# External Pathfinding Scores Source
+[pathfinding]
+scores_source_url = ""
