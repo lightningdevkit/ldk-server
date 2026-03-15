@@ -1000,6 +1000,26 @@ pub struct GraphNodeAnnouncement {
 	#[prost(string, repeated, tag = "4")]
 	pub addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Details of a known Lightning peer.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Peer {
+	/// The hex-encoded node ID of the peer.
+	#[prost(string, tag = "1")]
+	pub node_id: ::prost::alloc::string::String,
+	/// The network address of the peer.
+	#[prost(string, tag = "2")]
+	pub address: ::prost::alloc::string::String,
+	/// Indicates whether we'll try to reconnect to this peer after restarts.
+	#[prost(bool, tag = "3")]
+	pub is_persisted: bool,
+	/// Indicates whether we currently have an active connection with the peer.
+	#[prost(bool, tag = "4")]
+	pub is_connected: bool,
+}
 /// Details about a node in the network graph, known from the network announcement.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

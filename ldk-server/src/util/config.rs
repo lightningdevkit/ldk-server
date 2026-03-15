@@ -46,6 +46,7 @@ pub struct Config {
 	pub rest_service_addr: SocketAddr,
 	pub storage_dir_path: Option<String>,
 	pub chain_source: ChainSource,
+	pub rgs_server_url: Option<String>,
 	pub rabbitmq_connection_string: String,
 	pub rabbitmq_exchange_name: String,
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
@@ -82,6 +83,7 @@ struct ConfigBuilder {
 	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
+	rgs_server_url: Option<String>,
 	rabbitmq_connection_string: Option<String>,
 	rabbitmq_exchange_name: Option<String>,
 	lsps2: Option<LiquidityConfig>,
@@ -100,6 +102,7 @@ impl ConfigBuilder {
 			self.rest_service_address =
 				node.rest_service_address.or(self.rest_service_address.clone());
 			self.alias = node.alias.or(self.alias.clone());
+			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
 		}
 
 		if let Some(storage) = toml.storage {
@@ -339,6 +342,7 @@ impl ConfigBuilder {
 			rest_service_addr,
 			storage_dir_path: self.storage_dir_path,
 			chain_source,
+			rgs_server_url: self.rgs_server_url,
 			rabbitmq_connection_string,
 			rabbitmq_exchange_name,
 			lsps2_service_config,
@@ -369,6 +373,7 @@ struct NodeConfig {
 	announcement_addresses: Option<Vec<String>>,
 	rest_service_address: Option<String>,
 	alias: Option<String>,
+	rgs_server_url: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -618,6 +623,7 @@ mod tests {
 				announcement_addresses = ["54.3.7.81:3001"]
 				rest_service_address = "127.0.0.1:3002"
 				alias = "LDK Server"
+				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/"
 
 				[tls]
 				cert_path = "/path/to/tls.crt"
@@ -729,6 +735,7 @@ mod tests {
 				rpc_user: "bitcoind-testuser".to_string(),
 				rpc_password: "bitcoind-testpassword".to_string(),
 			},
+			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/".to_string()),
 			rabbitmq_connection_string: expected_rabbit_conn,
 			rabbitmq_exchange_name: expected_rabbit_exchange,
 			lsps2_service_config: Some(LSPS2ServiceConfig {
@@ -754,6 +761,7 @@ mod tests {
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
+		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		#[cfg(feature = "experimental-lsps2-support")]
@@ -1043,6 +1051,7 @@ mod tests {
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
+			rgs_server_url: None,
 			rabbitmq_connection_string: String::new(),
 			rabbitmq_exchange_name: String::new(),
 			lsps2_service_config: None,
@@ -1056,6 +1065,7 @@ mod tests {
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
+		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert!(config.lsps2_service_config.is_none());
@@ -1132,6 +1142,7 @@ mod tests {
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
+			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/".to_string()),
 			rabbitmq_connection_string: expected_rabbit_conn,
 			rabbitmq_exchange_name: expected_rabbit_exchange,
 			lsps2_service_config: Some(LSPS2ServiceConfig {
@@ -1156,6 +1167,7 @@ mod tests {
 		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
+		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		#[cfg(feature = "experimental-lsps2-support")]
