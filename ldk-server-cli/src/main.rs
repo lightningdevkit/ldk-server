@@ -589,7 +589,14 @@ async fn main() {
 		});
 
 	// Get base URL from argument then from config file
-	let base_url = resolve_base_url(cli.base_url, config.as_ref());
+	let mut base_url = resolve_base_url(cli.base_url, config.as_ref());
+
+	// Replace wildcard listen addresses with loopback addresses for connectivity
+	if base_url.contains("0.0.0.0") {
+		base_url = base_url.replacen("0.0.0.0", "127.0.0.1", 1);
+	} else if base_url.contains("[::]") {
+		base_url = base_url.replacen("[::]", "[::1]", 1);
+	}
 
 	// Get TLS cert path from argument, then from config tls.cert_path, then from storage dir,
 	// then try default location.
