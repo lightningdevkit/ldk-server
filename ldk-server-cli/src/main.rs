@@ -461,12 +461,19 @@ async fn main() {
 		});
 
 	// Get base URL from argument then from config file
-	let base_url =
+	let mut base_url =
 		cli.base_url.or_else(|| config.as_ref().map(|c| c.node.rest_service_address.clone()))
 			.unwrap_or_else(|| {
 				eprintln!("Base URL not provided. Use --base-url or ensure config file exists at ~/.ldk-server/config.toml");
 				std::process::exit(1);
 			});
+
+	// Replace wildcard listen addresses with loopback addresses for connectivity
+	if base_url.contains("0.0.0.0") {
+		base_url = base_url.replacen("0.0.0.0", "127.0.0.1", 1);
+	} else if base_url.contains("[::]") {
+		base_url = base_url.replacen("[::]", "[::1]", 1);
+	}
 
 	// Get TLS cert path from argument, then from config tls.cert_path, then from storage dir,
 	// then try default location.
