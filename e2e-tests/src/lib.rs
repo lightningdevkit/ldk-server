@@ -432,13 +432,15 @@ pub async fn setup_funded_channel(
 pub struct RabbitMqEventConsumer {
 	_connection: lapin::Connection,
 	channel: lapin::Channel,
-	queue_name: String,
+	consumer: lapin::Consumer,
 }
 
 impl RabbitMqEventConsumer {
 	/// Connect to RabbitMQ and create an exclusive queue bound to the given exchange.
 	pub async fn new(exchange_name: &str) -> Self {
-		use lapin::options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions};
+		use lapin::options::{
+			BasicConsumeOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+		};
 		use lapin::types::FieldTable;
 		use lapin::{ConnectionProperties, ExchangeKind};
 
@@ -484,32 +486,30 @@ impl RabbitMqEventConsumer {
 			.await
 			.expect("Failed to bind queue");
 
-		Self { _connection: connection, channel, queue_name }
-	}
-
-	/// Consume up to `count` events, waiting up to `timeout` for each.
-	pub async fn consume_events(
-		&self, count: usize, timeout: Duration,
-	) -> Vec<ldk_server_protos::events::EventEnvelope> {
-		use futures_util::StreamExt;
-		use lapin::options::{BasicAckOptions, BasicConsumeOptions};
-		use lapin::types::FieldTable;
-		use prost::Message;
-
-		let mut consumer = self
-			.channel
+		let consumer = channel
 			.basic_consume(
-				&self.queue_name,
-				&format!("consumer_{}", self.queue_name),
+				&queue_name,
+				&format!("consumer_{}", queue_name),
 				BasicConsumeOptions::default(),
 				FieldTable::default(),
 			)
 			.await
 			.expect("Failed to start consumer");
 
+		Self { _connection: connection, channel, consumer }
+	}
+
+	/// Consume up to `count` events, waiting up to `timeout` for each.
+	pub async fn consume_events(
+		&mut self, count: usize, timeout: Duration,
+	) -> Vec<ldk_server_protos::events::EventEnvelope> {
+		use futures_util::StreamExt;
+		use lapin::options::BasicAckOptions;
+		use prost::Message;
+
 		let mut events = Vec::new();
 		for _ in 0..count {
-			match tokio::time::timeout(timeout, consumer.next()).await {
+			match tokio::time::timeout(timeout, self.consumer.next()).await {
 				Ok(Some(Ok(delivery))) => {
 					let event = ldk_server_protos::events::EventEnvelope::decode(&*delivery.data)
 						.expect("Failed to decode event");
