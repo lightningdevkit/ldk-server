@@ -248,8 +248,8 @@ async fn test_cli_bolt11_send() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
 	// Set up event consumers before any payments
-	let consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
+	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
@@ -316,8 +316,8 @@ async fn test_cli_spontaneous_send() {
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
-	let consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
+	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
@@ -541,7 +541,7 @@ async fn test_forwarded_payment_event() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
 	// Set up RabbitMQ consumer on B before any payments
-	let consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
 
 	// Open channel A -> B (1M sats, larger for JIT forwarding)
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 1_000_000).await;
