@@ -1,0 +1,6 @@
+target/
+.git/
+.github/
+.claude/
+e2e-tests/
+*.md
