@@ -221,9 +221,9 @@ fn main() {
 
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
-	builder.set_liquidity_provider_lsps2(
-		config_file.lsps2_service_config.expect("Missing liquidity.lsps2_server config"),
-	);
+	if let Some(lsps2_config) = config_file.lsps2_service_config {
+		builder.set_liquidity_provider_lsps2(lsps2_config);
+	}
 
 	let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
 		Ok(runtime) => Arc::new(runtime),
@@ -263,15 +263,21 @@ fn main() {
 
 	#[cfg(not(feature = "events-rabbitmq"))]
 	let event_publisher: Arc<dyn EventPublisher> =
-		Arc::new(crate::io::events::event_publisher::NoopEventPublisher);
+		Arc::new(io::events::event_publisher::NoopEventPublisher);
 
 	#[cfg(feature = "events-rabbitmq")]
 	let event_publisher: Arc<dyn EventPublisher> = {
-		let rabbitmq_config = RabbitMqConfig {
-			connection_string: config_file.rabbitmq_connection_string,
-			exchange_name: config_file.rabbitmq_exchange_name,
-		};
-		Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
+		match (config_file.rabbitmq_connection_string, config_file.rabbitmq_exchange_name) {
+			(Some(connection_string), Some(exchange_name)) => {
+				let rabbitmq_config = RabbitMqConfig { connection_string, exchange_name };
+				Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
+			},
+			(None, None) => Arc::new(io::events::event_publisher::NoopEventPublisher),
+			_ => {
+				error!("Invalid RabbitMQ connection string or exchange name");
+				std::process::exit(-1);
+			},
+		}
 	};
 
 	info!("Starting up...");
