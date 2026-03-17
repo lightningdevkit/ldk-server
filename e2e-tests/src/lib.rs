@@ -93,7 +93,6 @@ pub struct LdkServerHandle {
 	pub api_key: String,
 	pub tls_cert_path: PathBuf,
 	pub node_id: [u8; 33],
-	pub exchange_name: String,
 	client: LdkServerClient,
 }
 
@@ -109,8 +108,6 @@ impl LdkServerHandle {
 		let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
 		let rpc_address = format!("{rpc_host}:{rpc_port_num}");
 
-		let exchange_name = format!("e2e_test_exchange_{rest_port}");
-
 		let config_content = format!(
 			r#"[node]
 network = "regtest"
@@ -125,10 +122,6 @@ dir_path = "{storage_dir}"
 rpc_address = "{rpc_address}"
 rpc_user = "{rpc_user}"
 rpc_password = "{rpc_password}"
-
-[rabbitmq]
-connection_string = "amqp://guest:guest@localhost:5672/%2f"
-exchange_name = "{exchange_name}"
 
 [liquidity.lsps2_service]
 advertise_service = false
@@ -202,7 +195,6 @@ client_trusts_lsp = true
 			api_key,
 			tls_cert_path,
 			node_id: [0u8; 33],
-			exchange_name,
 			client,
 		};
 
@@ -426,99 +418,72 @@ pub async fn setup_funded_channel(
 	open_resp.user_channel_id
 }
 
-/// RabbitMQ event consumer for verifying events published by ldk-server.
-pub struct RabbitMqEventConsumer {
-	_connection: lapin::Connection,
-	channel: lapin::Channel,
-	consumer: lapin::Consumer,
+/// Event consumer that spawns `ldk-server-cli subscribe` and reads JSON events from stdout.
+pub struct CliEventConsumer {
+	receiver: tokio::sync::mpsc::Receiver<ldk_server_json_models::events::Event>,
+	child: Option<Child>,
 }
 
-impl RabbitMqEventConsumer {
-	/// Connect to RabbitMQ and create an exclusive queue bound to the given exchange.
-	pub async fn new(exchange_name: &str) -> Self {
-		use lapin::options::{
-			BasicConsumeOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
-		};
-		use lapin::types::FieldTable;
-		use lapin::{ConnectionProperties, ExchangeKind};
+impl CliEventConsumer {
+	/// Start the CLI subscribe command and begin receiving events in the background.
+	pub fn new(server: &LdkServerHandle) -> Self {
+		let cli_path = cli_binary_path();
+		let mut child = Command::new(&cli_path)
+			.arg("--base-url")
+			.arg(server.base_url())
+			.arg("--api-key")
+			.arg(&server.api_key)
+			.arg("--tls-cert")
+			.arg(server.tls_cert_path.to_str().unwrap())
+			.arg("subscribe")
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn()
+			.unwrap_or_else(|e| panic!("Failed to start CLI subscribe at {:?}: {}", cli_path, e));
 
-		let connection = lapin::Connection::connect(
-			"amqp://guest:guest@localhost:5672/%2f",
-			ConnectionProperties::default(),
-		)
-		.await
-		.expect("Failed to connect to RabbitMQ");
+		let stdout = child.stdout.take().unwrap();
+		let (tx, rx) = tokio::sync::mpsc::channel(64);
 
-		let channel = connection.create_channel().await.expect("Failed to create channel");
+		std::thread::spawn(move || {
+			let reader = BufReader::new(stdout);
+			for line in reader.lines().map_while(Result::ok) {
+				let trimmed = line.trim();
+				if trimmed.is_empty() {
+					continue;
+				}
+				if let Ok(event) =
+					serde_json::from_str::<ldk_server_json_models::events::Event>(trimmed)
+				{
+					if tx.blocking_send(event).is_err() {
+						break;
+					}
+				}
+			}
+		});
 
-		// Declare exchange (idempotent — may already exist from the server)
-		channel
-			.exchange_declare(
-				exchange_name,
-				ExchangeKind::Fanout,
-				ExchangeDeclareOptions { durable: true, ..Default::default() },
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to declare exchange");
-
-		// Create exclusive auto-delete queue with server-generated name
-		let queue = channel
-			.queue_declare(
-				"",
-				QueueDeclareOptions { exclusive: true, auto_delete: true, ..Default::default() },
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to declare queue");
-		let queue_name = queue.name().to_string();
-
-		channel
-			.queue_bind(
-				&queue_name,
-				exchange_name,
-				"",
-				QueueBindOptions::default(),
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to bind queue");
-
-		let consumer = channel
-			.basic_consume(
-				&queue_name,
-				&format!("consumer_{}", queue_name),
-				BasicConsumeOptions::default(),
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to start consumer");
-
-		Self { _connection: connection, channel, consumer }
+		Self { receiver: rx, child: Some(child) }
 	}
 
 	/// Consume up to `count` events, waiting up to `timeout` for each.
 	pub async fn consume_events(
 		&mut self, count: usize, timeout: Duration,
 	) -> Vec<ldk_server_json_models::events::Event> {
-		use futures_util::StreamExt;
-		use lapin::options::BasicAckOptions;
-
 		let mut events = Vec::new();
 		for _ in 0..count {
-			match tokio::time::timeout(timeout, self.consumer.next()).await {
-				Ok(Some(Ok(delivery))) => {
-					let event: ldk_server_json_models::events::Event =
-						serde_json::from_slice(&delivery.data).expect("Failed to decode event");
-					self.channel
-						.basic_ack(delivery.delivery_tag, BasicAckOptions::default())
-						.await
-						.expect("Failed to ack");
-					events.push(event);
-				},
+			match tokio::time::timeout(timeout, self.receiver.recv()).await {
+				Ok(Some(event)) => events.push(event),
 				_ => break,
 			}
 		}
 		events
+	}
+}
+
+impl Drop for CliEventConsumer {
+	fn drop(&mut self) {
+		if let Some(mut child) = self.child.take() {
+			let _ = child.kill();
+			let _ = child.wait();
+		}
 	}
 }

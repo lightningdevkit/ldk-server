@@ -42,8 +42,8 @@ use ldk_server_json_models::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_json_models::error::{ErrorCode, ErrorResponse};
 use reqwest::header::CONTENT_TYPE;
@@ -427,6 +427,79 @@ impl LdkServerClient {
 	) -> Result<GraphGetNodeResponse, LdkServerError> {
 		let url = format!("https://{}/{GRAPH_GET_NODE_PATH}", self.base_url);
 		self.post_request(&request, &url).await
+	}
+
+	/// Subscribe to server-sent events. Returns an async stream of [`Event`] values.
+	///
+	/// The stream yields one item per SSE event. It ends when the server closes the connection.
+	///
+	/// [`Event`]: ldk_server_json_models::events::Event
+	pub async fn subscribe(
+		&self,
+	) -> Result<
+		impl futures_util::Stream<Item = ldk_server_json_models::events::Event>,
+		LdkServerError,
+	> {
+		use futures_util::StreamExt;
+		let url = format!("https://{}/{SUBSCRIBE_PATH}", self.base_url);
+		let auth_header = self.compute_auth_header(&[]);
+		let response = self
+			.client
+			.get(&url)
+			.header("X-Auth", auth_header)
+			.header("Accept", "text/event-stream")
+			.send()
+			.await
+			.map_err(|e| {
+				LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
+			})?;
+
+		if !response.status().is_success() {
+			let status = response.status();
+			let payload = response.bytes().await.map_err(|e| {
+				LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
+			})?;
+			let error_response =
+				serde_json::from_slice::<ErrorResponse>(&payload).map_err(|e| {
+					LdkServerError::new(
+						JsonParseError,
+						format!("Failed to decode error response (status {}): {}", status, e),
+					)
+				})?;
+			let error_code = match error_response.error_code {
+				ErrorCode::InvalidRequestError => InvalidRequestError,
+				ErrorCode::AuthError => AuthError,
+				ErrorCode::LightningError => LightningError,
+				ErrorCode::InternalServerError => InternalServerError,
+				ErrorCode::UnknownError => InternalError,
+			};
+			return Err(LdkServerError::new(error_code, error_response.message));
+		}
+
+		let stream = async_stream::stream! {
+			let mut byte_stream = response.bytes_stream();
+			let mut buffer = String::new();
+			while let Some(chunk) = byte_stream.next().await {
+				let chunk = match chunk {
+					Ok(c) => c,
+					Err(_) => break,
+				};
+				buffer.push_str(&String::from_utf8_lossy(&chunk));
+				while let Some(pos) = buffer.find("\n\n") {
+					let event_block = buffer[..pos].to_string();
+					buffer = buffer[pos + 2..].to_string();
+					for line in event_block.lines() {
+						if let Some(data) = line.strip_prefix("data: ") {
+							if let Ok(event) = serde_json::from_str::<ldk_server_json_models::events::Event>(data) {
+								yield event;
+							}
+						}
+					}
+				}
+			}
+		};
+
+		Ok(stream)
 	}
 
 	async fn post_request<Rq: Serialize, Rs: DeserializeOwned>(

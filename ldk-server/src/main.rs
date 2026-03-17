@@ -33,12 +33,11 @@ use log::{debug, error, info};
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
+use tokio::sync::broadcast;
 
-use crate::io::events::event_publisher::EventPublisher;
 use crate::io::events::get_event_name;
-#[cfg(feature = "events-rabbitmq")]
-use crate::io::events::rabbitmq::{RabbitMqConfig, RabbitMqEventPublisher};
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
@@ -220,18 +219,7 @@ fn main() {
 			},
 		});
 
-	#[cfg(not(feature = "events-rabbitmq"))]
-	let event_publisher: Arc<dyn EventPublisher> =
-		Arc::new(crate::io::events::event_publisher::NoopEventPublisher);
-
-	#[cfg(feature = "events-rabbitmq")]
-	let event_publisher: Arc<dyn EventPublisher> = {
-		let rabbitmq_config = RabbitMqConfig {
-			connection_string: config_file.rabbitmq_connection_string,
-			exchange_name: config_file.rabbitmq_exchange_name,
-		};
-		Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
-	};
+	let (event_sender, _) = broadcast::channel::<events::Event>(256);
 
 	info!("Starting up...");
 	match node.start() {
@@ -324,8 +312,8 @@ fn main() {
 									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -335,8 +323,8 @@ fn main() {
 									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -346,8 +334,8 @@ fn main() {
 									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							publish_event_and_upsert_payment(&payment_id,
@@ -355,8 +343,8 @@ fn main() {
 									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
@@ -396,17 +384,11 @@ fn main() {
 
 							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
 
-							match event_publisher.publish(
+							let _ = event_sender.send(
 								events::Event::PaymentForwarded(events::PaymentForwarded {
 									forwarded_payment: forwarded_payment.clone(),
 								}),
-							).await {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to publish 'PaymentForwarded' event: {}", e);
-									continue;
-								}
-							};
+							);
 
 							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 								&forwarded_payment_id.to_lower_hex_string(),
@@ -433,7 +415,7 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone());
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone(), event_sender.clone());
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
@@ -472,22 +454,18 @@ fn main() {
 	info!("Shutdown complete..");
 }
 
-async fn publish_event_and_upsert_payment(
+fn publish_event_and_upsert_payment(
 	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> events::Event, event_node: &Node,
-	event_publisher: Arc<dyn EventPublisher>, paginated_store: Arc<dyn PaginatedKVStore>,
+	event_sender: &broadcast::Sender<events::Event>, paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	if let Some(payment_details) = event_node.payment(payment_id) {
 		let payment = payment_to_model(payment_details);
 
 		let event = payment_to_event(&payment);
 		let event_name = get_event_name(&event);
-		match event_publisher.publish(event).await {
-			Ok(_) => {},
-			Err(e) => {
-				error!("Failed to publish '{event_name}' event, : {e}");
-				return;
-			},
-		};
+		if event_sender.send(event).is_err() {
+			debug!("No active subscribers for '{event_name}' event");
+		}
 
 		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
 	} else {

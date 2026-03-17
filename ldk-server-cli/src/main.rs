@@ -522,6 +522,8 @@ enum Commands {
 		#[arg(help = "The hex-encoded node ID to look up")]
 		node_id: String,
 	},
+	#[command(about = "Subscribe to server-sent events and print each event as a JSON line")]
+	Subscribe,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -1113,6 +1115,19 @@ async fn main() {
 					})
 					.await,
 			);
+		},
+		Commands::Subscribe => {
+			use futures_util::StreamExt;
+			let stream = client.subscribe().await.unwrap_or_else(|e| handle_error(e));
+			tokio::pin!(stream);
+			while let Some(event) = stream.next().await {
+				match serde_json::to_string(&event) {
+					Ok(json) => println!("{json}"),
+					Err(e) => {
+						eprintln!("Error serializing event: {e}");
+					},
+				}
+			}
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),
 	}

@@ -21,7 +21,7 @@ fn main() {
 			"-p",
 			"ldk-server",
 			"--features",
-			"events-rabbitmq,experimental-lsps2-support",
+			"experimental-lsps2-support",
 			"-p",
 			"ldk-server-cli",
 		])

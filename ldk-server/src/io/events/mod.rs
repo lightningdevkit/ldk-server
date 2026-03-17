@@ -7,10 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-pub(crate) mod event_publisher;
-
-#[cfg(feature = "events-rabbitmq")]
-pub(crate) mod rabbitmq;
+pub(crate) mod sse;
 
 use ldk_server_json_models::events::Event;
 

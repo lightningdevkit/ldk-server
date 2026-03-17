@@ -38,11 +38,6 @@ server_url = "ssl://electrum.blockstream.info:50002"  # Electrum endpoint
 [esplora]
 server_url = "https://mempool.space/api"      # Esplora endpoint
 
-# RabbitMQ settings (only required if using events-rabbitmq feature)
-[rabbitmq]
-connection_string = ""                        # RabbitMQ connection string
-exchange_name = ""
-
 # LSPS2 Client Support
 [liquidity.lsps2_client]
 # The public key of the LSPS2 LSP we source just-in-time liquidity from.
