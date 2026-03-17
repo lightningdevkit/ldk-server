@@ -675,7 +675,9 @@ async fn test_cli_list_peers() {
 
 // === CLI tests: Group 4 — Two-node with channel ===
 
-async fn open_channel_via_cli(channel_amount: &str) {
+async fn open_channel_via_cli(
+	channel_amount: &str,
+) -> (TestBitcoind, LdkServerHandle, LdkServerHandle, String) {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -693,14 +695,34 @@ async fn open_channel_via_cli(channel_amount: &str) {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"],
+		&[
+			"open-channel",
+			server_b.node_id(),
+			channel_amount,
+			"--address",
+			&addr,
+			"--announce-channel",
+		],
 	);
-	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
+	let user_channel_id = output["user_channel_id"].as_str().unwrap().to_string();
+	assert!(!user_channel_id.is_empty());
+	(bitcoind, server_a, server_b, user_channel_id)
 }
 
 #[tokio::test]
 async fn test_cli_open_channel() {
-	open_channel_via_cli("100000sat").await;
+	let (bitcoind, server_a, server_b, first_user_channel_id) =
+		open_channel_via_cli("100000sat").await;
+
+	// Confirm first channel is usable before opening a second one.
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_usable_channel(server_a.client(), &bitcoind, Duration::from_secs(60)).await;
+
+	// Open a second channel without specifying address (resolved by backend from connected peers).
+	let output = run_cli(&server_a, &["open-channel", server_b.node_id(), "50000sat"]);
+	let second_user_channel_id = output["user_channel_id"].as_str().unwrap().to_string();
+	assert!(!second_user_channel_id.is_empty());
+	assert_ne!(first_user_channel_id, second_user_channel_id);
 }
 
 #[tokio::test]
@@ -729,7 +751,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 		.client()
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
-			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			address: Some(format!("127.0.0.1:{}", server_b.p2p_port)),
 			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
@@ -901,7 +923,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		.client()
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
-			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			address: Some(format!("127.0.0.1:{}", server_b.p2p_port)),
 			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,

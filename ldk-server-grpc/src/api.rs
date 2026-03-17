@@ -768,10 +768,11 @@ pub struct OpenChannelRequest {
 	/// The hex-encoded public key of the node to open a channel with.
 	#[prost(string, tag = "1")]
 	pub node_pubkey: ::prost::alloc::string::String,
-	/// An address which can be used to connect to a remote peer.
-	/// It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
-	#[prost(string, tag = "2")]
-	pub address: ::prost::alloc::string::String,
+	/// An optional address which can be used to connect to a remote peer.
+	/// It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port.
+	/// If unset, the server will try to resolve it from currently connected peers.
+	#[prost(string, optional, tag = "2")]
+	pub address: ::core::option::Option<::prost::alloc::string::String>,
 	/// The amount of satoshis to push to the remote side as part of the initial commitment state.
 	#[prost(uint64, optional, tag = "4")]
 	pub push_to_counterparty_msat: ::core::option::Option<u64>,

@@ -25,8 +25,23 @@ pub(crate) async fn handle_open_channel(
 ) -> Result<OpenChannelResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
-	let address = SocketAddress::from_str(&request.address)
-		.map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?;
+	let address = match request.address {
+		Some(address) => {
+			SocketAddress::from_str(&address).map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?
+		},
+		None => context
+			.node
+			.list_peers()
+			.into_iter()
+			.find(|peer| peer.node_id == node_id)
+			.map(|peer| peer.address)
+			.ok_or_else(|| {
+				LdkServerError::new(
+					LdkServerErrorCode::InvalidRequestError,
+					"Address is required unless the peer is currently connected. Provide an address or connect-peer first.",
+				)
+			})?,
+	};
 
 	let amount = require_amount(request.amount)?;
 

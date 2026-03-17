@@ -611,7 +611,7 @@ pub fn open_channel_schema() -> Value {
 			},
 			"address": {
 				"type": "string",
-				"description": "Address of the remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
+				"description": "Address of the remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port). If omitted, the address of the currently connected peer is used"
 			},
 			"channel_amount_sats": {
 				"oneOf": [
@@ -634,7 +634,7 @@ pub fn open_channel_schema() -> Value {
 			},
 			"channel_config": channel_config_schema()
 		},
-		"required": ["node_pubkey", "address", "channel_amount_sats"]
+		"required": ["node_pubkey", "channel_amount_sats"]
 	})
 }
 

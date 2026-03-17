@@ -567,16 +567,18 @@ enum Commands {
 	},
 	#[command(about = "Create a new outbound channel to the given remote node")]
 	OpenChannel {
-		#[arg(help = "The hex-encoded public key of the node to open a channel with")]
+		#[arg(help = "The node to open a channel with, as hex pubkey or pubkey@address format")]
 		node_pubkey: String,
-		#[arg(
-			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
-		)]
-		address: String,
 		#[arg(
 			help = "The amount to commit to the channel, e.g. 100sat or 100000msat, or 'all' to use all available on-chain funds. Exact amounts must be a whole sat amount."
 		)]
 		channel_amount: AmountOrAll,
+		#[arg(
+			short,
+			long,
+			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port). Optional if included in pubkey via @ separator or if peer is already connected."
+		)]
+		address: Option<String>,
 		#[arg(long, help = "Amount to push to the remote side, e.g. 50sat or 50000msat")]
 		push_to_counterparty: Option<Amount>,
 		#[arg(long, help = "Whether the channel should be public")]
@@ -1344,8 +1346,8 @@ async fn main() {
 		},
 		Commands::OpenChannel {
 			node_pubkey,
-			address,
 			channel_amount,
+			address,
 			push_to_counterparty,
 			announce_channel,
 			disable_counterparty_reserve,
@@ -1353,6 +1355,14 @@ async fn main() {
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
 		} => {
+			let (node_pubkey, inline_address) = parse_node_pubkey_and_inline_address(node_pubkey);
+			if inline_address.is_some() && address.is_some() {
+				handle_error_msg(
+					"Address was provided twice. Use either pubkey@address or a separate address argument."
+						.to_string(),
+				);
+			}
+			let address = address.or(inline_address);
 			let amount = match channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
 				Some(amount_sats) => open_channel_request::Amount::ChannelAmountSats(amount_sats),
 				None => open_channel_request::Amount::AllFunds(AllFunds {}),
@@ -1548,10 +1558,9 @@ async fn main() {
 			);
 		},
 		Commands::ConnectPeer { node_pubkey, address, persist } => {
-			let (node_pubkey, address) = if let Some(address) = address {
-				(node_pubkey, address)
-			} else if let Some((pubkey, addr)) = node_pubkey.split_once('@') {
-				(pubkey.to_string(), addr.to_string())
+			let (node_pubkey, inline_address) = parse_node_pubkey_and_inline_address(node_pubkey);
+			let address = if let Some(address) = address.or(inline_address) {
+				address
 			} else {
 				eprintln!("Error: address is required. Provide it as pubkey@address or as a separate argument.");
 				std::process::exit(1);
@@ -1652,6 +1661,14 @@ fn load_client_config(explicit_path: Option<PathBuf>) -> Result<Option<Config>, 
 			Err(format!("Config file '{}' does not exist or is not a file", path.display()))
 		},
 		_ => Ok(None),
+	}
+}
+
+fn parse_node_pubkey_and_inline_address(node_pubkey: String) -> (String, Option<String>) {
+	if let Some((pubkey, address)) = node_pubkey.split_once('@') {
+		(pubkey.to_string(), Some(address.to_string()))
+	} else {
+		(node_pubkey, None)
 	}
 }
 

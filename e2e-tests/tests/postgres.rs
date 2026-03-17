@@ -316,7 +316,7 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 		.client()
 		.open_channel(OpenChannelRequest {
 			node_pubkey: sqlite_c.node_id().to_string(),
-			address: format!("127.0.0.1:{}", sqlite_c.p2p_port),
+			address: Some(format!("127.0.0.1:{}", sqlite_c.p2p_port)),
 			amount: Some(open_channel_request::Amount::ChannelAmountSats(1_000_000)),
 			push_to_counterparty_msat: Some(50_000_000),
 			channel_config: None,
