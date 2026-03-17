@@ -410,7 +410,7 @@ pub async fn setup_funded_channel(
 		.client()
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
-			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			address: Some(format!("127.0.0.1:{}", server_b.p2p_port)),
 			channel_amount_sats,
 			push_to_counterparty_msat: None,
 			channel_config: None,
