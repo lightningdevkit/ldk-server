@@ -1101,7 +1101,6 @@ impl PaymentStatus {
 		}
 	}
 }
-
 /// Indicates whether the balance is derived from a cooperative close, a force-close (for holder or counterparty),
 /// or whether it is for an HTLC.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1118,7 +1117,6 @@ pub enum BalanceSource {
 	/// This balance is the result of an HTLC.
 	Htlc = 3,
 }
-
 impl BalanceSource {
 	/// String value of the enum field names used in the ProtoBuf definition.
 	///
