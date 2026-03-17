@@ -51,6 +51,7 @@ use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
+use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
 
 const API_KEY_FILE: &str = "api_key";
@@ -277,6 +278,8 @@ fn main() {
 		let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
 		info!("TLS enabled for REST service on {}", config_file.rest_service_addr);
 
+		systemd::notify_ready();
+
 		loop {
 			select! {
 				event = event_node.next_event_async() => {
@@ -453,6 +456,7 @@ fn main() {
 		}
 	});
 
+	systemd::notify_stopping();
 	node.stop().expect("Shutdown should always succeed.");
 	info!("Shutdown complete..");
 }
