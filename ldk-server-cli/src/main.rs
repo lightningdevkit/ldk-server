@@ -22,6 +22,8 @@ use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
 use ldk_server_client::ldk_server_protos::api::{
+	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
+	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
@@ -133,6 +135,48 @@ enum Commands {
 		description_hash: Option<String>,
 		#[arg(short, long, help = "Invoice expiry time in seconds (default: 86400)")]
 		expiry_secs: Option<u32>,
+	},
+	#[command(
+		about = "Create a BOLT11 hodl invoice for a given payment hash (manual claim required)"
+	)]
+	Bolt11ReceiveForHash {
+		#[arg(help = "The hex-encoded 32-byte payment hash")]
+		payment_hash: String,
+		#[arg(
+			help = "Amount to request, e.g. 50sat or 50000msat. If unset, a variable-amount invoice is returned"
+		)]
+		amount: Option<Amount>,
+		#[arg(short, long, help = "Description to attach along with the invoice")]
+		description: Option<String>,
+		#[arg(
+			long,
+			help = "SHA-256 hash of the description (hex). Use instead of description for longer text"
+		)]
+		description_hash: Option<String>,
+		#[arg(short, long, help = "Invoice expiry time in seconds (default: 86400)")]
+		expiry_secs: Option<u32>,
+	},
+	#[command(about = "Claim a held payment by providing the preimage")]
+	Bolt11ClaimForHash {
+		#[arg(help = "The hex-encoded 32-byte payment preimage")]
+		preimage: String,
+		#[arg(
+			short,
+			long,
+			help = "The claimable amount, e.g. 50sat or 50000msat, only used for verifying we are claiming the expected amount"
+		)]
+		claimable_amount: Option<Amount>,
+		#[arg(
+			short,
+			long,
+			help = "The hex-encoded 32-byte payment hash, used to verify the preimage matches"
+		)]
+		payment_hash: Option<String>,
+	},
+	#[command(about = "Fail/reject a held payment")]
+	Bolt11FailForHash {
+		#[arg(help = "The hex-encoded 32-byte payment hash")]
+		payment_hash: String,
 	},
 	#[command(about = "Pay a BOLT11 invoice")]
 	Bolt11Send {
@@ -549,6 +593,58 @@ async fn main() {
 
 			handle_response_result::<_, Bolt11ReceiveResponse>(
 				client.bolt11_receive(request).await,
+			);
+		},
+		Commands::Bolt11ReceiveForHash {
+			payment_hash,
+			amount,
+			description,
+			description_hash,
+			expiry_secs,
+		} => {
+			let amount_msat = amount.map(|a| a.to_msat());
+			let invoice_description = match (description, description_hash) {
+				(Some(desc), None) => Some(Bolt11InvoiceDescription {
+					kind: Some(bolt11_invoice_description::Kind::Direct(desc)),
+				}),
+				(None, Some(hash)) => Some(Bolt11InvoiceDescription {
+					kind: Some(bolt11_invoice_description::Kind::Hash(hash)),
+				}),
+				(Some(_), Some(_)) => {
+					handle_error(LdkServerError::new(
+						InternalError,
+						"Only one of description or description_hash can be set.".to_string(),
+					));
+				},
+				(None, None) => None,
+			};
+
+			let expiry_secs = expiry_secs.unwrap_or(DEFAULT_EXPIRY_SECS);
+			let request = Bolt11ReceiveForHashRequest {
+				description: invoice_description,
+				expiry_secs,
+				amount_msat,
+				payment_hash,
+			};
+
+			handle_response_result::<_, Bolt11ReceiveForHashResponse>(
+				client.bolt11_receive_for_hash(request).await,
+			);
+		},
+		Commands::Bolt11ClaimForHash { preimage, claimable_amount, payment_hash } => {
+			handle_response_result::<_, Bolt11ClaimForHashResponse>(
+				client
+					.bolt11_claim_for_hash(Bolt11ClaimForHashRequest {
+						payment_hash,
+						claimable_amount_msat: claimable_amount.map(|a| a.to_msat()),
+						preimage,
+					})
+					.await,
+			);
+		},
+		Commands::Bolt11FailForHash { payment_hash } => {
+			handle_response_result::<_, Bolt11FailForHashResponse>(
+				client.bolt11_fail_for_hash(Bolt11FailForHashRequest { payment_hash }).await,
 			);
 		},
 		Commands::Bolt11Send {

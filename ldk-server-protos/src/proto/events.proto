@@ -9,6 +9,7 @@ message EventEnvelope {
     PaymentSuccessful payment_successful = 3;
     PaymentFailed payment_failed = 4;
     PaymentForwarded payment_forwarded = 6;
+    PaymentClaimable payment_claimable = 7;
   }
 }
 
@@ -27,6 +28,13 @@ message PaymentSuccessful {
 // PaymentFailed indicates a sent payment has failed.
 message PaymentFailed {
   // The payment details for the payment in event.
+  types.Payment payment = 1;
+}
+
+// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
+// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
+message PaymentClaimable {
+  // The payment details for the claimable payment.
   types.Payment payment = 1;
 }
 

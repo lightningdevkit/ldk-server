@@ -344,12 +344,13 @@ fn main() {
 								Arc::clone(&paginated_store)).await;
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
-							if let Some(payment_details) = event_node.payment(&payment_id) {
-								let payment = payment_to_proto(payment_details);
-								upsert_payment_details(&event_node, Arc::clone(&paginated_store), &payment);
-							} else {
-								error!("Unable to find payment with paymentId: {payment_id}");
-							}
+							publish_event_and_upsert_payment(&payment_id,
+								|payment_ref| event_envelope::Event::PaymentClaimable(events::PaymentClaimable {
+									payment: Some(payment_ref.clone()),
+								}),
+								&event_node,
+								Arc::clone(&event_publisher),
+								Arc::clone(&paginated_store)).await;
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
