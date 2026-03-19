@@ -28,8 +28,8 @@ use ldk_server_protos::api::{
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -39,7 +39,8 @@ use ldk_server_protos::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -324,6 +325,15 @@ impl LdkServerClient {
 		&self, request: SpontaneousSendRequest,
 	) -> Result<SpontaneousSendResponse, LdkServerError> {
 		let url = format!("https://{}/{SPONTANEOUS_SEND_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.
+	/// For API contract/usage, refer to docs for [`UnifiedSendRequest`] and [`UnifiedSendResponse`].
+	pub async fn unified_send(
+		&self, request: UnifiedSendRequest,
+	) -> Result<UnifiedSendResponse, LdkServerError> {
+		let url = format!("https://{}/{UNIFIED_SEND_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

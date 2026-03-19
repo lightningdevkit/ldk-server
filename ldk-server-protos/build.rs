@@ -69,6 +69,10 @@ fn generate_protos() {
 			"types.ClaimableAwaitingConfirmations.source",
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_balance_source\"))]",
 		)
+		.field_attribute(
+			"api.UnifiedSendResponse.payment_result",
+			"#[cfg_attr(feature = \"serde\", serde(flatten))]",
+		)
 		.compile_protos(
 			&[
 				"src/proto/api.proto",

@@ -43,6 +43,7 @@ pub(crate) mod open_channel;
 pub(crate) mod sign_message;
 pub(crate) mod splice_channel;
 pub(crate) mod spontaneous_send;
+pub(crate) mod unified_send;
 pub(crate) mod update_channel_config;
 pub(crate) mod verify_signature;
 

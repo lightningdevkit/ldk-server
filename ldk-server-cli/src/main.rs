@@ -37,8 +37,8 @@ use ldk_server_client::ldk_server_protos::api::{
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -257,6 +257,32 @@ enum Commands {
 		node_id: String,
 		#[arg(help = "The amount to send, e.g. 50sat or 50000msat")]
 		amount: Amount,
+		#[arg(
+			long,
+			help = "Maximum total routing fee, e.g. 50sat or 50000msat. Defaults to 1% of payment + 50 sats"
+		)]
+		max_total_routing_fee: Option<Amount>,
+		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
+		max_total_cltv_expiry_delta: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum number of paths that may be used by MPP payments (default: 10)"
+		)]
+		max_path_count: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
+		)]
+		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(
+		about = "Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer"
+	)]
+	Pay {
+		#[arg(help = "A BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer")]
+		uri: String,
+		#[arg(help = "Amount to send, e.g. 50sat or 50000msat. Required for variable-amount URIs")]
+		amount: Option<Amount>,
 		#[arg(
 			long,
 			help = "Maximum total routing fee, e.g. 50sat or 50000msat. Defaults to 1% of payment + 50 sats"
@@ -745,6 +771,34 @@ async fn main() {
 					.spontaneous_send(SpontaneousSendRequest {
 						amount_msat,
 						node_id,
+						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
+		Commands::Pay {
+			uri,
+			amount,
+			max_total_routing_fee,
+			max_total_cltv_expiry_delta,
+			max_path_count,
+			max_channel_saturation_power_of_half,
+		} => {
+			let amount_msat = amount.map(|a| a.to_msat());
+			let max_total_routing_fee_msat = max_total_routing_fee.map(|a| a.to_msat());
+			let route_parameters = RouteParametersConfig {
+				max_total_routing_fee_msat,
+				max_total_cltv_expiry_delta: max_total_cltv_expiry_delta
+					.unwrap_or(DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA),
+				max_path_count: max_path_count.unwrap_or(DEFAULT_MAX_PATH_COUNT),
+				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
+					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
+			};
+			handle_response_result::<_, UnifiedSendResponse>(
+				client
+					.unified_send(UnifiedSendRequest {
+						uri,
+						amount_msat,
 						route_parameters: Some(route_parameters),
 					})
 					.await,
