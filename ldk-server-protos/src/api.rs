@@ -173,6 +173,12 @@ pub struct Bolt11ReceiveResponse {
 	/// to the recipient.
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
+	/// The hex-encoded 32-byte payment hash.
+	#[prost(string, tag = "2")]
+	pub payment_hash: ::prost::alloc::string::String,
+	/// The hex-encoded 32-byte payment secret.
+	#[prost(string, tag = "3")]
+	pub payment_secret: ::prost::alloc::string::String,
 }
 /// Return a BOLT11 payable invoice for a given payment hash.
 /// The inbound payment will NOT be automatically claimed upon arrival.

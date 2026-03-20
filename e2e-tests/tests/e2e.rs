@@ -14,9 +14,10 @@ use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
 	wait_for_onchain_balance, LdkServerHandle, RabbitMqEventConsumer, TestBitcoind,
 };
-use hex_conservative::DisplayHex;
+use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
+use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
 };
@@ -136,8 +137,14 @@ async fn test_cli_bolt11_receive() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 
 	let output = run_cli(&server, &["bolt11-receive", "50000sat", "-d", "test"]);
-	let invoice = output["invoice"].as_str().unwrap();
-	assert!(invoice.starts_with("lnbcrt"), "Expected lnbcrt prefix, got: {}", invoice);
+	let invoice_str = output["invoice"].as_str().unwrap();
+	assert!(invoice_str.starts_with("lnbcrt"), "Expected lnbcrt prefix, got: {}", invoice_str);
+
+	let invoice: Bolt11Invoice = invoice_str.parse().unwrap();
+	let payment_hash = sha256::Hash::from_str(output["payment_hash"].as_str().unwrap()).unwrap();
+	assert_eq!(*invoice.payment_hash(), payment_hash);
+	let payment_secret = <[u8; 32]>::from_hex(output["payment_secret"].as_str().unwrap()).unwrap();
+	assert_eq!(invoice.payment_secret().0, payment_secret);
 }
 
 #[tokio::test]

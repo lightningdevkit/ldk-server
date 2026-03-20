@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use hex::DisplayHex;
 use ldk_server_protos::api::{Bolt11ReceiveRequest, Bolt11ReceiveResponse};
 
 use crate::api::error::LdkServerError;
@@ -27,6 +28,9 @@ pub(crate) fn handle_bolt11_receive_request(
 			.receive_variable_amount(&description, request.expiry_secs)?,
 	};
 
-	let response = Bolt11ReceiveResponse { invoice: invoice.to_string() };
+	let payment_hash = invoice.payment_hash().0.to_lower_hex_string();
+	let payment_secret = invoice.payment_secret().0.to_lower_hex_string();
+	let response =
+		Bolt11ReceiveResponse { invoice: invoice.to_string(), payment_hash, payment_secret };
 	Ok(response)
 }
