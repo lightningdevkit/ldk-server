@@ -17,6 +17,7 @@ use e2e_tests::{
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
+use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
@@ -156,8 +157,12 @@ async fn test_cli_bolt12_receive() {
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
 	let output = run_cli(&server_a, &["bolt12-receive", "test offer"]);
-	let offer = output["offer"].as_str().unwrap();
-	assert!(offer.starts_with("lno"), "Expected lno prefix, got: {}", offer);
+	let offer_str = output["offer"].as_str().unwrap();
+	assert!(offer_str.starts_with("lno"), "Expected lno prefix, got: {}", offer_str);
+
+	let offer: Offer = offer_str.parse().unwrap();
+	let offer_id = <[u8; 32]>::from_hex(output["offer_id"].as_str().unwrap()).unwrap();
+	assert_eq!(offer.id().0, offer_id);
 }
 
 #[tokio::test]

@@ -328,6 +328,9 @@ message Bolt12ReceiveResponse {
   // With the details of the offer, the sender has all the data necessary to send a payment
   // to the recipient.
   string offer = 1;
+
+  // The hex-encoded offer id.
+  string offer_id = 2;
 }
 
 // Send a payment for a BOLT12 offer.

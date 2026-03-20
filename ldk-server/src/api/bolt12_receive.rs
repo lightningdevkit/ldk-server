@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use hex::DisplayHex;
 use ldk_server_protos::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
 
 use crate::api::error::LdkServerError;
@@ -28,6 +29,7 @@ pub(crate) fn handle_bolt12_receive_request(
 			.receive_variable_amount(&request.description, request.expiry_secs)?,
 	};
 
-	let response = Bolt12ReceiveResponse { offer: offer.to_string() };
+	let offer_id = offer.id().0.to_lower_hex_string();
+	let response = Bolt12ReceiveResponse { offer: offer.to_string(), offer_id };
 	Ok(response)
 }

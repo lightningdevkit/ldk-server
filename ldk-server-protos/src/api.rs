@@ -395,6 +395,9 @@ pub struct Bolt12ReceiveResponse {
 	/// to the recipient.
 	#[prost(string, tag = "1")]
 	pub offer: ::prost::alloc::string::String,
+	/// The hex-encoded offer id.
+	#[prost(string, tag = "2")]
+	pub offer_id: ::prost::alloc::string::String,
 }
 /// Send a payment for a BOLT12 offer.
 /// See more:
