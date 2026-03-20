@@ -28,6 +28,7 @@ pub(crate) mod bolt12_send;
 pub(crate) mod close_channel;
 pub(crate) mod connect_peer;
 pub(crate) mod decode_invoice;
+pub(crate) mod decode_offer;
 pub(crate) mod disconnect_peer;
 pub(crate) mod error;
 pub(crate) mod export_pathfinding_scores;

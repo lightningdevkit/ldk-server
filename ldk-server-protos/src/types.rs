@@ -1067,6 +1067,91 @@ pub struct Bolt11HopHint {
 	#[prost(uint32, tag = "5")]
 	pub cltv_expiry_delta: u32,
 }
+/// The amount specified in a BOLT12 offer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OfferAmount {
+	#[prost(oneof = "offer_amount::Amount", tags = "1, 2")]
+	pub amount: ::core::option::Option<offer_amount::Amount>,
+}
+/// Nested message and enum types in `OfferAmount`.
+pub mod offer_amount {
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Amount {
+		/// Amount in millisatoshis for Bitcoin payments.
+		#[prost(uint64, tag = "1")]
+		BitcoinAmountMsats(u64),
+		/// Amount in a non-Bitcoin currency.
+		#[prost(message, tag = "2")]
+		CurrencyAmount(super::CurrencyAmount),
+	}
+}
+/// A non-Bitcoin currency amount.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CurrencyAmount {
+	/// ISO 4217 currency code (e.g., "USD", "EUR").
+	#[prost(string, tag = "1")]
+	pub iso4217_code: ::prost::alloc::string::String,
+	/// The amount in the specified currency's minor unit.
+	#[prost(uint64, tag = "2")]
+	pub amount: u64,
+}
+/// The quantity of items supported by a BOLT12 offer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OfferQuantity {
+	#[prost(oneof = "offer_quantity::Quantity", tags = "1, 2, 3")]
+	pub quantity: ::core::option::Option<offer_quantity::Quantity>,
+}
+/// Nested message and enum types in `OfferQuantity`.
+pub mod offer_quantity {
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Quantity {
+		/// Only one item may be requested.
+		#[prost(bool, tag = "1")]
+		One(bool),
+		/// Up to this many items may be requested.
+		#[prost(uint64, tag = "2")]
+		Bounded(u64),
+		/// Any number of items may be requested.
+		#[prost(bool, tag = "3")]
+		Unbounded(bool),
+	}
+}
+/// A blinded path to the offer recipient.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlindedPath {
+	/// The hex-encoded public key of the introduction node, if available.
+	/// If the introduction node is a directed short channel ID, this will be empty
+	/// and `introduction_scid` will be set instead.
+	#[prost(string, optional, tag = "1")]
+	pub introduction_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The hex-encoded blinding point.
+	#[prost(string, tag = "2")]
+	pub blinding_point: ::prost::alloc::string::String,
+	/// The number of blinded hops in the path.
+	#[prost(uint32, tag = "3")]
+	pub num_hops: u32,
+	/// If the introduction node is a directed short channel ID rather than a node ID.
+	#[prost(uint64, optional, tag = "4")]
+	pub introduction_scid: ::core::option::Option<u64>,
+}
 /// A feature bit advertised in a BOLT11 invoice.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

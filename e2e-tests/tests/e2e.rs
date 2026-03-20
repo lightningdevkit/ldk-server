@@ -230,6 +230,52 @@ async fn test_cli_bolt12_receive() {
 }
 
 #[tokio::test]
+async fn test_cli_decode_offer() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	// BOLT12 offers need announced channels for blinded reply paths
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Create a BOLT12 offer with known parameters
+	let output = run_cli(&server_a, &["bolt12-receive", "decode offer test"]);
+	let offer_str = output["offer"].as_str().unwrap();
+
+	// Decode it
+	let decoded = run_cli(&server_a, &["decode-offer", offer_str]);
+
+	// Verify fields match
+	assert_eq!(decoded["offer_id"], output["offer_id"]);
+	assert_eq!(decoded["description"], "decode offer test");
+	assert_eq!(decoded["is_expired"], false);
+
+	// Chains should include regtest
+	let chains = decoded["chains"].as_array().unwrap();
+	assert!(chains.iter().any(|c| c == "regtest"), "Expected regtest in chains: {:?}", chains);
+
+	// Paths should be present (BOLT12 offers with blinded paths)
+	let paths = decoded["paths"].as_array().unwrap();
+	assert!(!paths.is_empty(), "Expected at least one blinded path");
+	for path in paths {
+		assert!(path["num_hops"].as_u64().unwrap() > 0);
+		assert!(!path["blinding_point"].as_str().unwrap().is_empty());
+	}
+
+	// Features — OfferContext has no known features in LDK, so this should be empty
+	let features = decoded["features"].as_object().unwrap();
+	assert!(features.is_empty(), "Expected empty offer features, got: {:?}", features);
+
+	// Variable-amount offer should have no amount
+	assert!(decoded.get("amount").is_none() || decoded["amount"].is_null());
+
+	// Test a fixed-amount offer
+	let output_fixed = run_cli(&server_a, &["bolt12-receive", "fixed amount", "50000sat"]);
+	let decoded_fixed =
+		run_cli(&server_a, &["decode-offer", output_fixed["offer"].as_str().unwrap()]);
+	assert_eq!(decoded_fixed["amount"]["amount"]["bitcoin_amount_msats"], 50_000_000);
+}
+
+#[tokio::test]
 async fn test_cli_onchain_send() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;

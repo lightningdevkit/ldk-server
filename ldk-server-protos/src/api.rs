@@ -1131,3 +1131,58 @@ pub struct DecodeInvoiceResponse {
 	#[prost(bool, tag = "15")]
 	pub is_expired: bool,
 }
+/// Decode a BOLT12 offer and return its parsed fields.
+/// This does not require a running node — it only parses the offer string.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DecodeOfferRequest {
+	/// The BOLT12 offer string to decode.
+	#[prost(string, tag = "1")]
+	pub offer: ::prost::alloc::string::String,
+}
+/// The response `content` for the `DecodeOffer` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DecodeOfferResponse {
+	/// The hex-encoded offer ID.
+	#[prost(string, tag = "1")]
+	pub offer_id: ::prost::alloc::string::String,
+	/// The description of the offer, if any.
+	#[prost(string, optional, tag = "2")]
+	pub description: ::core::option::Option<::prost::alloc::string::String>,
+	/// The issuer of the offer, if any.
+	#[prost(string, optional, tag = "3")]
+	pub issuer: ::core::option::Option<::prost::alloc::string::String>,
+	/// The amount, if specified.
+	#[prost(message, optional, tag = "4")]
+	pub amount: ::core::option::Option<super::types::OfferAmount>,
+	/// The hex-encoded public key used by the issuer to sign invoices, if any.
+	#[prost(string, optional, tag = "5")]
+	pub issuer_signing_pubkey: ::core::option::Option<::prost::alloc::string::String>,
+	/// The absolute expiry time in seconds since the UNIX epoch, if any.
+	#[prost(uint64, optional, tag = "6")]
+	pub absolute_expiry: ::core::option::Option<u64>,
+	/// The supported quantity of items.
+	#[prost(message, optional, tag = "7")]
+	pub quantity: ::core::option::Option<super::types::OfferQuantity>,
+	/// Blinded paths to the offer recipient.
+	#[prost(message, repeated, tag = "8")]
+	pub paths: ::prost::alloc::vec::Vec<super::types::BlindedPath>,
+	/// Feature bits advertised in the offer, keyed by bit number.
+	#[prost(map = "uint32, message", tag = "9")]
+	pub features: ::std::collections::HashMap<u32, super::types::Bolt11Feature>,
+	/// Supported blockchain networks (e.g., "bitcoin", "testnet", "signet", "regtest").
+	#[prost(string, repeated, tag = "10")]
+	pub chains: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The metadata, hex-encoded, if any.
+	#[prost(string, optional, tag = "11")]
+	pub metadata: ::core::option::Option<::prost::alloc::string::String>,
+	/// Whether the offer has expired.
+	#[prost(bool, tag = "12")]
+	pub is_expired: bool,
+}

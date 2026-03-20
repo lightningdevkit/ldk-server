@@ -29,19 +29,19 @@ use ldk_server_client::ldk_server_protos::api::{
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DecodeInvoiceRequest, DecodeInvoiceResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
-	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
-	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
-	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
+	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
+	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
+	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
+	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -343,6 +343,11 @@ enum Commands {
 	DecodeInvoice {
 		#[arg(help = "The BOLT11 invoice string to decode")]
 		invoice: String,
+	},
+	#[command(about = "Decode a BOLT12 offer and display its fields")]
+	DecodeOffer {
+		#[arg(help = "The BOLT12 offer string to decode")]
+		offer: String,
 	},
 	#[command(about = "Cooperatively close the channel specified by the given channel ID")]
 	CloseChannel {
@@ -871,6 +876,11 @@ async fn main() {
 		Commands::DecodeInvoice { invoice } => {
 			handle_response_result::<_, DecodeInvoiceResponse>(
 				client.decode_invoice(DecodeInvoiceRequest { invoice }).await,
+			);
+		},
+		Commands::DecodeOffer { offer } => {
+			handle_response_result::<_, DecodeOfferResponse>(
+				client.decode_offer(DecodeOfferRequest { offer }).await,
 			);
 		},
 		Commands::CloseChannel { user_channel_id, counterparty_node_id } => {
