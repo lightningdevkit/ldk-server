@@ -1067,3 +1067,67 @@ pub struct GraphGetNodeResponse {
 	#[prost(message, optional, tag = "1")]
 	pub node: ::core::option::Option<super::types::GraphNode>,
 }
+/// Decode a BOLT11 invoice and return its parsed fields.
+/// This does not require a running node — it only parses the invoice string.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DecodeInvoiceRequest {
+	/// The BOLT11 invoice string to decode.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+}
+/// The response `content` for the `DecodeInvoice` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DecodeInvoiceResponse {
+	/// The hex-encoded public key of the destination node.
+	#[prost(string, tag = "1")]
+	pub destination: ::prost::alloc::string::String,
+	/// The hex-encoded 32-byte payment hash.
+	#[prost(string, tag = "2")]
+	pub payment_hash: ::prost::alloc::string::String,
+	/// The amount in millisatoshis, if specified in the invoice.
+	#[prost(uint64, optional, tag = "3")]
+	pub amount_msat: ::core::option::Option<u64>,
+	/// The creation timestamp in seconds since the UNIX epoch.
+	#[prost(uint64, tag = "4")]
+	pub timestamp: u64,
+	/// The invoice expiry time in seconds.
+	#[prost(uint64, tag = "5")]
+	pub expiry: u64,
+	/// The invoice description, if a direct description was provided.
+	#[prost(string, optional, tag = "6")]
+	pub description: ::core::option::Option<::prost::alloc::string::String>,
+	/// The hex-encoded SHA-256 hash of the description, if a description hash was used.
+	#[prost(string, optional, tag = "14")]
+	pub description_hash: ::core::option::Option<::prost::alloc::string::String>,
+	/// The fallback on-chain address, if any.
+	#[prost(string, optional, tag = "7")]
+	pub fallback_address: ::core::option::Option<::prost::alloc::string::String>,
+	/// The minimum final CLTV expiry delta.
+	#[prost(uint64, tag = "8")]
+	pub min_final_cltv_expiry_delta: u64,
+	/// The hex-encoded 32-byte payment secret.
+	#[prost(string, tag = "9")]
+	pub payment_secret: ::prost::alloc::string::String,
+	/// Route hints for finding a path to the payee.
+	#[prost(message, repeated, tag = "10")]
+	pub route_hints: ::prost::alloc::vec::Vec<super::types::Bolt11RouteHint>,
+	/// Feature bits advertised in the invoice, keyed by bit number.
+	#[prost(map = "uint32, message", tag = "11")]
+	pub features: ::std::collections::HashMap<u32, super::types::Bolt11Feature>,
+	/// The currency or network (e.g., "bitcoin", "testnet", "signet", "regtest").
+	#[prost(string, tag = "12")]
+	pub currency: ::prost::alloc::string::String,
+	/// The payment metadata, hex-encoded. Only present if the invoice includes payment metadata.
+	#[prost(string, optional, tag = "13")]
+	pub payment_metadata: ::core::option::Option<::prost::alloc::string::String>,
+	/// Whether the invoice has expired.
+	#[prost(bool, tag = "15")]
+	pub is_expired: bool,
+}

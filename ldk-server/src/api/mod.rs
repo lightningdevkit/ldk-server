@@ -7,9 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::collections::HashMap;
+
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::routing::router::RouteParametersConfig;
 use ldk_server_protos::types::channel_config::MaxDustHtlcExposure;
+use ldk_server_protos::types::Bolt11Feature;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -24,6 +27,7 @@ pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_send;
 pub(crate) mod close_channel;
 pub(crate) mod connect_peer;
+pub(crate) mod decode_invoice;
 pub(crate) mod disconnect_peer;
 pub(crate) mod error;
 pub(crate) mod export_pathfinding_scores;
@@ -122,4 +126,58 @@ pub(crate) fn build_route_parameters_config_from_proto(
 		},
 		None => Ok(None),
 	}
+}
+
+/// Decodes feature flags into a map keyed by bit number. Feature names are derived
+/// from LDK's `Features::Display` impl, so they stay in sync automatically.
+///
+/// `make_display` should construct a `Features<T>` from the given LE bytes and return
+/// its `to_string()` output — this lets us probe LDK for the name of each set bit.
+pub(crate) fn decode_features(
+	le_flags: &[u8], make_display: impl Fn(Vec<u8>) -> String,
+) -> HashMap<u32, Bolt11Feature> {
+	let mut features = HashMap::new();
+	for (byte_idx, &byte) in le_flags.iter().enumerate() {
+		if byte == 0 {
+			continue;
+		}
+		for bit_pos in 0..8u32 {
+			if byte & (1 << bit_pos) != 0 {
+				let bit_number = (byte_idx as u32) * 8 + bit_pos;
+				let is_required = bit_number % 2 == 0;
+
+				// Create Features with just this bit set and use Display to get the name.
+				let mut single_bit = vec![0u8; byte_idx + 1];
+				single_bit[byte_idx] = 1 << bit_pos;
+				let display = make_display(single_bit);
+				let (name, is_known) = parse_feature_name(&display);
+
+				features.insert(
+					bit_number,
+					Bolt11Feature { name: name.to_string(), is_required, is_known },
+				);
+			}
+		}
+	}
+	features
+}
+
+/// Parse the Display output of a single-bit Features to find which feature is set.
+///
+/// LDK's Display format is: "Name: status, Name: status, ..., unknown flags: status"
+/// where status is "required", "supported", or "not supported".
+/// For a single-bit Features, exactly one entry will be "required" or "supported".
+fn parse_feature_name(display: &str) -> (&str, bool) {
+	for entry in display.split(", ") {
+		if let Some((name, status)) = entry.split_once(": ") {
+			if name == "unknown flags" {
+				if status == "required" || status == "supported" {
+					return ("unknown", false);
+				}
+			} else if status == "required" || status == "supported" {
+				return (name, true);
+			}
+		}
+	}
+	("unknown", false)
 }

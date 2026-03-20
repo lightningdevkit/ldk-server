@@ -818,3 +818,39 @@ message GraphNode {
   // a channel announcement, but before receiving a node announcement.
   GraphNodeAnnouncement announcement_info = 2;
 }
+
+// Route hint for finding a path to the payee in a BOLT11 invoice.
+message Bolt11RouteHint {
+  // The hops in this route hint.
+  repeated Bolt11HopHint hop_hints = 1;
+}
+
+// A hop in a BOLT11 route hint.
+message Bolt11HopHint {
+  // The hex-encoded public key of the node at this hop.
+  string node_id = 1;
+
+  // The short channel ID.
+  uint64 short_channel_id = 2;
+
+  // The base fee in millisatoshis charged for routing through this hop.
+  uint32 fee_base_msat = 3;
+
+  // Fee proportional millionths charged for routing through this hop.
+  uint32 fee_proportional_millionths = 4;
+
+  // The CLTV expiry delta for this hop.
+  uint32 cltv_expiry_delta = 5;
+}
+
+// A feature bit advertised in a BOLT11 invoice.
+message Bolt11Feature {
+  // Human-readable feature name.
+  string name = 1;
+
+  // Whether this feature is required.
+  bool is_required = 2;
+
+  // Whether this feature is known.
+  bool is_known = 3;
+}

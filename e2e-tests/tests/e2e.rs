@@ -149,6 +149,70 @@ async fn test_cli_bolt11_receive() {
 }
 
 #[tokio::test]
+async fn test_cli_decode_invoice() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	// Create a BOLT11 invoice with known parameters
+	let output =
+		run_cli(&server, &["bolt11-receive", "50000sat", "-d", "decode test", "-e", "3600"]);
+	let invoice_str = output["invoice"].as_str().unwrap();
+
+	// Decode it
+	let decoded = run_cli(&server, &["decode-invoice", invoice_str]);
+
+	// Verify fields match
+	assert_eq!(decoded["destination"], server.node_id());
+	assert_eq!(decoded["payment_hash"], output["payment_hash"]);
+	assert_eq!(decoded["amount_msat"], 50_000_000);
+	assert_eq!(decoded["description"], "decode test");
+	assert!(decoded.get("description_hash").is_none() || decoded["description_hash"].is_null());
+	assert_eq!(decoded["expiry"], 3600);
+	assert_eq!(decoded["currency"], "regtest");
+	assert_eq!(decoded["payment_secret"], output["payment_secret"]);
+	assert!(decoded["timestamp"].as_u64().unwrap() > 0);
+	assert!(decoded["min_final_cltv_expiry_delta"].as_u64().unwrap() > 0);
+	assert_eq!(decoded["is_expired"], false);
+
+	// Verify features — LDK BOLT11 invoices always set VariableLengthOnion, PaymentSecret,
+	// and BasicMPP.
+	let features = decoded["features"].as_object().unwrap();
+	assert!(!features.is_empty(), "Expected at least one feature");
+
+	let feature_names: Vec<&str> = features.values().filter_map(|f| f["name"].as_str()).collect();
+	assert!(
+		feature_names.contains(&"VariableLengthOnion"),
+		"Expected VariableLengthOnion in features: {:?}",
+		feature_names
+	);
+	assert!(
+		feature_names.contains(&"PaymentSecret"),
+		"Expected PaymentSecret in features: {:?}",
+		feature_names
+	);
+	assert!(
+		feature_names.contains(&"BasicMPP"),
+		"Expected BasicMPP in features: {:?}",
+		feature_names
+	);
+
+	// Every entry should have the expected structure
+	for (bit, feature) in features {
+		assert!(bit.parse::<u32>().is_ok(), "Feature key should be a bit number: {}", bit);
+		assert!(feature.get("name").is_some(), "Feature missing name field");
+		assert!(feature.get("is_required").is_some(), "Feature missing is_required field");
+		assert!(feature.get("is_known").is_some(), "Feature missing is_known field");
+	}
+
+	// Also test a variable-amount invoice
+	let output_var = run_cli(&server, &["bolt11-receive", "-d", "no amount"]);
+	let decoded_var =
+		run_cli(&server, &["decode-invoice", output_var["invoice"].as_str().unwrap()]);
+	assert!(decoded_var.get("amount_msat").is_none() || decoded_var["amount_msat"].is_null());
+	assert_eq!(decoded_var["description"], "no amount");
+}
+
+#[tokio::test]
 async fn test_cli_bolt12_receive() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;

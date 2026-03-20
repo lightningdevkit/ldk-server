@@ -1035,6 +1035,54 @@ pub struct GraphNode {
 	#[prost(message, optional, tag = "2")]
 	pub announcement_info: ::core::option::Option<GraphNodeAnnouncement>,
 }
+/// Route hint for finding a path to the payee in a BOLT11 invoice.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11RouteHint {
+	/// The hops in this route hint.
+	#[prost(message, repeated, tag = "1")]
+	pub hop_hints: ::prost::alloc::vec::Vec<Bolt11HopHint>,
+}
+/// A hop in a BOLT11 route hint.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11HopHint {
+	/// The hex-encoded public key of the node at this hop.
+	#[prost(string, tag = "1")]
+	pub node_id: ::prost::alloc::string::String,
+	/// The short channel ID.
+	#[prost(uint64, tag = "2")]
+	pub short_channel_id: u64,
+	/// The base fee in millisatoshis charged for routing through this hop.
+	#[prost(uint32, tag = "3")]
+	pub fee_base_msat: u32,
+	/// Fee proportional millionths charged for routing through this hop.
+	#[prost(uint32, tag = "4")]
+	pub fee_proportional_millionths: u32,
+	/// The CLTV expiry delta for this hop.
+	#[prost(uint32, tag = "5")]
+	pub cltv_expiry_delta: u32,
+}
+/// A feature bit advertised in a BOLT11 invoice.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11Feature {
+	/// Human-readable feature name.
+	#[prost(string, tag = "1")]
+	pub name: ::prost::alloc::string::String,
+	/// Whether this feature is required.
+	#[prost(bool, tag = "2")]
+	pub is_required: bool,
+	/// Whether this feature is known.
+	#[prost(bool, tag = "3")]
+	pub is_known: bool,
+}
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

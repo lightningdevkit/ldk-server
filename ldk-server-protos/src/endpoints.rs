@@ -43,3 +43,4 @@ pub const GRAPH_LIST_CHANNELS_PATH: &str = "GraphListChannels";
 pub const GRAPH_GET_CHANNEL_PATH: &str = "GraphGetChannel";
 pub const GRAPH_LIST_NODES_PATH: &str = "GraphListNodes";
 pub const GRAPH_GET_NODE_PATH: &str = "GraphGetNode";
+pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
