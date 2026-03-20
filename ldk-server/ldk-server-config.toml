@@ -43,6 +43,15 @@ server_url = "https://mempool.space/api"      # Esplora endpoint
 connection_string = ""                        # RabbitMQ connection string
 exchange_name = ""
 
+# LSPS2 Client Support
+[liquidity.lsps2_client]
+# The public key of the LSPS2 LSP we source just-in-time liquidity from.
+node_pubkey = "<lsp node pubkey>"
+# Address to connect to the LSPS2 LSP (IPv4:port, IPv6:port, OnionV3:port, or hostname:port).
+address = "<lsp ip address>:9735"
+# Optional token for authenticating to the LSP.
+# token = ""
+
 # Experimental LSPS2 Service Support
 # CAUTION: LSPS2 support is highly experimental and for testing purposes only.
 [liquidity.lsps2_service]

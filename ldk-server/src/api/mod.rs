@@ -18,6 +18,7 @@ pub(crate) mod bolt11_claim_for_hash;
 pub(crate) mod bolt11_fail_for_hash;
 pub(crate) mod bolt11_receive;
 pub(crate) mod bolt11_receive_for_hash;
+pub(crate) mod bolt11_receive_via_jit_channel;
 pub(crate) mod bolt11_send;
 pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_send;
