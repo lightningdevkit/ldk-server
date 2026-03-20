@@ -146,6 +146,12 @@ message Bolt11ReceiveResponse {
   // With the details of the invoice, the sender has all the data necessary to send a payment
   // to the recipient.
   string invoice = 1;
+
+  // The hex-encoded 32-byte payment hash.
+  string payment_hash = 2;
+
+  // The hex-encoded 32-byte payment secret.
+  string payment_secret = 3;
 }
 
 // Return a BOLT11 payable invoice for a given payment hash.
@@ -322,6 +328,9 @@ message Bolt12ReceiveResponse {
   // With the details of the offer, the sender has all the data necessary to send a payment
   // to the recipient.
   string offer = 1;
+
+  // The hex-encoded offer id.
+  string offer_id = 2;
 }
 
 // Send a payment for a BOLT12 offer.
