@@ -774,6 +774,41 @@ message GraphListNodesResponse {
   repeated string node_ids = 1;
 }
 
+// Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.
+//
+// This method parses the provided URI string and attempts to send the payment. If the URI
+// has an offer and/or invoice, it will try to pay the offer first followed by the invoice.
+// If they both fail, the on-chain payment will be paid.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.UnifiedPayment.html#method.send
+message UnifiedSendRequest {
+
+  // A BIP 21 URI or BIP 353 Human-Readable Name to pay.
+  string uri = 1;
+
+  // The amount in millisatoshis to send. Required for "zero-amount" or variable-amount URIs.
+  optional uint64 amount_msat = 2;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 3;
+}
+
+// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message UnifiedSendResponse {
+
+  oneof payment_result {
+
+    // An on-chain payment was made. Contains the transaction ID.
+    string txid = 1;
+
+    // A BOLT11 payment was made. Contains the payment ID in hex-encoded form.
+    string bolt11_payment_id = 2;
+
+    // A BOLT12 payment was made. Contains the payment ID in hex-encoded form.
+    string bolt12_payment_id = 3;
+  }
+}
+
 // Returns information on a node with the given ID from the network graph.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node
 message GraphGetNodeRequest {

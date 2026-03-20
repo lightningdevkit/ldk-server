@@ -324,6 +324,43 @@ async fn test_cli_bolt11_send() {
 }
 
 #[tokio::test]
+async fn test_cli_pay() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Pay a BOLT11 invoice via unified `pay` command
+	let invoice_resp = server_b
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(10_000_000),
+			description: Some(Bolt11InvoiceDescription {
+				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
+			}),
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+	let output = run_cli(&server_a, &["pay", &invoice_resp.invoice]);
+	assert!(output.get("bolt11_payment_id").is_some());
+
+	// Pay a BOLT12 offer via unified `pay` command
+	let offer_resp = server_b
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "test offer".to_string(),
+			amount_msat: None,
+			expiry_secs: None,
+			quantity: None,
+		})
+		.await
+		.unwrap();
+	let output = run_cli(&server_a, &["pay", &offer_resp.offer, "10000sat"]);
+	assert!(output.get("bolt12_payment_id").is_some());
+}
+
+#[tokio::test]
 async fn test_cli_bolt12_send() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;

@@ -995,6 +995,56 @@ pub struct GraphListNodesResponse {
 	#[prost(string, repeated, tag = "1")]
 	pub node_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.
+///
+/// This method parses the provided URI string and attempts to send the payment. If the URI
+/// has an offer and/or invoice, it will try to pay the offer first followed by the invoice.
+/// If they both fail, the on-chain payment will be paid.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.UnifiedPayment.html#method.send>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnifiedSendRequest {
+	/// A BIP 21 URI or BIP 353 Human-Readable Name to pay.
+	#[prost(string, tag = "1")]
+	pub uri: ::prost::alloc::string::String,
+	/// The amount in millisatoshis to send. Required for "zero-amount" or variable-amount URIs.
+	#[prost(uint64, optional, tag = "2")]
+	pub amount_msat: ::core::option::Option<u64>,
+	/// Configuration options for payment routing and pathfinding.
+	#[prost(message, optional, tag = "3")]
+	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
+}
+/// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnifiedSendResponse {
+	#[prost(oneof = "unified_send_response::PaymentResult", tags = "1, 2, 3")]
+	#[cfg_attr(feature = "serde", serde(flatten))]
+	pub payment_result: ::core::option::Option<unified_send_response::PaymentResult>,
+}
+/// Nested message and enum types in `UnifiedSendResponse`.
+pub mod unified_send_response {
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum PaymentResult {
+		/// An on-chain payment was made. Contains the transaction ID.
+		#[prost(string, tag = "1")]
+		Txid(::prost::alloc::string::String),
+		/// A BOLT11 payment was made. Contains the payment ID in hex-encoded form.
+		#[prost(string, tag = "2")]
+		Bolt11PaymentId(::prost::alloc::string::String),
+		/// A BOLT12 payment was made. Contains the payment ID in hex-encoded form.
+		#[prost(string, tag = "3")]
+		Bolt12PaymentId(::prost::alloc::string::String),
+	}
+}
 /// Returns information on a node with the given ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

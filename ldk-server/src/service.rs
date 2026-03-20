@@ -27,7 +27,8 @@ use ldk_server_protos::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use prost::Message;
 
@@ -65,6 +66,7 @@ use crate::api::open_channel::handle_open_channel;
 use crate::api::sign_message::handle_sign_message_request;
 use crate::api::splice_channel::{handle_splice_in_request, handle_splice_out_request};
 use crate::api::spontaneous_send::handle_spontaneous_send_request;
+use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
@@ -368,6 +370,13 @@ impl Service<Request<Incoming>> for NodeService {
 				auth_params,
 				api_key,
 				handle_spontaneous_send_request,
+			)),
+			UNIFIED_SEND_PATH => Box::pin(handle_request(
+				context,
+				req,
+				auth_params,
+				api_key,
+				handle_unified_send_request,
 			)),
 			SIGN_MESSAGE_PATH => Box::pin(handle_request(
 				context,
