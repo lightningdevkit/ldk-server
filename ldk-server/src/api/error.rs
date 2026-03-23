@@ -126,6 +126,9 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::OnchainTxSigningFailed
 			| NodeError::TxSyncFailed
 			| NodeError::InvalidScriptPubKey
+			| NodeError::LnurlAuthFailed
+			| NodeError::LnurlAuthTimeout
+			| NodeError::InvalidLnurl
 			| NodeError::TxSyncTimeout => (error.to_string(), LdkServerErrorCode::InternalServerError),
 		};
 		LdkServerError::new(error_code, message)
