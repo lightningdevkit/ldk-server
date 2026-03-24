@@ -476,9 +476,10 @@ pub struct OpenChannelRequest {
 	#[prost(string, tag = "1")]
 	pub node_pubkey: ::prost::alloc::string::String,
 	/// An address which can be used to connect to a remote peer.
-	/// It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
-	#[prost(string, tag = "2")]
-	pub address: ::prost::alloc::string::String,
+	/// It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port.
+	/// Optional if already connected to the peer.
+	#[prost(string, optional, tag = "2")]
+	pub address: ::core::option::Option<::prost::alloc::string::String>,
 	/// The amount of satoshis the caller is willing to commit to the channel.
 	#[prost(uint64, tag = "3")]
 	pub channel_amount_sats: u64,

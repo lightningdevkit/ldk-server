@@ -15,7 +15,7 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_server_protos::api::{OpenChannelRequest, OpenChannelResponse};
 
 use crate::api::build_channel_config_from_proto;
-use crate::api::error::LdkServerError;
+use crate::api::error::{LdkServerError, LdkServerErrorCode};
 use crate::service::Context;
 
 pub(crate) fn handle_open_channel(
@@ -23,8 +23,23 @@ pub(crate) fn handle_open_channel(
 ) -> Result<OpenChannelResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
-	let address = SocketAddress::from_str(&request.address)
-		.map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?;
+	let address = match request.address {
+		Some(addr) => {
+			SocketAddress::from_str(&addr).map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?
+		},
+		None => context
+			.node
+			.list_peers()
+			.into_iter()
+			.find(|p| p.node_id == node_id && p.is_connected)
+			.map(|p| p.address)
+			.ok_or_else(|| {
+				LdkServerError::new(
+					LdkServerErrorCode::InvalidRequestError,
+					"address is required when not already connected to the peer",
+				)
+			})?,
+	};
 
 	let channel_config = request
 		.channel_config

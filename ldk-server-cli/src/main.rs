@@ -356,12 +356,15 @@ enum Commands {
 	},
 	#[command(about = "Create a new outbound channel to the given remote node")]
 	OpenChannel {
-		#[arg(help = "The hex-encoded public key of the node to open a channel with")]
+		#[arg(
+			help = "The peer to open a channel with in pubkey@address format, or just the pubkey if already connected or address is provided separately"
+		)]
 		node_pubkey: String,
 		#[arg(
-			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
+			long,
+			help = "Address to connect to remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port). Optional if address is included in pubkey via @ separator or already connected."
 		)]
-		address: String,
+		address: Option<String>,
 		#[arg(
 			help = "The amount to commit to the channel, e.g. 100sat or 100000msat, must be a whole sat amount, cannot send msats on-chain."
 		)]
@@ -894,6 +897,13 @@ async fn main() {
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
 		} => {
+			let (node_pubkey, address) = if let Some(address) = address {
+				(node_pubkey, Some(address))
+			} else if let Some((pubkey, addr)) = node_pubkey.split_once('@') {
+				(pubkey.to_string(), Some(addr.to_string()))
+			} else {
+				(node_pubkey, None)
+			};
 			let channel_amount_sats =
 				channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
 			let push_to_counterparty_msat = push_to_counterparty.map(|a| a.to_msat());

@@ -393,8 +393,9 @@ message OpenChannelRequest {
   string node_pubkey = 1;
 
   // An address which can be used to connect to a remote peer.
-  // It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
-  string address = 2;
+  // It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port.
+  // Optional if already connected to the peer.
+  optional string address = 2;
 
   // The amount of satoshis the caller is willing to commit to the channel.
   uint64 channel_amount_sats = 3;
