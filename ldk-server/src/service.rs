@@ -180,6 +180,24 @@ impl Service<Request<Incoming>> for NodeService {
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
+		// Handle CORS preflight
+		if req.method() == hyper::Method::OPTIONS {
+			return Box::pin(async {
+				Ok(with_cors_headers(
+					Response::builder().status(StatusCode::NO_CONTENT).body(empty_body()).unwrap(),
+				))
+			});
+		}
+
+		let inner = self.call_inner(req);
+		Box::pin(async move { inner.await.map(with_cors_headers) })
+	}
+}
+
+impl NodeService {
+	fn call_inner(
+		&self, req: Request<Incoming>,
+	) -> Pin<Box<dyn Future<Output = Result<ServiceResponse, hyper::Error>> + Send>> {
 		// Extract auth params from headers (validation happens after body is read)
 		let auth_params = match extract_auth_params(&req) {
 			Ok(params) => params,
@@ -463,6 +481,18 @@ fn error_to_response(e: LdkServerError) -> ServiceResponse {
 		.header("Content-Type", "application/json")
 		.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())).boxed())
 		.unwrap()
+}
+
+fn empty_body() -> BoxBody {
+	Full::new(Bytes::new()).boxed()
+}
+
+fn with_cors_headers(mut response: ServiceResponse) -> ServiceResponse {
+	let headers = response.headers_mut();
+	headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+	headers.insert("Access-Control-Allow-Methods", "GET, POST, OPTIONS".parse().unwrap());
+	headers.insert("Access-Control-Allow-Headers", "Content-Type, X-Auth".parse().unwrap());
+	response
 }
 
 async fn handle_request<
