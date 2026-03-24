@@ -10,9 +10,9 @@
 use std::str::FromStr;
 
 use ldk_node::lightning::offers::offer::Offer;
-use ldk_server_protos::api::{Bolt12SendRequest, Bolt12SendResponse};
+use ldk_server_json_models::api::{Bolt12SendRequest, Bolt12SendResponse};
 
-use crate::api::build_route_parameters_config_from_proto;
+use crate::api::build_route_parameters_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 
@@ -22,7 +22,7 @@ pub(crate) fn handle_bolt12_send_request(
 	let offer =
 		Offer::from_str(request.offer.as_str()).map_err(|_| ldk_node::NodeError::InvalidOffer)?;
 
-	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+	let route_parameters = build_route_parameters_config_from_model(request.route_parameters)?;
 
 	let payment_id = match request.amount_msat {
 		None => context.node.bolt12_payment().send(
@@ -40,6 +40,6 @@ pub(crate) fn handle_bolt12_send_request(
 		),
 	}?;
 
-	let response = Bolt12SendResponse { payment_id: payment_id.to_string() };
+	let response = Bolt12SendResponse { payment_id: payment_id.0 };
 	Ok(response)
 }

@@ -548,9 +548,6 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bzip2"
@@ -874,8 +871,7 @@ dependencies = [
  "lapin",
  "ldk-node",
  "ldk-server-client",
- "ldk-server-protos",
- "prost",
+ "ldk-server-json-models",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1834,18 +1830,16 @@ name = "ldk-server-client"
 version = "0.1.0"
 dependencies = [
  "bitcoin_hashes",
- "ldk-server-protos",
- "prost",
+ "ldk-server-json-models",
  "reqwest 0.11.27",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
-name = "ldk-server-protos"
+name = "ldk-server-json-models"
 version = "0.1.0"
 dependencies = [
- "bytes",
- "prost",
- "prost-build",
  "serde",
 ]
 

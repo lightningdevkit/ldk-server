@@ -7,13 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bytes::Bytes;
-use ldk_server_protos::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
-use ldk_server_protos::types::{ForwardedPayment, PageToken};
-use prost::Message;
+use ldk_server_json_models::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
+use ldk_server_json_models::types::ForwardedPayment;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
+use crate::api::{decode_page_token, encode_page_token};
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
@@ -23,7 +22,7 @@ use crate::service::Context;
 pub(crate) fn handle_list_forwarded_payments_request(
 	context: Context, request: ListForwardedPaymentsRequest,
 ) -> Result<ListForwardedPaymentsResponse, LdkServerError> {
-	let page_token = request.page_token.map(|p| (p.token, p.index));
+	let page_token = decode_page_token(request.page_token)?;
 	let list_response = context
 		.paginated_kv_store
 		.list(
@@ -54,8 +53,8 @@ pub(crate) fn handle_list_forwarded_payments_request(
 					format!("Failed to read forwarded payment data: {}", e),
 				)
 			})?;
-		let forwarded_payment = ForwardedPayment::decode(Bytes::from(forwarded_payment_bytes))
-			.map_err(|e| {
+		let forwarded_payment =
+			serde_json::from_slice::<ForwardedPayment>(&forwarded_payment_bytes).map_err(|e| {
 				LdkServerError::new(
 					InternalServerError,
 					format!("Failed to decode forwarded payment: {}", e),
@@ -65,9 +64,7 @@ pub(crate) fn handle_list_forwarded_payments_request(
 	}
 	let response = ListForwardedPaymentsResponse {
 		forwarded_payments,
-		next_page_token: list_response
-			.next_page_token
-			.map(|(token, index)| PageToken { token, index }),
+		next_page_token: encode_page_token(list_response.next_page_token),
 	};
 	Ok(response)
 }

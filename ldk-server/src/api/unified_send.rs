@@ -7,19 +7,20 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use ldk_node::bitcoin::hashes::Hash;
 use ldk_node::payment::UnifiedPaymentResult;
-use ldk_server_protos::api::unified_send_response::PaymentResult;
-use ldk_server_protos::api::{UnifiedSendRequest, UnifiedSendResponse};
+use ldk_server_json_models::api::{UnifiedSendRequest, UnifiedSendResponse};
 use tokio::runtime::Handle;
 
-use crate::api::build_route_parameters_config_from_proto;
+use crate::api::build_route_parameters_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use crate::util::adapter::to_display_bytes;
 
 pub(crate) fn handle_unified_send_request(
 	context: Context, request: UnifiedSendRequest,
 ) -> Result<UnifiedSendResponse, LdkServerError> {
-	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+	let route_parameters = build_route_parameters_config_from_model(request.route_parameters)?;
 
 	let result = tokio::task::block_in_place(|| {
 		Handle::current().block_on(context.node.unified_payment().send(
@@ -29,15 +30,19 @@ pub(crate) fn handle_unified_send_request(
 		))
 	})?;
 
-	let payment_result = match result {
-		UnifiedPaymentResult::Onchain { txid } => PaymentResult::Txid(txid.to_string()),
+	Ok(match result {
+		UnifiedPaymentResult::Onchain { txid } => {
+			let payment_id = txid.to_byte_array();
+			UnifiedSendResponse::Onchain {
+				txid: to_display_bytes(txid.to_byte_array()),
+				payment_id,
+			}
+		},
 		UnifiedPaymentResult::Bolt11 { payment_id } => {
-			PaymentResult::Bolt11PaymentId(payment_id.to_string())
+			UnifiedSendResponse::Bolt11 { payment_id: payment_id.0 }
 		},
 		UnifiedPaymentResult::Bolt12 { payment_id } => {
-			PaymentResult::Bolt12PaymentId(payment_id.to_string())
+			UnifiedSendResponse::Bolt12 { payment_id: payment_id.0 }
 		},
-	};
-
-	Ok(UnifiedSendResponse { payment_result: Some(payment_result) })
+	})
 }

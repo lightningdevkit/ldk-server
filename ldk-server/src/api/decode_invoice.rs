@@ -12,8 +12,8 @@ use std::str::FromStr;
 use hex::prelude::*;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_node::lightning_types::features::Bolt11InvoiceFeatures;
-use ldk_server_protos::api::{DecodeInvoiceRequest, DecodeInvoiceResponse};
-use ldk_server_protos::types::{Bolt11HopHint, Bolt11RouteHint};
+use ldk_server_json_models::api::{DecodeInvoiceRequest, DecodeInvoiceResponse};
+use ldk_server_json_models::types::{Bolt11HopHint, Bolt11RouteHint};
 
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;

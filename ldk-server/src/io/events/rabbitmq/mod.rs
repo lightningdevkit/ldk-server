@@ -9,14 +9,13 @@
 
 use std::sync::Arc;
 
-use ::prost::Message;
 use async_trait::async_trait;
 use lapin::options::{BasicPublishOptions, ConfirmSelectOptions, ExchangeDeclareOptions};
 use lapin::types::FieldTable;
 use lapin::{
 	BasicProperties, Channel, Connection, ConnectionProperties, ConnectionState, ExchangeKind,
 };
-use ldk_server_protos::events::EventEnvelope;
+use ldk_server_json_models::events::Event;
 use tokio::sync::Mutex;
 
 use crate::api::error::LdkServerError;
@@ -111,7 +110,7 @@ impl EventPublisher for RabbitMqEventPublisher {
 	///
 	/// The event is published to a fanout exchange with persistent delivery mode,
 	/// and the method waits for confirmation from RabbitMQ to ensure durability.
-	async fn publish(&self, event: EventEnvelope) -> Result<(), LdkServerError> {
+	async fn publish(&self, event: Event) -> Result<(), LdkServerError> {
 		// Ensure connection is alive before proceeding
 		self.ensure_connected().await?;
 
@@ -126,7 +125,7 @@ impl EventPublisher for RabbitMqEventPublisher {
 				&self.config.exchange_name,
 				"", // Empty routing key should be used for fanout exchange, since it is ignored.
 				BasicPublishOptions::default(),
-				&event.encode_to_vec(),
+				&serde_json::to_vec(&event).unwrap(),
 				BasicProperties::default().with_delivery_mode(DELIVERY_MODE_PERSISTENT),
 			)
 			.await
@@ -166,8 +165,7 @@ mod integration_tests_events_rabbitmq {
 	};
 	use lapin::types::FieldTable;
 	use lapin::{Channel, Connection};
-	use ldk_server_protos::events::event_envelope::Event;
-	use ldk_server_protos::events::PaymentForwarded;
+	use ldk_server_json_models::events::PaymentForwarded;
 	use tokio;
 
 	use super::*;
@@ -188,8 +186,20 @@ mod integration_tests_events_rabbitmq {
 		let queue_name = "test_queue";
 		setup_queue(&queue_name, &channel, &config).await;
 
-		let event =
-			EventEnvelope { event: Some(Event::PaymentForwarded(PaymentForwarded::default())) };
+		let event = Event::PaymentForwarded(PaymentForwarded {
+			forwarded_payment: ldk_server_json_models::types::ForwardedPayment {
+				prev_channel_id: [0u8; 32],
+				next_channel_id: [0u8; 32],
+				prev_user_channel_id: String::new(),
+				prev_node_id: [0u8; 33],
+				next_node_id: [0u8; 33],
+				next_user_channel_id: None,
+				total_fee_earned_msat: None,
+				skimmed_fee_msat: None,
+				claim_from_onchain_tx: false,
+				outbound_amount_forwarded_msat: None,
+			},
+		});
 		publisher.publish(event.clone()).await.expect("Failed to publish event");
 
 		consume_event(&queue_name, &channel, &event).await.expect("Failed to consume event");
@@ -223,7 +233,7 @@ mod integration_tests_events_rabbitmq {
 	}
 
 	async fn consume_event(
-		queue_name: &str, channel: &Channel, expected_event: &EventEnvelope,
+		queue_name: &str, channel: &Channel, expected_event: &Event,
 	) -> io::Result<()> {
 		let mut consumer = channel
 			.basic_consume(
@@ -236,7 +246,8 @@ mod integration_tests_events_rabbitmq {
 			.unwrap();
 		let delivery =
 			tokio::time::timeout(Duration::from_secs(10), consumer.next()).await?.unwrap().unwrap();
-		let received_event = EventEnvelope::decode(&*delivery.data)?;
+		let received_event: Event = serde_json::from_slice(&delivery.data)
+			.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 		assert_eq!(received_event, *expected_event, "Event mismatch");
 		channel.basic_ack(delivery.delivery_tag, BasicAckOptions::default()).await.unwrap();
 		Ok(())

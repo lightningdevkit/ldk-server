@@ -14,10 +14,8 @@ use ldk_node::lightning::bitcoin::blockdata::constants::ChainHash;
 use ldk_node::lightning::bitcoin::Network;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_types::features::OfferFeatures;
-use ldk_server_protos::api::{DecodeOfferRequest, DecodeOfferResponse};
-use ldk_server_protos::types::offer_amount::Amount;
-use ldk_server_protos::types::offer_quantity::Quantity;
-use ldk_server_protos::types::{BlindedPath, CurrencyAmount, OfferAmount, OfferQuantity};
+use ldk_server_json_models::api::{DecodeOfferRequest, DecodeOfferResponse};
+use ldk_server_json_models::types::{BlindedPath, CurrencyAmount, OfferAmount, OfferQuantity};
 
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;
@@ -37,15 +35,13 @@ pub(crate) fn handle_decode_offer_request(
 
 	let amount = offer.amount().map(|a| match a {
 		ldk_node::lightning::offers::offer::Amount::Bitcoin { amount_msats } => {
-			OfferAmount { amount: Some(Amount::BitcoinAmountMsats(amount_msats)) }
+			OfferAmount::BitcoinAmountMsats(amount_msats)
 		},
 		ldk_node::lightning::offers::offer::Amount::Currency { iso4217_code, amount } => {
-			OfferAmount {
-				amount: Some(Amount::CurrencyAmount(CurrencyAmount {
-					iso4217_code: iso4217_code.to_string(),
-					amount,
-				})),
-			}
+			OfferAmount::CurrencyAmount(CurrencyAmount {
+				iso4217_code: iso4217_code.to_string(),
+				amount,
+			})
 		},
 	});
 
@@ -54,15 +50,11 @@ pub(crate) fn handle_decode_offer_request(
 	let absolute_expiry = offer.absolute_expiry().map(|d| d.as_secs());
 
 	let quantity = Some(match offer.supported_quantity() {
-		ldk_node::lightning::offers::offer::Quantity::One => {
-			OfferQuantity { quantity: Some(Quantity::One(true)) }
-		},
+		ldk_node::lightning::offers::offer::Quantity::One => OfferQuantity::One,
 		ldk_node::lightning::offers::offer::Quantity::Bounded(max) => {
-			OfferQuantity { quantity: Some(Quantity::Bounded(max.get())) }
+			OfferQuantity::Bounded(max.get())
 		},
-		ldk_node::lightning::offers::offer::Quantity::Unbounded => {
-			OfferQuantity { quantity: Some(Quantity::Unbounded(true)) }
-		},
+		ldk_node::lightning::offers::offer::Quantity::Unbounded => OfferQuantity::Unbounded,
 	});
 
 	let paths = offer

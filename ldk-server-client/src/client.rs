@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
-use ldk_server_protos::api::{
+use ldk_server_json_models::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
@@ -34,7 +34,7 @@ use ldk_server_protos::api::{
 	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
-use ldk_server_protos::endpoints::{
+use ldk_server_json_models::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
@@ -46,17 +46,19 @@ use ldk_server_protos::endpoints::{
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
-use ldk_server_protos::error::{ErrorCode, ErrorResponse};
-use prost::Message;
+use ldk_server_json_models::error::{ErrorCode, ErrorResponse};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Certificate, Client};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, InternalError, InternalServerError, InvalidRequestError, JsonParseError,
+	LightningError,
 };
 
-const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
+const APPLICATION_JSON: &str = "application/json";
 
 /// Client to access a hosted instance of LDK Server.
 ///
@@ -446,15 +448,17 @@ impl LdkServerClient {
 		self.post_request(&request, &url).await
 	}
 
-	async fn post_request<Rq: Message, Rs: Message + Default>(
+	async fn post_request<Rq: Serialize, Rs: DeserializeOwned>(
 		&self, request: &Rq, url: &str,
 	) -> Result<Rs, LdkServerError> {
-		let request_body = request.encode_to_vec();
+		let request_body = serde_json::to_vec(request).map_err(|e| {
+			LdkServerError::new(JsonParseError, format!("Failed to serialize request: {}", e))
+		})?;
 		let auth_header = self.compute_auth_header(&request_body);
 		let response_raw = self
 			.client
 			.post(url)
-			.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM)
+			.header(CONTENT_TYPE, APPLICATION_JSON)
 			.header("X-Auth", auth_header)
 			.body(request_body)
 			.send()
@@ -469,26 +473,27 @@ impl LdkServerClient {
 		})?;
 
 		if status.is_success() {
-			Ok(Rs::decode(&payload[..]).map_err(|e| {
+			Ok(serde_json::from_slice::<Rs>(&payload).map_err(|e| {
 				LdkServerError::new(
-					InternalError,
+					JsonParseError,
 					format!("Failed to decode success response: {}", e),
 				)
 			})?)
 		} else {
-			let error_response = ErrorResponse::decode(&payload[..]).map_err(|e| {
-				LdkServerError::new(
-					InternalError,
-					format!("Failed to decode error response (status {}): {}", status, e),
-				)
-			})?;
+			let error_response =
+				serde_json::from_slice::<ErrorResponse>(&payload).map_err(|e| {
+					LdkServerError::new(
+						JsonParseError,
+						format!("Failed to decode error response (status {}): {}", status, e),
+					)
+				})?;
 
-			let error_code = match ErrorCode::from_i32(error_response.error_code) {
-				Some(ErrorCode::InvalidRequestError) => InvalidRequestError,
-				Some(ErrorCode::AuthError) => AuthError,
-				Some(ErrorCode::LightningError) => LightningError,
-				Some(ErrorCode::InternalServerError) => InternalServerError,
-				Some(ErrorCode::UnknownError) | None => InternalError,
+			let error_code = match error_response.error_code {
+				ErrorCode::InvalidRequestError => InvalidRequestError,
+				ErrorCode::AuthError => AuthError,
+				ErrorCode::LightningError => LightningError,
+				ErrorCode::InternalServerError => InternalServerError,
+				ErrorCode::UnknownError => InternalError,
 			};
 
 			Err(LdkServerError::new(error_code, error_response.message))

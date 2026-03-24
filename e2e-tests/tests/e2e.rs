@@ -16,16 +16,16 @@ use e2e_tests::{
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
+use ldk_node::bitcoin::secp256k1::PublicKey;
+use ldk_node::bitcoin::Network;
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_client::ldk_server_protos::api::{
+use ldk_server_json_models::api::{
 	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
 };
-use ldk_server_client::ldk_server_protos::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription,
-};
-use ldk_server_protos::events::event_envelope::Event;
+use ldk_server_json_models::events::Event;
+use ldk_server_json_models::types::Bolt11InvoiceDescription;
 
 #[tokio::test]
 async fn test_cli_get_node_info() {
@@ -33,8 +33,18 @@ async fn test_cli_get_node_info() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 
 	let output = run_cli(&server, &["get-node-info"]);
-	assert!(output.get("node_id").is_some());
-	assert_eq!(output["node_id"], server.node_id());
+	assert_eq!(output["node_id"], server.node_id().to_lower_hex_string());
+
+	// Cross-check block hash against bitcoind's RPC at the same height.
+	// This verifies byte order is correct (Bitcoin hashes display reversed).
+	let height = output["current_best_block"]["height"].as_u64().unwrap();
+	assert!(height > 0);
+	let api_block_hash = output["current_best_block"]["block_hash"].as_str().unwrap();
+	let rpc_block_hash = bitcoind.bitcoind.client.get_block_hash(height).unwrap().0;
+	assert_eq!(
+		api_block_hash, rpc_block_hash,
+		"block_hash from API should match bitcoind RPC (display byte order)"
+	);
 }
 
 #[tokio::test]
@@ -73,7 +83,7 @@ async fn test_cli_list_payments_empty() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 
 	let output = run_cli(&server, &["list-payments"]);
-	assert!(output["list"].as_array().unwrap().is_empty());
+	assert!(output["payments"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -82,7 +92,7 @@ async fn test_cli_list_forwarded_payments_empty() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 
 	let output = run_cli(&server, &["list-forwarded-payments"]);
-	assert!(output["list"].as_array().unwrap().is_empty());
+	assert!(output["forwarded_payments"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -102,7 +112,8 @@ async fn test_cli_verify_signature() {
 	let sign_output = run_cli(&server, &["sign-message", "hello"]);
 	let signature = sign_output["signature"].as_str().unwrap();
 
-	let output = run_cli(&server, &["verify-signature", "hello", signature, server.node_id()]);
+	let node_id_hex = server.node_id().to_lower_hex_string();
+	let output = run_cli(&server, &["verify-signature", "hello", signature, &node_id_hex]);
 	assert_eq!(output["valid"], true);
 }
 
@@ -118,9 +129,7 @@ async fn test_cli_export_pathfinding_scores() {
 		.client()
 		.bolt11_receive(Bolt11ReceiveRequest {
 			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
+			description: Some(Bolt11InvoiceDescription::Direct("test".to_string())),
 			expiry_secs: 3600,
 		})
 		.await
@@ -142,10 +151,18 @@ async fn test_cli_bolt11_receive() {
 	assert!(invoice_str.starts_with("lnbcrt"), "Expected lnbcrt prefix, got: {}", invoice_str);
 
 	let invoice: Bolt11Invoice = invoice_str.parse().unwrap();
-	let payment_hash = sha256::Hash::from_str(output["payment_hash"].as_str().unwrap()).unwrap();
-	assert_eq!(*invoice.payment_hash(), payment_hash);
-	let payment_secret = <[u8; 32]>::from_hex(output["payment_secret"].as_str().unwrap()).unwrap();
-	assert_eq!(invoice.payment_secret().0, payment_secret);
+
+	// Cross-check payment_hash bytes: API response vs parsed invoice
+	let api_hash = <[u8; 32]>::from_hex(output["payment_hash"].as_str().unwrap()).unwrap();
+	assert_eq!(
+		api_hash,
+		*invoice.payment_hash().as_byte_array(),
+		"payment_hash bytes should match invoice"
+	);
+
+	// Cross-check payment_secret bytes: API response vs parsed invoice
+	let api_secret = <[u8; 32]>::from_hex(output["payment_secret"].as_str().unwrap()).unwrap();
+	assert_eq!(api_secret, invoice.payment_secret().0, "payment_secret bytes should match invoice");
 }
 
 #[tokio::test]
@@ -162,7 +179,7 @@ async fn test_cli_decode_invoice() {
 	let decoded = run_cli(&server, &["decode-invoice", invoice_str]);
 
 	// Verify fields match
-	assert_eq!(decoded["destination"], server.node_id());
+	assert_eq!(decoded["destination"], server.node_id().to_lower_hex_string());
 	assert_eq!(decoded["payment_hash"], output["payment_hash"]);
 	assert_eq!(decoded["amount_msat"], 50_000_000);
 	assert_eq!(decoded["description"], "decode test");
@@ -215,31 +232,21 @@ async fn test_cli_decode_invoice() {
 	// serde_json escapes control chars (U+0000–U+001F) as \uXXXX in JSON.
 	let desc_with_ansi = "pay me\x1b[31m RED \x1b[0m";
 	let output_ansi = run_cli(&server, &["bolt11-receive", "-d", desc_with_ansi]);
-	let raw_decoded = run_cli_raw(
-		&server,
-		&["decode-invoice", output_ansi["invoice"].as_str().unwrap()],
-	);
-	assert!(
-		!raw_decoded.contains('\x1b'),
-		"Raw CLI output must not contain ANSI escape bytes"
-	);
+	let raw_decoded =
+		run_cli_raw(&server, &["decode-invoice", output_ansi["invoice"].as_str().unwrap()]);
+	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
 	// Test that Unicode bidi override characters in the description are escaped
 	// (sanitize_for_terminal replaces them with \uXXXX in CLI output)
 	let desc_with_bidi = "pay me\u{202E}evil";
 	let output_bidi = run_cli(&server, &["bolt11-receive", "-d", desc_with_bidi]);
-	let raw_bidi = run_cli_raw(
-		&server,
-		&["decode-invoice", output_bidi["invoice"].as_str().unwrap()],
-	);
+	let raw_bidi =
+		run_cli_raw(&server, &["decode-invoice", output_bidi["invoice"].as_str().unwrap()]);
 	assert!(
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(
-		raw_bidi.contains("\\u202E"),
-		"Bidi characters should be escaped as \\uXXXX in output"
-	);
+	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]
@@ -302,35 +309,25 @@ async fn test_cli_decode_offer() {
 	let output_fixed = run_cli(&server_a, &["bolt12-receive", "fixed amount", "50000sat"]);
 	let decoded_fixed =
 		run_cli(&server_a, &["decode-offer", output_fixed["offer"].as_str().unwrap()]);
-	assert_eq!(decoded_fixed["amount"]["amount"]["bitcoin_amount_msats"], 50_000_000);
+	assert_eq!(decoded_fixed["amount"]["bitcoin_amount_msats"], 50_000_000);
 
 	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
 	let desc_with_ansi = "offer\x1b[31m RED \x1b[0m";
 	let output_ansi = run_cli(&server_a, &["bolt12-receive", desc_with_ansi]);
-	let raw_decoded = run_cli_raw(
-		&server_a,
-		&["decode-offer", output_ansi["offer"].as_str().unwrap()],
-	);
-	assert!(
-		!raw_decoded.contains('\x1b'),
-		"Raw CLI output must not contain ANSI escape bytes"
-	);
+	let raw_decoded =
+		run_cli_raw(&server_a, &["decode-offer", output_ansi["offer"].as_str().unwrap()]);
+	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
 	// Test that Unicode bidi override characters in the description are escaped
 	let desc_with_bidi = "offer\u{202E}evil";
 	let output_bidi = run_cli(&server_a, &["bolt12-receive", desc_with_bidi]);
-	let raw_bidi = run_cli_raw(
-		&server_a,
-		&["decode-offer", output_bidi["offer"].as_str().unwrap()],
-	);
+	let raw_bidi =
+		run_cli_raw(&server_a, &["decode-offer", output_bidi["offer"].as_str().unwrap()]);
 	assert!(
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(
-		raw_bidi.contains("\\u202E"),
-		"Bidi characters should be escaped as \\uXXXX in output"
-	);
+	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]
@@ -349,7 +346,13 @@ async fn test_cli_onchain_send() {
 	let dest_addr = recv_output["address"].as_str().unwrap();
 
 	let output = run_cli(&server, &["onchain-send", dest_addr, "50000sat"]);
-	assert!(!output["txid"].as_str().unwrap().is_empty());
+	let txid_hex = output["txid"].as_str().unwrap();
+
+	// Verify the txid is in display byte order by round-tripping through
+	// bitcoin::Txid::from_str (which expects display/reversed hex)
+	let txid = ldk_node::bitcoin::Txid::from_str(txid_hex)
+		.expect("API txid should parse as a Bitcoin Txid (display byte order)");
+	assert_eq!(txid.to_string(), txid_hex, "Txid round-trip should preserve hex");
 }
 
 #[tokio::test]
@@ -359,7 +362,8 @@ async fn test_cli_connect_peer() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
-	let output = run_cli(&server_a, &["connect-peer", server_b.node_id(), &addr]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["connect-peer", &node_id_hex, &addr]);
 	// ConnectPeerResponse is empty
 	assert!(output.is_object());
 }
@@ -376,12 +380,13 @@ async fn test_cli_list_peers() {
 	assert!(output["peers"].as_array().unwrap().is_empty());
 
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
-	run_cli(&server_a, &["connect-peer", server_b.node_id(), &addr]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	run_cli(&server_a, &["connect-peer", &node_id_hex, &addr]);
 
 	let output = run_cli(&server_a, &["list-peers"]);
 	let peers = output["peers"].as_array().unwrap();
 	assert_eq!(peers.len(), 1);
-	assert_eq!(peers[0]["node_id"], server_b.node_id());
+	assert_eq!(peers[0]["node_id"], node_id_hex);
 	assert_eq!(peers[0]["address"], addr);
 	assert_eq!(peers[0]["is_persisted"], false);
 	assert_eq!(peers[0]["is_connected"], true);
@@ -406,9 +411,10 @@ async fn test_cli_open_channel() {
 
 	// Open channel via CLI
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
 	let output = run_cli(
 		&server_a,
-		&["open-channel", server_b.node_id(), &addr, "100000sat", "--announce-channel"],
+		&["open-channel", &node_id_hex, &addr, "100000sat", "--announce-channel"],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
 }
@@ -423,7 +429,33 @@ async fn test_cli_list_channels() {
 	let output = run_cli(&server_a, &["list-channels"]);
 	let channels = output["channels"].as_array().unwrap();
 	assert!(!channels.is_empty());
-	assert_eq!(channels[0]["counterparty_node_id"], server_b.node_id());
+
+	let ch = &channels[0];
+	// Verify counterparty_node_id is server_b's actual pubkey
+	let cp_id = <[u8; 33]>::from_hex(ch["counterparty_node_id"].as_str().unwrap()).unwrap();
+	assert_eq!(cp_id, *server_b.node_id(), "counterparty should be server_b");
+
+	// Verify channel_id is a valid 32-byte value
+	let channel_id = <[u8; 32]>::from_hex(ch["channel_id"].as_str().unwrap()).unwrap();
+	assert_ne!(channel_id, [0u8; 32], "channel_id should not be all zeros");
+
+	// Verify funding txid is in correct display byte order
+	let funding_txid_hex = ch["funding_txo"]["txid"].as_str().unwrap();
+	let funding_txid = ldk_node::bitcoin::Txid::from_str(funding_txid_hex)
+		.expect("funding txid should parse as a Bitcoin Txid (display byte order)");
+	assert_eq!(funding_txid.to_string(), funding_txid_hex);
+
+	// Both sides should see the same channel — cross-check from server_b
+	let output_b = run_cli(&server_b, &["list-channels"]);
+	let channels_b = output_b["channels"].as_array().unwrap();
+	assert!(!channels_b.is_empty());
+	let ch_b = &channels_b[0];
+	let cp_id_b = <[u8; 33]>::from_hex(ch_b["counterparty_node_id"].as_str().unwrap()).unwrap();
+	assert_eq!(cp_id_b, *server_a.node_id(), "server_b's counterparty should be server_a");
+	assert_eq!(
+		ch_b["funding_txo"]["txid"], ch["funding_txo"]["txid"],
+		"both sides should report same funding txid"
+	);
 }
 
 #[tokio::test]
@@ -433,12 +465,13 @@ async fn test_cli_update_channel_config() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
 	let output = run_cli(
 		&server_a,
 		&[
 			"update-channel-config",
 			&user_channel_id,
-			server_b.node_id(),
+			&node_id_hex,
 			"--forwarding-fee-base-msat",
 			"100",
 		],
@@ -463,9 +496,7 @@ async fn test_cli_bolt11_send() {
 		.client()
 		.bolt11_receive(Bolt11ReceiveRequest {
 			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
+			description: Some(Bolt11InvoiceDescription::Direct("test".to_string())),
 			expiry_secs: 3600,
 		})
 		.await
@@ -480,13 +511,13 @@ async fn test_cli_bolt11_send() {
 
 	let events_a = consumer_a.consume_events(5, Duration::from_secs(10)).await;
 	assert!(
-		events_a.iter().any(|e| matches!(&e.event, Some(Event::PaymentSuccessful(_)))),
+		events_a.iter().any(|e| matches!(e, Event::PaymentSuccessful(_))),
 		"Expected PaymentSuccessful on sender"
 	);
 
 	let events_b = consumer_b.consume_events(5, Duration::from_secs(10)).await;
 	assert!(
-		events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentReceived(_)))),
+		events_b.iter().any(|e| matches!(e, Event::PaymentReceived(_))),
 		"Expected PaymentReceived on receiver"
 	);
 }
@@ -503,15 +534,16 @@ async fn test_cli_pay() {
 		.client()
 		.bolt11_receive(Bolt11ReceiveRequest {
 			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
+			description: Some(Bolt11InvoiceDescription::Direct("test".to_string())),
 			expiry_secs: 3600,
 		})
 		.await
 		.unwrap();
 	let output = run_cli(&server_a, &["pay", &invoice_resp.invoice]);
-	assert!(output.get("bolt11_payment_id").is_some());
+	assert!(
+		output.get("bolt11").unwrap().get("payment_id").is_some(),
+		"Expected bolt11.payment_id in output, got {output:?}"
+	);
 
 	// Pay a BOLT12 offer via unified `pay` command
 	let offer_resp = server_b
@@ -525,7 +557,10 @@ async fn test_cli_pay() {
 		.await
 		.unwrap();
 	let output = run_cli(&server_a, &["pay", &offer_resp.offer, "10000sat"]);
-	assert!(output.get("bolt12_payment_id").is_some());
+	assert!(
+		output.get("bolt12").unwrap().get("payment_id").is_some(),
+		"Expected bolt12.payment_id in output, got {output:?}"
+	);
 }
 
 #[tokio::test]
@@ -563,7 +598,8 @@ async fn test_cli_spontaneous_send() {
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output = run_cli(&server_a, &["spontaneous-send", server_b.node_id(), "10000sat"]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["spontaneous-send", &node_id_hex, "10000sat"]);
 	assert!(!output["payment_id"].as_str().unwrap().is_empty());
 
 	// Verify events
@@ -571,13 +607,13 @@ async fn test_cli_spontaneous_send() {
 
 	let events_a = consumer_a.consume_events(5, Duration::from_secs(10)).await;
 	assert!(
-		events_a.iter().any(|e| matches!(&e.event, Some(Event::PaymentSuccessful(_)))),
+		events_a.iter().any(|e| matches!(e, Event::PaymentSuccessful(_))),
 		"Expected PaymentSuccessful on sender"
 	);
 
 	let events_b = consumer_b.consume_events(5, Duration::from_secs(10)).await;
 	assert!(
-		events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentReceived(_)))),
+		events_b.iter().any(|e| matches!(e, Event::PaymentReceived(_))),
 		"Expected PaymentReceived on receiver"
 	);
 }
@@ -594,13 +630,13 @@ async fn test_cli_get_payment_details() {
 		.client()
 		.bolt11_receive(Bolt11ReceiveRequest {
 			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
+			description: Some(Bolt11InvoiceDescription::Direct("test".to_string())),
 			expiry_secs: 3600,
 		})
 		.await
 		.unwrap();
+
+	let invoice: Bolt11Invoice = invoice_resp.invoice.parse().unwrap();
 
 	let send_output = run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
 	let payment_id = send_output["payment_id"].as_str().unwrap();
@@ -609,8 +645,19 @@ async fn test_cli_get_payment_details() {
 	tokio::time::sleep(Duration::from_secs(3)).await;
 
 	let output = run_cli(&server_a, &["get-payment-details", payment_id]);
-	assert!(output.get("payment").is_some());
-	assert_eq!(output["payment"]["id"], payment_id);
+	let payment = &output["payment"];
+	assert_eq!(payment["id"], payment_id);
+	assert_eq!(payment["status"], "succeeded");
+	assert_eq!(payment["direction"], "outbound");
+
+	// Verify the payment hash in the details matches the invoice
+	let details_hash_hex = payment["kind"]["bolt11"]["hash"].as_str().unwrap();
+	let details_hash = <[u8; 32]>::from_hex(details_hash_hex).unwrap();
+	assert_eq!(
+		details_hash,
+		*invoice.payment_hash().as_byte_array(),
+		"payment hash in details should match invoice"
+	);
 }
 
 #[tokio::test]
@@ -625,9 +672,7 @@ async fn test_cli_list_payments() {
 		.client()
 		.bolt11_receive(Bolt11ReceiveRequest {
 			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
+			description: Some(Bolt11InvoiceDescription::Direct("test".to_string())),
 			expiry_secs: 3600,
 		})
 		.await
@@ -637,7 +682,7 @@ async fn test_cli_list_payments() {
 	tokio::time::sleep(Duration::from_secs(3)).await;
 
 	let output = run_cli(&server_a, &["list-payments"]);
-	assert!(!output["list"].as_array().unwrap().is_empty());
+	assert!(!output["payments"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -647,7 +692,8 @@ async fn test_cli_close_channel() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output = run_cli(&server_a, &["close-channel", &user_channel_id, server_b.node_id()]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["close-channel", &user_channel_id, &node_id_hex]);
 	assert!(output.is_object());
 
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
@@ -664,7 +710,8 @@ async fn test_cli_force_close_channel() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output = run_cli(&server_a, &["force-close-channel", &user_channel_id, server_b.node_id()]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["force-close-channel", &user_channel_id, &node_id_hex]);
 	assert!(output.is_object());
 
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
@@ -681,8 +728,8 @@ async fn test_cli_splice_in() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output =
-		run_cli(&server_a, &["splice-in", &user_channel_id, server_b.node_id(), "50000sat"]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["splice-in", &user_channel_id, &node_id_hex, "50000sat"]);
 	assert!(output.is_object());
 }
 
@@ -693,8 +740,8 @@ async fn test_cli_splice_out() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output =
-		run_cli(&server_a, &["splice-out", &user_channel_id, server_b.node_id(), "10000sat"]);
+	let node_id_hex = server_b.node_id().to_lower_hex_string();
+	let output = run_cli(&server_a, &["splice-out", &user_channel_id, &node_id_hex, "10000sat"]);
 	let address = output["address"].as_str().unwrap();
 	assert!(address.starts_with("bcrt1"), "Expected regtest address, got: {}", address);
 }
@@ -745,7 +792,9 @@ async fn test_cli_graph_with_channel() {
 	let channel = &output["channel"];
 	let node_one = channel["node_one"].as_str().unwrap();
 	let node_two = channel["node_two"].as_str().unwrap();
-	let nodes = [server_a.node_id(), server_b.node_id()];
+	let node_a_hex = server_a.node_id().to_lower_hex_string();
+	let node_b_hex = server_b.node_id().to_lower_hex_string();
+	let nodes = [node_a_hex.as_str(), node_b_hex.as_str()];
 	assert!(nodes.contains(&node_one), "node_one {} not one of our nodes", node_one);
 	assert!(nodes.contains(&node_two), "node_two {} not one of our nodes", node_two);
 
@@ -753,11 +802,11 @@ async fn test_cli_graph_with_channel() {
 	let output = run_cli(&server_a, &["graph-list-nodes"]);
 	let node_ids: Vec<&str> =
 		output["node_ids"].as_array().unwrap().iter().map(|n| n.as_str().unwrap()).collect();
-	assert!(node_ids.contains(&server_a.node_id()), "Expected server_a in graph nodes");
-	assert!(node_ids.contains(&server_b.node_id()), "Expected server_b in graph nodes");
+	assert!(node_ids.contains(&node_a_hex.as_str()), "Expected server_a in graph nodes");
+	assert!(node_ids.contains(&node_b_hex.as_str()), "Expected server_b in graph nodes");
 
 	// Test GraphGetNode: should return node info with at least one channel.
-	let output = run_cli(&server_a, &["graph-get-node", server_b.node_id()]);
+	let output = run_cli(&server_a, &["graph-get-node", &node_b_hex]);
 	let node = &output["node"];
 	let channels = node["channels"].as_array().unwrap();
 	assert!(!channels.is_empty(), "Expected node to have at least one channel");
@@ -798,7 +847,7 @@ async fn test_forwarded_payment_event() {
 	let storage_dir_c = tempfile::tempdir().unwrap().into_path();
 	let p2p_port_c = find_available_port();
 	let config_c = ldk_node::config::Config {
-		network: ldk_node::bitcoin::Network::Regtest,
+		network: Network::Regtest,
 		storage_dir_path: storage_dir_c.to_str().unwrap().to_string(),
 		listening_addresses: Some(vec![SocketAddress::from_str(&format!(
 			"127.0.0.1:{p2p_port_c}"
@@ -812,7 +861,8 @@ async fn test_forwarded_payment_event() {
 	builder_c.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password);
 
 	// Set B as LSPS2 LSP for C
-	let b_node_id = ldk_node::bitcoin::secp256k1::PublicKey::from_str(server_b.node_id()).unwrap();
+	let b_node_id_hex = server_b.node_id().to_lower_hex_string();
+	let b_node_id = PublicKey::from_str(&b_node_id_hex).unwrap();
 	let b_addr = SocketAddress::from_str(&format!("127.0.0.1:{}", server_b.p2p_port)).unwrap();
 	builder_c.set_liquidity_source_lsps2(b_node_id, b_addr, None);
 
@@ -846,9 +896,8 @@ async fn test_forwarded_payment_event() {
 	// Verify PaymentForwarded event on B
 	let events_b = consumer_b.consume_events(10, Duration::from_secs(15)).await;
 	assert!(
-		events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentForwarded(_)))),
-		"Expected PaymentForwarded event on LSP node B, got events: {:?}",
-		events_b.iter().map(|e| &e.event).collect::<Vec<_>>()
+		events_b.iter().any(|e| matches!(e, Event::PaymentForwarded(_))),
+		"Expected PaymentForwarded event on LSP node B, got events: {events_b:?}"
 	);
 
 	node_c.stop().unwrap();
@@ -899,9 +948,8 @@ async fn test_hodl_invoice_claim() {
 		// Verify PaymentClaimable event on B
 		let events_b = consumer_b.consume_events(1, Duration::from_secs(10)).await;
 		assert!(
-			events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentClaimable(_)))),
-			"Expected PaymentClaimable on receiver, got events: {:?}",
-			events_b.iter().map(|e| &e.event).collect::<Vec<_>>()
+			events_b.iter().any(|e| matches!(e, Event::PaymentClaimable(_))),
+			"Expected PaymentClaimable on receiver, got events: {events_b:?}",
 		);
 
 		// Claim the payment on B
@@ -917,26 +965,21 @@ async fn test_hodl_invoice_claim() {
 		// Verify PaymentReceived event on B
 		let events_b = consumer_b.consume_events(1, Duration::from_secs(10)).await;
 		assert!(
-			events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentReceived(_)))),
-			"Expected PaymentReceived on receiver after claim, got events: {:?}",
-			events_b.iter().map(|e| &e.event).collect::<Vec<_>>()
+			events_b.iter().any(|e| matches!(e, Event::PaymentReceived(_))),
+			"Expected PaymentReceived on receiver after claim, got events: {events_b:?}",
 		);
 
 		// Verify PaymentSuccessful on A
 		let events_a = consumer_a.consume_events(1, Duration::from_secs(10)).await;
 		assert!(
-			events_a.iter().any(|e| matches!(&e.event, Some(Event::PaymentSuccessful(_)))),
-			"Expected PaymentSuccessful on sender, got events: {:?}",
-			events_a.iter().map(|e| &e.event).collect::<Vec<_>>()
+			events_a.iter().any(|e| matches!(e, Event::PaymentSuccessful(_))),
+			"Expected PaymentSuccessful on sender, got events: {events_a:?}",
 		);
 	}
 }
 
 #[tokio::test]
 async fn test_hodl_invoice_fail() {
-	use hex_conservative::DisplayHex;
-	use ldk_node::bitcoin::hashes::{sha256, Hash};
-
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -976,9 +1019,8 @@ async fn test_hodl_invoice_fail() {
 	// Verify PaymentClaimable event on B
 	let events_b = consumer_b.consume_events(5, Duration::from_secs(10)).await;
 	assert!(
-		events_b.iter().any(|e| matches!(&e.event, Some(Event::PaymentClaimable(_)))),
-		"Expected PaymentClaimable on receiver, got events: {:?}",
-		events_b.iter().map(|e| &e.event).collect::<Vec<_>>()
+		events_b.iter().any(|e| matches!(e, Event::PaymentClaimable(_))),
+		"Expected PaymentClaimable on receiver, got events: {events_b:?}",
 	);
 
 	// Fail the payment on B using CLI
@@ -990,8 +1032,7 @@ async fn test_hodl_invoice_fail() {
 	// Verify PaymentFailed on A
 	let events_a = consumer_a.consume_events(10, Duration::from_secs(10)).await;
 	assert!(
-		events_a.iter().any(|e| matches!(&e.event, Some(Event::PaymentFailed(_)))),
-		"Expected PaymentFailed on sender after hodl rejection, got events: {:?}",
-		events_a.iter().map(|e| &e.event).collect::<Vec<_>>()
+		events_a.iter().any(|e| matches!(e, Event::PaymentFailed(_))),
+		"Expected PaymentFailed on sender after hodl rejection, got events: {events_a:?}",
 	);
 }

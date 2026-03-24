@@ -16,9 +16,9 @@ use std::time::Duration;
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
-use ldk_server_client::ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
-use ldk_server_protos::api::{
-	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
+use ldk_server_json_models::api::{
+	GetBalancesRequest, GetNodeInfoRequest, GetNodeInfoResponse, ListChannelsRequest,
+	OnchainReceiveRequest, OpenChannelRequest,
 };
 
 /// Wrapper around a managed bitcoind process for regtest.
@@ -92,7 +92,7 @@ pub struct LdkServerHandle {
 	pub storage_dir: PathBuf,
 	pub api_key: String,
 	pub tls_cert_path: PathBuf,
-	pub node_id: String,
+	pub node_id: [u8; 33],
 	pub exchange_name: String,
 	client: LdkServerClient,
 }
@@ -201,7 +201,7 @@ client_trusts_lsp = true
 			storage_dir,
 			api_key,
 			tls_cert_path,
-			node_id: String::new(),
+			node_id: [0u8; 33],
 			exchange_name,
 			client,
 		};
@@ -217,7 +217,7 @@ client_trusts_lsp = true
 		&self.client
 	}
 
-	pub fn node_id(&self) -> &str {
+	pub fn node_id(&self) -> &[u8; 33] {
 		&self.node_id
 	}
 
@@ -325,16 +325,14 @@ pub async fn mine_and_sync(
 		let start = std::time::Instant::now();
 		loop {
 			if let Ok(info) = client.get_node_info(GetNodeInfoRequest {}).await {
-				if info.current_best_block.as_ref().map(|b| b.height).unwrap_or(0)
-					>= expected_height as u32
-				{
+				if info.current_best_block.height >= expected_height as u32 {
 					break;
 				}
 			}
 			if start.elapsed() > timeout {
 				panic!(
 					"Timed out waiting for server {} to sync to height {}",
-					server.node_id(),
+					server.node_id().to_lower_hex_string(),
 					expected_height
 				);
 			}
@@ -409,7 +407,7 @@ pub async fn setup_funded_channel(
 	let open_resp = server_a
 		.client()
 		.open_channel(OpenChannelRequest {
-			node_pubkey: server_b.node_id().to_string(),
+			node_pubkey: *server_b.node_id(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
 			channel_amount_sats,
 			push_to_counterparty_msat: None,
@@ -502,17 +500,16 @@ impl RabbitMqEventConsumer {
 	/// Consume up to `count` events, waiting up to `timeout` for each.
 	pub async fn consume_events(
 		&mut self, count: usize, timeout: Duration,
-	) -> Vec<ldk_server_protos::events::EventEnvelope> {
+	) -> Vec<ldk_server_json_models::events::Event> {
 		use futures_util::StreamExt;
 		use lapin::options::BasicAckOptions;
-		use prost::Message;
 
 		let mut events = Vec::new();
 		for _ in 0..count {
 			match tokio::time::timeout(timeout, self.consumer.next()).await {
 				Ok(Some(Ok(delivery))) => {
-					let event = ldk_server_protos::events::EventEnvelope::decode(&*delivery.data)
-						.expect("Failed to decode event");
+					let event: ldk_server_json_models::events::Event =
+						serde_json::from_slice(&delivery.data).expect("Failed to decode event");
 					self.channel
 						.basic_ack(delivery.delivery_tag, BasicAckOptions::default())
 						.await

@@ -7,13 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bytes::Bytes;
-use ldk_server_protos::api::{ListPaymentsRequest, ListPaymentsResponse};
-use ldk_server_protos::types::{PageToken, Payment};
-use prost::Message;
+use ldk_server_json_models::api::{ListPaymentsRequest, ListPaymentsResponse};
+use ldk_server_json_models::types::Payment;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
+use crate::api::{decode_page_token, encode_page_token};
 use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
@@ -22,7 +21,7 @@ use crate::service::Context;
 pub(crate) fn handle_list_payments_request(
 	context: Context, request: ListPaymentsRequest,
 ) -> Result<ListPaymentsResponse, LdkServerError> {
-	let page_token = request.page_token.map(|p| (p.token, p.index));
+	let page_token = decode_page_token(request.page_token)?;
 	let list_response = context
 		.paginated_kv_store
 		.list(
@@ -49,16 +48,14 @@ pub(crate) fn handle_list_payments_request(
 					format!("Failed to read payment data: {}", e),
 				)
 			})?;
-		let payment = Payment::decode(Bytes::from(payment_bytes)).map_err(|e| {
+		let payment = serde_json::from_slice::<Payment>(&payment_bytes).map_err(|e| {
 			LdkServerError::new(InternalServerError, format!("Failed to decode payment: {}", e))
 		})?;
 		payments.push(payment);
 	}
 	let response = ListPaymentsResponse {
 		payments,
-		next_page_token: list_response
-			.next_page_token
-			.map(|(token, index)| PageToken { token, index }),
+		next_page_token: encode_page_token(list_response.next_page_token),
 	};
 	Ok(response)
 }

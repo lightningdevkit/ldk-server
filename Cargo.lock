@@ -573,9 +573,6 @@ name = "bytes"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "cbc"
@@ -1753,7 +1750,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
- "bytes",
  "chrono",
  "clap",
  "futures-util",
@@ -1764,12 +1760,12 @@ dependencies = [
  "hyper-util",
  "lapin",
  "ldk-node",
- "ldk-server-protos",
+ "ldk-server-json-models",
  "log",
- "prost",
  "ring",
  "rusqlite",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-rustls 0.26.4",
  "toml",
@@ -1794,19 +1790,18 @@ name = "ldk-server-client"
 version = "0.1.0"
 dependencies = [
  "bitcoin_hashes 0.14.0",
- "ldk-server-protos",
- "prost",
+ "ldk-server-json-models",
  "reqwest 0.11.27",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
-name = "ldk-server-protos"
+name = "ldk-server-json-models"
 version = "0.1.0"
 dependencies = [
- "bytes",
- "prost",
- "prost-build",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

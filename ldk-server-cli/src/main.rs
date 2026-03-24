@@ -17,50 +17,36 @@ use config::{
 	get_default_cert_path, get_default_config_path, load_config, resolve_base_url,
 	DEFAULT_REST_SERVICE_ADDRESS,
 };
-use hex_conservative::DisplayHex;
+use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, InternalError, InternalServerError, InvalidRequestError, JsonParseError,
+	LightningError,
 };
-use ldk_server_client::ldk_server_protos::api::{
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
-	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
-	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
-	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
-	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+use ldk_server_client::ldk_server_json_models::api::{
+	Bolt11ClaimForHashRequest, Bolt11FailForHashRequest, Bolt11ReceiveForHashRequest,
+	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt12ReceiveRequest, Bolt12SendRequest,
+	CloseChannelRequest, ConnectPeerRequest, DecodeInvoiceRequest, DecodeOfferRequest,
+	DisconnectPeerRequest, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
+	GetBalancesRequest, GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest,
+	GraphGetNodeRequest, GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
+	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
+	OnchainSendRequest, OpenChannelRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
+	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
 };
-use ldk_server_client::ldk_server_protos::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
-	RouteParametersConfig,
+use ldk_server_client::ldk_server_json_models::types::{
+	Bolt11InvoiceDescription, ChannelConfig, RouteParametersConfig,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
-use types::{
-	Amount, CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse,
-};
+use serde_json::json;
+use types::Amount;
 
 mod config;
 mod types;
 
-// Having these default values as constants in the Proto file and
-// importing/reusing them here might be better, but Proto3 removed
-// the ability to set default values.
+// Default values for route parameters configuration.
 const DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA: u32 = 1008;
 const DEFAULT_MAX_PATH_COUNT: u32 = 10;
 const DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF: u32 = 2;
@@ -440,13 +426,7 @@ enum Commands {
 	ListChannels,
 	#[command(about = "Retrieve list of all payments")]
 	ListPayments {
-		#[arg(short, long)]
-		#[arg(
-			help = "Fetch at least this many payments by iterating through multiple pages. Returns combined results with the last page token. If not provided, returns only a single page."
-		)]
-		number_of_payments: Option<u64>,
-		#[arg(long)]
-		#[arg(help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(help = "Page token to continue from a previous page")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Get details of a specific payment by its payment ID")]
@@ -456,13 +436,7 @@ enum Commands {
 	},
 	#[command(about = "Retrieves list of all forwarded payments")]
 	ListForwardedPayments {
-		#[arg(
-			short,
-			long,
-			help = "Fetch at least this many forwarded payments by iterating through multiple pages. Returns combined results with the last page token. If not provided, returns only a single page."
-		)]
-		number_of_payments: Option<u64>,
-		#[arg(long, help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(help = "Page token to continue from a previous page")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Update the forwarding fees and CLTV expiry delta for an existing channel")]
@@ -619,23 +593,17 @@ async fn main() {
 
 	match cli.command {
 		Commands::GetNodeInfo => {
-			handle_response_result::<_, GetNodeInfoResponse>(
-				client.get_node_info(GetNodeInfoRequest {}).await,
-			);
+			handle_response_result(client.get_node_info(GetNodeInfoRequest {}).await);
 		},
 		Commands::GetBalances => {
-			handle_response_result::<_, GetBalancesResponse>(
-				client.get_balances(GetBalancesRequest {}).await,
-			);
+			handle_response_result(client.get_balances(GetBalancesRequest {}).await);
 		},
 		Commands::OnchainReceive => {
-			handle_response_result::<_, OnchainReceiveResponse>(
-				client.onchain_receive(OnchainReceiveRequest {}).await,
-			);
+			handle_response_result(client.onchain_receive(OnchainReceiveRequest {}).await);
 		},
 		Commands::OnchainSend { address, amount, send_all, fee_rate_sat_per_vb } => {
 			let amount_sats = amount.map(|a| a.to_sat().unwrap_or_else(|e| handle_error_msg(&e)));
-			handle_response_result::<_, OnchainSendResponse>(
+			handle_response_result(
 				client
 					.onchain_send(OnchainSendRequest {
 						address,
@@ -655,9 +623,7 @@ async fn main() {
 			let request =
 				Bolt11ReceiveRequest { description: invoice_description, expiry_secs, amount_msat };
 
-			handle_response_result::<_, Bolt11ReceiveResponse>(
-				client.bolt11_receive(request).await,
-			);
+			handle_response_result(client.bolt11_receive(request).await);
 		},
 		Commands::Bolt11ReceiveForHash {
 			payment_hash,
@@ -668,12 +634,8 @@ async fn main() {
 		} => {
 			let amount_msat = amount.map(|a| a.to_msat());
 			let invoice_description = match (description, description_hash) {
-				(Some(desc), None) => Some(Bolt11InvoiceDescription {
-					kind: Some(bolt11_invoice_description::Kind::Direct(desc)),
-				}),
-				(None, Some(hash)) => Some(Bolt11InvoiceDescription {
-					kind: Some(bolt11_invoice_description::Kind::Hash(hash)),
-				}),
+				(Some(desc), None) => Some(Bolt11InvoiceDescription::Direct(desc)),
+				(None, Some(hash)) => Some(Bolt11InvoiceDescription::Hash(hash)),
 				(Some(_), Some(_)) => {
 					handle_error(LdkServerError::new(
 						InternalError,
@@ -688,27 +650,29 @@ async fn main() {
 				description: invoice_description,
 				expiry_secs,
 				amount_msat,
-				payment_hash,
+				payment_hash: parse_hex_32(&payment_hash, "payment_hash"),
 			};
 
-			handle_response_result::<_, Bolt11ReceiveForHashResponse>(
-				client.bolt11_receive_for_hash(request).await,
-			);
+			handle_response_result(client.bolt11_receive_for_hash(request).await);
 		},
 		Commands::Bolt11ClaimForHash { preimage, claimable_amount, payment_hash } => {
-			handle_response_result::<_, Bolt11ClaimForHashResponse>(
+			handle_response_result(
 				client
 					.bolt11_claim_for_hash(Bolt11ClaimForHashRequest {
-						payment_hash,
+						payment_hash: payment_hash.map(|h| parse_hex_32(&h, "payment_hash")),
 						claimable_amount_msat: claimable_amount.map(|a| a.to_msat()),
-						preimage,
+						preimage: parse_hex_32(&preimage, "preimage"),
 					})
 					.await,
 			);
 		},
 		Commands::Bolt11FailForHash { payment_hash } => {
-			handle_response_result::<_, Bolt11FailForHashResponse>(
-				client.bolt11_fail_for_hash(Bolt11FailForHashRequest { payment_hash }).await,
+			handle_response_result(
+				client
+					.bolt11_fail_for_hash(Bolt11FailForHashRequest {
+						payment_hash: parse_hex_32(&payment_hash, "payment_hash"),
+					})
+					.await,
 			);
 		},
 		Commands::Bolt11ReceiveViaJitChannel {
@@ -725,9 +689,7 @@ async fn main() {
 				max_total_lsp_fee_limit_msat: max_total_lsp_fee_limit.map(|a| a.to_msat()),
 			};
 
-			handle_response_result::<_, Bolt11ReceiveViaJitChannelResponse>(
-				client.bolt11_receive_via_jit_channel(request).await,
-			);
+			handle_response_result(client.bolt11_receive_via_jit_channel(request).await);
 		},
 		Commands::Bolt11ReceiveVariableAmountViaJitChannel {
 			description,
@@ -741,7 +703,7 @@ async fn main() {
 				max_proportional_lsp_fee_limit_ppm_msat,
 			};
 
-			handle_response_result::<_, Bolt11ReceiveVariableAmountViaJitChannelResponse>(
+			handle_response_result(
 				client.bolt11_receive_variable_amount_via_jit_channel(request).await,
 			);
 		},
@@ -763,7 +725,7 @@ async fn main() {
 				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
-			handle_response_result::<_, Bolt11SendResponse>(
+			handle_response_result(
 				client
 					.bolt11_send(Bolt11SendRequest {
 						invoice,
@@ -775,7 +737,7 @@ async fn main() {
 		},
 		Commands::Bolt12Receive { description, amount, expiry_secs, quantity } => {
 			let amount_msat = amount.map(|a| a.to_msat());
-			handle_response_result::<_, Bolt12ReceiveResponse>(
+			handle_response_result(
 				client
 					.bolt12_receive(Bolt12ReceiveRequest {
 						description,
@@ -807,7 +769,7 @@ async fn main() {
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
 
-			handle_response_result::<_, Bolt12SendResponse>(
+			handle_response_result(
 				client
 					.bolt12_send(Bolt12SendRequest {
 						offer,
@@ -838,11 +800,11 @@ async fn main() {
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
 
-			handle_response_result::<_, SpontaneousSendResponse>(
+			handle_response_result(
 				client
 					.spontaneous_send(SpontaneousSendRequest {
 						amount_msat,
-						node_id,
+						node_id: parse_hex_33(&node_id, "node_id"),
 						route_parameters: Some(route_parameters),
 					})
 					.await,
@@ -866,7 +828,7 @@ async fn main() {
 				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
-			handle_response_result::<_, UnifiedSendResponse>(
+			handle_response_result(
 				client
 					.unified_send(UnifiedSendRequest {
 						uri,
@@ -877,19 +839,21 @@ async fn main() {
 			);
 		},
 		Commands::DecodeInvoice { invoice } => {
-			handle_response_result::<_, DecodeInvoiceResponse>(
-				client.decode_invoice(DecodeInvoiceRequest { invoice }).await,
-			);
+			handle_response_result(client.decode_invoice(DecodeInvoiceRequest { invoice }).await);
 		},
 		Commands::DecodeOffer { offer } => {
-			handle_response_result::<_, DecodeOfferResponse>(
-				client.decode_offer(DecodeOfferRequest { offer }).await,
-			);
+			handle_response_result(client.decode_offer(DecodeOfferRequest { offer }).await);
 		},
 		Commands::CloseChannel { user_channel_id, counterparty_node_id } => {
-			handle_response_result::<_, CloseChannelResponse>(
+			handle_response_result(
 				client
-					.close_channel(CloseChannelRequest { user_channel_id, counterparty_node_id })
+					.close_channel(CloseChannelRequest {
+						user_channel_id,
+						counterparty_node_id: parse_hex_33(
+							&counterparty_node_id,
+							"counterparty_node_id",
+						),
+					})
 					.await,
 			);
 		},
@@ -898,11 +862,14 @@ async fn main() {
 			counterparty_node_id,
 			force_close_reason,
 		} => {
-			handle_response_result::<_, ForceCloseChannelResponse>(
+			handle_response_result(
 				client
 					.force_close_channel(ForceCloseChannelRequest {
 						user_channel_id,
-						counterparty_node_id,
+						counterparty_node_id: parse_hex_33(
+							&counterparty_node_id,
+							"counterparty_node_id",
+						),
 						force_close_reason,
 					})
 					.await,
@@ -927,10 +894,10 @@ async fn main() {
 				cltv_expiry_delta,
 			);
 
-			handle_response_result::<_, OpenChannelResponse>(
+			handle_response_result(
 				client
 					.open_channel(OpenChannelRequest {
-						node_pubkey,
+						node_pubkey: parse_hex_33(&node_pubkey, "node_pubkey"),
 						address,
 						channel_amount_sats,
 						push_to_counterparty_msat,
@@ -943,11 +910,14 @@ async fn main() {
 		Commands::SpliceIn { user_channel_id, counterparty_node_id, splice_amount } => {
 			let splice_amount_sats =
 				splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
-			handle_response_result::<_, SpliceInResponse>(
+			handle_response_result(
 				client
 					.splice_in(SpliceInRequest {
 						user_channel_id,
-						counterparty_node_id,
+						counterparty_node_id: parse_hex_33(
+							&counterparty_node_id,
+							"counterparty_node_id",
+						),
 						splice_amount_sats,
 					})
 					.await,
@@ -956,11 +926,14 @@ async fn main() {
 		Commands::SpliceOut { user_channel_id, counterparty_node_id, address, splice_amount } => {
 			let splice_amount_sats =
 				splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
-			handle_response_result::<_, SpliceOutResponse>(
+			handle_response_result(
 				client
 					.splice_out(SpliceOutRequest {
 						user_channel_id,
-						counterparty_node_id,
+						counterparty_node_id: parse_hex_33(
+							&counterparty_node_id,
+							"counterparty_node_id",
+						),
 						address,
 						splice_amount_sats,
 					})
@@ -968,45 +941,23 @@ async fn main() {
 			);
 		},
 		Commands::ListChannels => {
-			handle_response_result::<_, ListChannelsResponse>(
-				client.list_channels(ListChannelsRequest {}).await,
-			);
+			handle_response_result(client.list_channels(ListChannelsRequest {}).await);
 		},
-		Commands::ListPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
-			handle_response_result::<_, CliListPaymentsResponse>(
-				fetch_paginated(
-					number_of_payments,
-					page_token,
-					|pt| client.list_payments(ListPaymentsRequest { page_token: pt }),
-					|r| (r.payments, r.next_page_token),
-				)
-				.await,
-			);
+		Commands::ListPayments { page_token } => {
+			handle_response_result(client.list_payments(ListPaymentsRequest { page_token }).await);
 		},
 		Commands::GetPaymentDetails { payment_id } => {
-			handle_response_result::<_, GetPaymentDetailsResponse>(
-				client.get_payment_details(GetPaymentDetailsRequest { payment_id }).await,
+			handle_response_result(
+				client
+					.get_payment_details(GetPaymentDetailsRequest {
+						payment_id: parse_hex_32(&payment_id, "payment_id"),
+					})
+					.await,
 			);
 		},
-		Commands::ListForwardedPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
-			handle_response_result::<_, CliListForwardedPaymentsResponse>(
-				fetch_paginated(
-					number_of_payments,
-					page_token,
-					|pt| {
-						client.list_forwarded_payments(ListForwardedPaymentsRequest {
-							page_token: pt,
-						})
-					},
-					|r| (r.forwarded_payments, r.next_page_token),
-				)
-				.await,
+		Commands::ListForwardedPayments { page_token } => {
+			handle_response_result(
+				client.list_forwarded_payments(ListForwardedPaymentsRequest { page_token }).await,
 			);
 		},
 		Commands::UpdateChannelConfig {
@@ -1025,11 +976,14 @@ async fn main() {
 				max_dust_htlc_exposure: None,
 			};
 
-			handle_response_result::<_, UpdateChannelConfigResponse>(
+			handle_response_result(
 				client
 					.update_channel_config(UpdateChannelConfigRequest {
 						user_channel_id,
-						counterparty_node_id,
+						counterparty_node_id: parse_hex_33(
+							&counterparty_node_id,
+							"counterparty_node_id",
+						),
 						channel_config: Some(channel_config),
 					})
 					.await,
@@ -1044,40 +998,46 @@ async fn main() {
 				eprintln!("Error: address is required. Provide it as pubkey@address or as a separate argument.");
 				std::process::exit(1);
 			};
-			handle_response_result::<_, ConnectPeerResponse>(
-				client.connect_peer(ConnectPeerRequest { node_pubkey, address, persist }).await,
-			);
-		},
-		Commands::DisconnectPeer { node_pubkey } => {
-			handle_response_result::<_, DisconnectPeerResponse>(
-				client.disconnect_peer(DisconnectPeerRequest { node_pubkey }).await,
-			);
-		},
-		Commands::ListPeers => {
-			handle_response_result::<_, ListPeersResponse>(
-				client.list_peers(ListPeersRequest {}).await,
-			);
-		},
-		Commands::SignMessage { message } => {
-			handle_response_result::<_, SignMessageResponse>(
+			handle_response_result(
 				client
-					.sign_message(SignMessageRequest { message: message.into_bytes().into() })
+					.connect_peer(ConnectPeerRequest {
+						node_pubkey: parse_hex_33(&node_pubkey, "node_pubkey"),
+						address,
+						persist,
+					})
 					.await,
 			);
 		},
+		Commands::DisconnectPeer { node_pubkey } => {
+			handle_response_result(
+				client
+					.disconnect_peer(DisconnectPeerRequest {
+						node_pubkey: parse_hex_33(&node_pubkey, "node_pubkey"),
+					})
+					.await,
+			);
+		},
+		Commands::ListPeers => {
+			handle_response_result(client.list_peers(ListPeersRequest {}).await);
+		},
+		Commands::SignMessage { message } => {
+			handle_response_result(
+				client.sign_message(SignMessageRequest { message: message.into_bytes() }).await,
+			);
+		},
 		Commands::VerifySignature { message, signature, public_key } => {
-			handle_response_result::<_, VerifySignatureResponse>(
+			handle_response_result(
 				client
 					.verify_signature(VerifySignatureRequest {
-						message: message.into_bytes().into(),
+						message: message.into_bytes(),
 						signature,
-						public_key,
+						public_key: parse_hex_33(&public_key, "public_key"),
 					})
 					.await,
 			);
 		},
 		Commands::ExportPathfindingScores => {
-			handle_response_result::<_, Value>(
+			handle_response_result(
 				client.export_pathfinding_scores(ExportPathfindingScoresRequest {}).await.map(
 					|s| {
 						let scores_hex = s.scores.as_hex().to_string();
@@ -1087,23 +1047,23 @@ async fn main() {
 			);
 		},
 		Commands::GraphListChannels => {
-			handle_response_result::<_, GraphListChannelsResponse>(
-				client.graph_list_channels(GraphListChannelsRequest {}).await,
-			);
+			handle_response_result(client.graph_list_channels(GraphListChannelsRequest {}).await);
 		},
 		Commands::GraphGetChannel { short_channel_id } => {
-			handle_response_result::<_, GraphGetChannelResponse>(
+			handle_response_result(
 				client.graph_get_channel(GraphGetChannelRequest { short_channel_id }).await,
 			);
 		},
 		Commands::GraphListNodes => {
-			handle_response_result::<_, GraphListNodesResponse>(
-				client.graph_list_nodes(GraphListNodesRequest {}).await,
-			);
+			handle_response_result(client.graph_list_nodes(GraphListNodesRequest {}).await);
 		},
 		Commands::GraphGetNode { node_id } => {
-			handle_response_result::<_, GraphGetNodeResponse>(
-				client.graph_get_node(GraphGetNodeRequest { node_id }).await,
+			handle_response_result(
+				client
+					.graph_get_node(GraphGetNodeRequest {
+						node_id: parse_hex_33(&node_id, "node_id"),
+					})
+					.await,
 			);
 		},
 		Commands::Completions { .. } => unreachable!("Handled above"),
@@ -1130,42 +1090,6 @@ fn build_open_channel_config(
 		accept_underpaying_htlcs: None,
 		max_dust_htlc_exposure: None,
 	})
-}
-
-async fn fetch_paginated<T, R, Fut>(
-	target_count: Option<u64>, initial_page_token: Option<PageToken>,
-	fetch_page: impl Fn(Option<PageToken>) -> Fut,
-	extract: impl Fn(R) -> (Vec<T>, Option<PageToken>),
-) -> Result<CliPaginatedResponse<T>, LdkServerError>
-where
-	Fut: std::future::Future<Output = Result<R, LdkServerError>>,
-{
-	match target_count {
-		Some(count) => {
-			let mut items = Vec::with_capacity(count as usize);
-			let mut page_token = initial_page_token;
-			let mut next_page_token;
-
-			loop {
-				let response = fetch_page(page_token).await?;
-				let (new_items, new_next_page_token) = extract(response);
-				items.extend(new_items);
-				next_page_token = new_next_page_token;
-
-				if items.len() >= count as usize || next_page_token.is_none() {
-					break;
-				}
-				page_token = next_page_token;
-			}
-
-			Ok(CliPaginatedResponse::new(items, next_page_token))
-		},
-		None => {
-			let response = fetch_page(initial_page_token).await?;
-			let (items, next_page_token) = extract(response);
-			Ok(CliPaginatedResponse::new(items, next_page_token))
-		},
-	}
 }
 
 /// Escapes Unicode bidirectional control characters as `\uXXXX` so they are visible
@@ -1203,38 +1127,43 @@ fn sanitize_for_terminal(s: String) -> String {
 	out
 }
 
-fn handle_response_result<Rs, Js>(response: Result<Rs, LdkServerError>)
-where
-	Rs: Into<Js>,
-	Js: Serialize + std::fmt::Debug,
-{
+fn handle_response_result<Rs: Serialize + std::fmt::Debug>(response: Result<Rs, LdkServerError>) {
 	match response {
-		Ok(response) => {
-			let json_response: Js = response.into();
-			match serde_json::to_string_pretty(&json_response) {
-				Ok(json) => println!("{}", sanitize_for_terminal(json)),
-				Err(e) => {
-					eprintln!("Error serializing response ({json_response:?}) to JSON: {e}");
-					std::process::exit(1);
-				},
-			}
+		Ok(response) => match serde_json::to_string_pretty(&response) {
+			Ok(json) => println!("{}", sanitize_for_terminal(json)),
+			Err(e) => {
+				eprintln!("Error serializing response ({response:?}) to JSON: {e}");
+				std::process::exit(1);
+			},
 		},
-		Err(e) => {
-			handle_error(e);
-		},
+		Err(e) => handle_error(e),
 	}
+}
+
+fn parse_hex_32(hex: &str, field_name: &str) -> [u8; 32] {
+	<[u8; 32]>::from_hex(hex).unwrap_or_else(|_| {
+		handle_error(LdkServerError::new(
+			InvalidRequestError,
+			format!("Invalid {field_name}, must be a 32-byte hex string."),
+		))
+	})
+}
+
+fn parse_hex_33(hex: &str, field_name: &str) -> [u8; 33] {
+	<[u8; 33]>::from_hex(hex).unwrap_or_else(|_| {
+		handle_error(LdkServerError::new(
+			InvalidRequestError,
+			format!("Invalid {field_name}, must be a 33-byte hex string."),
+		))
+	})
 }
 
 fn parse_bolt11_invoice_description(
 	description: Option<String>, description_hash: Option<String>,
 ) -> Option<Bolt11InvoiceDescription> {
 	match (description, description_hash) {
-		(Some(desc), None) => Some(Bolt11InvoiceDescription {
-			kind: Some(bolt11_invoice_description::Kind::Direct(desc)),
-		}),
-		(None, Some(hash)) => Some(Bolt11InvoiceDescription {
-			kind: Some(bolt11_invoice_description::Kind::Hash(hash)),
-		}),
+		(Some(desc), None) => Some(Bolt11InvoiceDescription::Direct(desc)),
+		(None, Some(hash)) => Some(Bolt11InvoiceDescription::Hash(hash)),
 		(Some(_), Some(_)) => {
 			handle_error(LdkServerError::new(
 				InternalError,
@@ -1243,20 +1172,6 @@ fn parse_bolt11_invoice_description(
 		},
 		(None, None) => None,
 	}
-}
-
-fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
-	let parts: Vec<&str> = token_str.split(':').collect();
-	if parts.len() != 2 {
-		return Err(LdkServerError::new(
-			InternalError,
-			"Page token must be in format 'token:index'".to_string(),
-		));
-	}
-	let index = parts[1]
-		.parse::<i64>()
-		.map_err(|_| LdkServerError::new(InternalError, "Invalid page token index".to_string()))?;
-	Ok(PageToken { token: parts[0].to_string(), index })
 }
 
 fn handle_error_msg(msg: &str) -> ! {
@@ -1270,6 +1185,7 @@ fn handle_error(e: LdkServerError) -> ! {
 		AuthError => "Authentication Error",
 		LightningError => "Lightning Error",
 		InternalServerError => "Internal Server Error",
+		JsonParseError => "JSON Parse Error",
 		InternalError => "Internal Error",
 	};
 	eprintln!("Error ({}): {}", error_type, e.message);

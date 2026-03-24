@@ -7,16 +7,16 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{ListChannelsRequest, ListChannelsResponse};
+use ldk_server_json_models::api::{ListChannelsRequest, ListChannelsResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use crate::util::proto_adapter::channel_to_proto;
+use crate::util::adapter::channel_to_model;
 
 pub(crate) fn handle_list_channels_request(
 	context: Context, _request: ListChannelsRequest,
 ) -> Result<ListChannelsResponse, LdkServerError> {
-	let channels = context.node.list_channels().into_iter().map(channel_to_proto).collect();
+	let channels = context.node.list_channels().into_iter().map(channel_to_model).collect();
 
 	let response = ListChannelsResponse { channels };
 	Ok(response)
