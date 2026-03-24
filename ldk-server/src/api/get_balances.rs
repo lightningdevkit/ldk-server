@@ -7,11 +7,11 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{GetBalancesRequest, GetBalancesResponse};
+use ldk_server_json_models::api::{GetBalancesRequest, GetBalancesResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use crate::util::proto_adapter::{lightning_balance_to_proto, pending_sweep_balance_to_proto};
+use crate::util::adapter::{lightning_balance_to_model, pending_sweep_balance_to_model};
 
 pub(crate) fn handle_get_balances_request(
 	context: Context, _request: GetBalancesRequest,
@@ -26,12 +26,12 @@ pub(crate) fn handle_get_balances_request(
 		lightning_balances: balance_details
 			.lightning_balances
 			.into_iter()
-			.map(lightning_balance_to_proto)
+			.map(lightning_balance_to_model)
 			.collect(),
 		pending_balances_from_channel_closures: balance_details
 			.pending_balances_from_channel_closures
 			.into_iter()
-			.map(pending_sweep_balance_to_proto)
+			.map(pending_sweep_balance_to_model)
 			.collect(),
 	};
 	Ok(response)

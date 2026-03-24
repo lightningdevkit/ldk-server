@@ -8,18 +8,19 @@
 // licenses.
 
 use ldk_node::payment::UnifiedPaymentResult;
-use ldk_server_protos::api::unified_send_response::PaymentResult;
-use ldk_server_protos::api::{UnifiedSendRequest, UnifiedSendResponse};
+use ldk_server_json_models::api::{
+	UnifiedSendPaymentResult, UnifiedSendRequest, UnifiedSendResponse,
+};
 use tokio::runtime::Handle;
 
-use crate::api::build_route_parameters_config_from_proto;
+use crate::api::build_route_parameters_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 
 pub(crate) fn handle_unified_send_request(
 	context: Context, request: UnifiedSendRequest,
 ) -> Result<UnifiedSendResponse, LdkServerError> {
-	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+	let route_parameters = build_route_parameters_config_from_model(request.route_parameters)?;
 
 	let result = tokio::task::block_in_place(|| {
 		Handle::current().block_on(context.node.unified_payment().send(
@@ -30,12 +31,12 @@ pub(crate) fn handle_unified_send_request(
 	})?;
 
 	let payment_result = match result {
-		UnifiedPaymentResult::Onchain { txid } => PaymentResult::Txid(txid.to_string()),
+		UnifiedPaymentResult::Onchain { txid } => UnifiedSendPaymentResult::Txid(txid.to_string()),
 		UnifiedPaymentResult::Bolt11 { payment_id } => {
-			PaymentResult::Bolt11PaymentId(payment_id.to_string())
+			UnifiedSendPaymentResult::Bolt11PaymentId(payment_id.to_string())
 		},
 		UnifiedPaymentResult::Bolt12 { payment_id } => {
-			PaymentResult::Bolt12PaymentId(payment_id.to_string())
+			UnifiedSendPaymentResult::Bolt12PaymentId(payment_id.to_string())
 		},
 	};
 

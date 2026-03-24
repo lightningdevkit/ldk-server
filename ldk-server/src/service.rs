@@ -18,7 +18,7 @@ use hyper::{Request, Response, StatusCode};
 use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
-use ldk_server_protos::endpoints::{
+use ldk_server_json_models::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
@@ -30,7 +30,8 @@ use ldk_server_protos::endpoints::{
 	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
 	VERIFY_SIGNATURE_PATH,
 };
-use prost::Message;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
 use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
@@ -70,7 +71,7 @@ use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
-use crate::util::proto_adapter::to_error_response;
+use crate::util::adapter::to_error_response;
 
 // Maximum request body size: 10 MB
 // This prevents memory exhaustion from large requests
@@ -179,7 +180,8 @@ impl Service<Request<Incoming>> for NodeService {
 				return Box::pin(async move {
 					Ok(Response::builder()
 						.status(status_code)
-						.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+						.header("Content-Type", "application/json")
+						.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())))
 						// unwrap safety: body only errors when previous chained calls failed.
 						.unwrap())
 				});
@@ -442,8 +444,8 @@ impl Service<Request<Incoming>> for NodeService {
 }
 
 async fn handle_request<
-	T: Message + Default,
-	R: Message,
+	T: DeserializeOwned,
+	R: Serialize,
 	F: Fn(Context, T) -> Result<R, LdkServerError>,
 >(
 	context: Context, request: Request<Incoming>, auth_params: AuthParams, api_key: String,
@@ -460,7 +462,8 @@ async fn handle_request<
 			));
 			return Ok(Response::builder()
 				.status(status_code)
-				.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+				.header("Content-Type", "application/json")
+				.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())))
 				// unwrap safety: body only errors when previous chained calls failed.
 				.unwrap());
 		},
@@ -473,22 +476,26 @@ async fn handle_request<
 		let (error_response, status_code) = to_error_response(e);
 		return Ok(Response::builder()
 			.status(status_code)
-			.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+			.header("Content-Type", "application/json")
+			.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())))
 			// unwrap safety: body only errors when previous chained calls failed.
 			.unwrap());
 	}
 
-	match T::decode(bytes) {
+	let decode_bytes = if bytes.is_empty() { &b"{}"[..] } else { &bytes[..] };
+	match serde_json::from_slice::<T>(decode_bytes) {
 		Ok(request) => match handler(context, request) {
 			Ok(response) => Ok(Response::builder()
-				.body(Full::new(Bytes::from(response.encode_to_vec())))
+				.header("Content-Type", "application/json")
+				.body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap())))
 				// unwrap safety: body only errors when previous chained calls failed.
 				.unwrap()),
 			Err(e) => {
 				let (error_response, status_code) = to_error_response(e);
 				Ok(Response::builder()
 					.status(status_code)
-					.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+					.header("Content-Type", "application/json")
+					.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())))
 					// unwrap safety: body only errors when previous chained calls failed.
 					.unwrap())
 			},
@@ -498,7 +505,8 @@ async fn handle_request<
 				to_error_response(LdkServerError::new(InvalidRequestError, "Malformed request."));
 			Ok(Response::builder()
 				.status(status_code)
-				.body(Full::new(Bytes::from(error_response.encode_to_vec())))
+				.header("Content-Type", "application/json")
+				.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())))
 				// unwrap safety: body only errors when previous chained calls failed.
 				.unwrap())
 		},

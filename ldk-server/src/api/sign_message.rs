@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{SignMessageRequest, SignMessageResponse};
+use ldk_server_json_models::api::{SignMessageRequest, SignMessageResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;

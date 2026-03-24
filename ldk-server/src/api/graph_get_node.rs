@@ -8,30 +8,27 @@
 // licenses.
 
 use ldk_node::lightning::routing::gossip::NodeId;
-use ldk_server_protos::api::{GraphGetNodeRequest, GraphGetNodeResponse};
+use ldk_server_json_models::api::{GraphGetNodeRequest, GraphGetNodeResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
-use crate::util::proto_adapter::graph_node_to_proto;
+use crate::util::adapter::graph_node_to_model;
 
 pub(crate) fn handle_graph_get_node_request(
 	context: Context, request: GraphGetNodeRequest,
 ) -> Result<GraphGetNodeResponse, LdkServerError> {
-	let node_id: NodeId = request.node_id.parse().map_err(|_| {
+	let node_id = NodeId::from_slice(&request.node_id).map_err(|_| {
 		LdkServerError::new(
 			InvalidRequestError,
-			format!("Invalid node_id: {}. Expected a hex-encoded public key.", request.node_id),
+			"Invalid node_id: expected a valid 33-byte public key.".to_string(),
 		)
 	})?;
 
 	let node_info = context.node.network_graph().node(&node_id).ok_or_else(|| {
-		LdkServerError::new(
-			InvalidRequestError,
-			format!("Node with ID {} not found in the network graph.", request.node_id),
-		)
+		LdkServerError::new(InvalidRequestError, "Node not found in the network graph.".to_string())
 	})?;
 
-	let response = GraphGetNodeResponse { node: Some(graph_node_to_proto(node_info)) };
+	let response = GraphGetNodeResponse { node: Some(graph_node_to_model(node_info)) };
 	Ok(response)
 }

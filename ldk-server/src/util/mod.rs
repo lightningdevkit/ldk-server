@@ -7,8 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+pub(crate) mod adapter;
 pub(crate) mod config;
 pub(crate) mod logger;
-pub(crate) mod proto_adapter;
 pub(crate) mod systemd;
 pub(crate) mod tls;

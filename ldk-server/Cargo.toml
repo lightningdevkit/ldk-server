@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "9e0a8124cbe2c00a06fc5c880113213d4b36d8aa" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
+serde_json = "1.0"
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
 http-body-util = { version = "0.1", default-features = false }
 hyper-util = { version = "0.1", default-features = false, features = ["server-graceful"] }
@@ -13,9 +14,7 @@ tokio = { version = "1.38.0", default-features = false, features = ["time", "sig
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 ring = { version = "0.17", default-features = false }
 getrandom = { version = "0.2", default-features = false }
-prost = { version = "0.11.6", default-features = false, features = ["std"] }
-ldk-server-protos = { path = "../ldk-server-protos" }
-bytes = { version = "1.4.0", default-features = false }
+ldk-server-json-models = { path = "../ldk-server-json-models" }
 hex = { package = "hex-conservative", version = "0.2.1", default-features = false }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 async-trait = { version = "0.1.85", default-features = false }

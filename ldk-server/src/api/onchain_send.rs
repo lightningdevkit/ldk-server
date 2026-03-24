@@ -9,8 +9,9 @@
 
 use std::str::FromStr;
 
+use ldk_node::bitcoin::hashes::Hash as _;
 use ldk_node::bitcoin::{Address, FeeRate};
-use ldk_server_protos::api::{OnchainSendRequest, OnchainSendResponse};
+use ldk_server_json_models::api::{OnchainSendRequest, OnchainSendResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -45,6 +46,6 @@ pub(crate) fn handle_onchain_send_request(
 			))
 		},
 	};
-	let response = OnchainSendResponse { txid: txid.to_string() };
+	let response = OnchainSendResponse { txid: txid.to_byte_array() };
 	Ok(response)
 }

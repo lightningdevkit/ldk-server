@@ -7,10 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bytes::Bytes;
-use ldk_server_protos::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
-use ldk_server_protos::types::{ForwardedPayment, PageToken};
-use prost::Message;
+use ldk_server_json_models::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
+use ldk_server_json_models::types::{ForwardedPayment, PageToken};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
@@ -54,8 +52,8 @@ pub(crate) fn handle_list_forwarded_payments_request(
 					format!("Failed to read forwarded payment data: {}", e),
 				)
 			})?;
-		let forwarded_payment = ForwardedPayment::decode(Bytes::from(forwarded_payment_bytes))
-			.map_err(|e| {
+		let forwarded_payment =
+			serde_json::from_slice::<ForwardedPayment>(&forwarded_payment_bytes).map_err(|e| {
 				LdkServerError::new(
 					InternalServerError,
 					format!("Failed to decode forwarded payment: {}", e),

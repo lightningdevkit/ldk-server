@@ -7,7 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{ExportPathfindingScoresRequest, ExportPathfindingScoresResponse};
+use ldk_server_json_models::api::{
+	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse,
+};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
@@ -17,6 +19,6 @@ pub(crate) fn handle_export_pathfinding_scores_request(
 ) -> Result<ExportPathfindingScoresResponse, LdkServerError> {
 	let scores = context.node.export_pathfinding_scores()?;
 
-	let response = ExportPathfindingScoresResponse { scores: scores.into() };
+	let response = ExportPathfindingScoresResponse { scores };
 	Ok(response)
 }

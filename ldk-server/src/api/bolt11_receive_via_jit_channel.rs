@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{
+use ldk_server_json_models::api::{
 	Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse,
@@ -15,12 +15,12 @@ use ldk_server_protos::api::{
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use crate::util::proto_adapter::proto_to_bolt11_description;
+use crate::util::adapter::bolt11_description_from_model;
 
 pub(crate) fn handle_bolt11_receive_via_jit_channel_request(
 	context: Context, request: Bolt11ReceiveViaJitChannelRequest,
 ) -> Result<Bolt11ReceiveViaJitChannelResponse, LdkServerError> {
-	let description = proto_to_bolt11_description(request.description)?;
+	let description = bolt11_description_from_model(request.description)?;
 	let invoice = context.node.bolt11_payment().receive_via_jit_channel(
 		request.amount_msat,
 		&description,
@@ -34,7 +34,7 @@ pub(crate) fn handle_bolt11_receive_via_jit_channel_request(
 pub(crate) fn handle_bolt11_receive_variable_amount_via_jit_channel_request(
 	context: Context, request: Bolt11ReceiveVariableAmountViaJitChannelRequest,
 ) -> Result<Bolt11ReceiveVariableAmountViaJitChannelResponse, LdkServerError> {
-	let description = proto_to_bolt11_description(request.description)?;
+	let description = bolt11_description_from_model(request.description)?;
 	let invoice = context.node.bolt11_payment().receive_variable_amount_via_jit_channel(
 		&description,
 		request.expiry_secs,
