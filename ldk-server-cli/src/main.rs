@@ -63,6 +63,14 @@ const DEFAULT_MAX_PATH_COUNT: u32 = 10;
 const DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF: u32 = 2;
 const DEFAULT_EXPIRY_SECS: u32 = 86_400;
 
+const DEFAULT_DIR: &str = if cfg!(target_os = "macos") {
+	"~/Library/Application Support/ldk-server"
+} else if cfg!(target_os = "windows") {
+	"%APPDATA%\\ldk-server"
+} else {
+	"~/.ldk-server"
+};
+
 #[derive(Parser, Debug)]
 #[command(
 	name = "ldk-server-cli",
@@ -74,21 +82,13 @@ struct Cli {
 	#[arg(short, long, help = "Base URL of the server. If not provided, reads from config file")]
 	base_url: Option<String>,
 
-	#[arg(
-		short,
-		long,
-		help = "API key for authentication. Defaults by reading ~/.ldk-server/[network]/api_key"
-	)]
+	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_key"))]
 	api_key: Option<String>,
 
-	#[arg(
-		short,
-		long,
-		help = "Path to the server's TLS certificate file (PEM format). Defaults to ~/.ldk-server/tls.crt"
-	)]
+	#[arg(short, long, help = format!("Path to the server's TLS certificate file (PEM format). Defaults to {DEFAULT_DIR}/tls.crt"))]
 	tls_cert: Option<String>,
 
-	#[arg(short, long, help = "Path to config file. Defaults to ~/.ldk-server/config.toml")]
+	#[arg(short, long, help = format!("Path to config file. Defaults to {DEFAULT_DIR}/config.toml"))]
 	config: Option<String>,
 
 	#[command(subcommand)]
@@ -565,7 +565,7 @@ async fn main() {
 				.map(|bytes| bytes.to_lower_hex_string())
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at ~/.ldk-server/[network]/api_key");
+			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
 			std::process::exit(1);
 		});
 
@@ -573,7 +573,7 @@ async fn main() {
 	let base_url =
 		cli.base_url.or_else(|| config.as_ref().map(|c| c.node.rest_service_address.clone()))
 			.unwrap_or_else(|| {
-				eprintln!("Base URL not provided. Use --base-url or ensure config file exists at ~/.ldk-server/config.toml");
+				eprintln!("Base URL not provided. Use --base-url or ensure config file exists at {DEFAULT_DIR}/config.toml");
 				std::process::exit(1);
 			});
 
@@ -589,7 +589,7 @@ async fn main() {
 			.or_else(get_default_cert_path)
 	})
 		.unwrap_or_else(|| {
-			eprintln!("TLS cert path not provided. Use --tls-cert or ensure config file exists at ~/.ldk-server/config.toml");
+			eprintln!("TLS cert path not provided. Use --tls-cert or ensure config file exists at {DEFAULT_DIR}/config.toml");
 			std::process::exit(1);
 		});
 
