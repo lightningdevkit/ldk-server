@@ -7,26 +7,18 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use hex::FromHex;
 use ldk_node::lightning_types::payment::PaymentHash;
-use ldk_server_protos::api::{Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse};
+use ldk_server_json_models::api::{Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse};
 
 use crate::api::error::LdkServerError;
-use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
-use crate::util::proto_adapter::proto_to_bolt11_description;
+use crate::util::adapter::bolt11_description_from_model;
 
 pub(crate) fn handle_bolt11_receive_for_hash_request(
 	context: Context, request: Bolt11ReceiveForHashRequest,
 ) -> Result<Bolt11ReceiveForHashResponse, LdkServerError> {
-	let description = proto_to_bolt11_description(request.description)?;
-	let hash_bytes = <[u8; 32]>::from_hex(&request.payment_hash).map_err(|_| {
-		LdkServerError::new(
-			InvalidRequestError,
-			"Invalid payment_hash, must be a 32-byte hex string.".to_string(),
-		)
-	})?;
-	let payment_hash = PaymentHash(hash_bytes);
+	let description = bolt11_description_from_model(request.description)?;
+	let payment_hash = PaymentHash(request.payment_hash);
 
 	let invoice = match request.amount_msat {
 		Some(amount_msat) => context.node.bolt11_payment().receive_for_hash(

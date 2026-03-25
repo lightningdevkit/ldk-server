@@ -7,11 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::str::FromStr;
-
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
-use ldk_server_protos::api::{
+use ldk_server_json_models::api::{
 	CloseChannelRequest, CloseChannelResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
 };
 
@@ -52,8 +50,8 @@ fn parse_user_channel_id(id: &str) -> Result<UserChannelId, LdkServerError> {
 	Ok(UserChannelId(parsed))
 }
 
-fn parse_counterparty_node_id(id: &str) -> Result<PublicKey, LdkServerError> {
-	PublicKey::from_str(id).map_err(|e| {
+fn parse_counterparty_node_id(id: &[u8]) -> Result<PublicKey, LdkServerError> {
+	PublicKey::from_slice(id).map_err(|e| {
 		LdkServerError::new(
 			InvalidRequestError,
 			format!("Invalid counterparty node ID, error: {}", e),

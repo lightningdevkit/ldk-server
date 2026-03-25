@@ -7,10 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bytes::Bytes;
-use ldk_server_protos::api::{ListPaymentsRequest, ListPaymentsResponse};
-use ldk_server_protos::types::{PageToken, Payment};
-use prost::Message;
+use ldk_server_json_models::api::{ListPaymentsRequest, ListPaymentsResponse};
+use ldk_server_json_models::types::{PageToken, Payment};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
@@ -49,7 +47,7 @@ pub(crate) fn handle_list_payments_request(
 					format!("Failed to read payment data: {}", e),
 				)
 			})?;
-		let payment = Payment::decode(Bytes::from(payment_bytes)).map_err(|e| {
+		let payment = serde_json::from_slice::<Payment>(&payment_bytes).map_err(|e| {
 			LdkServerError::new(InternalServerError, format!("Failed to decode payment: {}", e))
 		})?;
 		payments.push(payment);

@@ -16,7 +16,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use ldk_server_client::ldk_server_protos::types::{ForwardedPayment, PageToken, Payment};
+use ldk_server_client::ldk_server_json_models::types::{ForwardedPayment, PageToken, Payment};
 use serde::Serialize;
 
 /// CLI-specific wrapper for paginated responses that formats the page token

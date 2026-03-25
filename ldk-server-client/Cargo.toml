@@ -3,12 +3,11 @@ name = "ldk-server-client"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-serde = ["ldk-server-protos/serde"]
-
 [dependencies]
-ldk-server-protos = { path = "../ldk-server-protos" }
-reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls"] }
-prost = { version = "0.11.6", default-features = false, features = ["std", "prost-derive"] }
+ldk-server-json-models = { path = "../ldk-server-json-models" }
+reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 bitcoin_hashes = "0.14"
+futures-util = { version = "0.3", default-features = false }
+async-stream = "0.3"

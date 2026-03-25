@@ -8,10 +8,7 @@ corepc-node = { version = "0.10", features = ["download", "29_0"] }
 tempfile = "3"
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros", "time"] }
 ldk-server-client = { path = "../ldk-server-client" }
-ldk-server-protos = { path = "../ldk-server-protos", features = ["serde"] }
+ldk-server-json-models = { path = "../ldk-server-json-models" }
 serde_json = "1.0"
 hex-conservative = { version = "0.2", features = ["std"] }
-lapin = { version = "2.4.0", features = ["rustls"], default-features = false }
-prost = { version = "0.11.6", default-features = false, features = ["std"] }
-futures-util = "0.3"
 ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "d1bbf978c8b7abe87ae2e40793556c1fe4e7ea49" }

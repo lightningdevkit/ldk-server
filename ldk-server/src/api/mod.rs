@@ -9,7 +9,7 @@
 
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::routing::router::RouteParametersConfig;
-use ldk_server_protos::types::channel_config::MaxDustHtlcExposure;
+use ldk_server_json_models::types::MaxDustHtlcExposure;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -48,10 +48,11 @@ pub(crate) mod unified_send;
 pub(crate) mod update_channel_config;
 pub(crate) mod verify_signature;
 
-pub(crate) fn build_channel_config_from_proto(
-	default_config: ChannelConfig, proto_channel_config: ldk_server_protos::types::ChannelConfig,
+pub(crate) fn build_channel_config_from_model(
+	default_config: ChannelConfig,
+	channel_config_model: ldk_server_json_models::types::ChannelConfig,
 ) -> Result<ChannelConfig, LdkServerError> {
-	let max_dust_htlc_exposure = proto_channel_config
+	let max_dust_htlc_exposure = channel_config_model
 		.max_dust_htlc_exposure
 		.map(|max_dust_htlc_exposure| match max_dust_htlc_exposure {
 			MaxDustHtlcExposure::FixedLimitMsat(limit_msat) => {
@@ -63,7 +64,7 @@ pub(crate) fn build_channel_config_from_proto(
 		})
 		.unwrap_or(default_config.max_dust_htlc_exposure);
 
-	let cltv_expiry_delta = match proto_channel_config.cltv_expiry_delta {
+	let cltv_expiry_delta = match channel_config_model.cltv_expiry_delta {
 		Some(c) => Some(u16::try_from(c).map_err(|_| {
 			LdkServerError::new(
 				InvalidRequestError,
@@ -75,27 +76,27 @@ pub(crate) fn build_channel_config_from_proto(
 	.unwrap_or(default_config.cltv_expiry_delta);
 
 	Ok(ChannelConfig {
-		forwarding_fee_proportional_millionths: proto_channel_config
+		forwarding_fee_proportional_millionths: channel_config_model
 			.forwarding_fee_proportional_millionths
 			.unwrap_or(default_config.forwarding_fee_proportional_millionths),
-		forwarding_fee_base_msat: proto_channel_config
+		forwarding_fee_base_msat: channel_config_model
 			.forwarding_fee_base_msat
 			.unwrap_or(default_config.forwarding_fee_base_msat),
 		cltv_expiry_delta,
 		max_dust_htlc_exposure,
-		force_close_avoidance_max_fee_satoshis: proto_channel_config
+		force_close_avoidance_max_fee_satoshis: channel_config_model
 			.force_close_avoidance_max_fee_satoshis
 			.unwrap_or(default_config.force_close_avoidance_max_fee_satoshis),
-		accept_underpaying_htlcs: proto_channel_config
+		accept_underpaying_htlcs: channel_config_model
 			.accept_underpaying_htlcs
 			.unwrap_or(default_config.accept_underpaying_htlcs),
 	})
 }
 
-pub(crate) fn build_route_parameters_config_from_proto(
-	proto_route_params: Option<ldk_server_protos::types::RouteParametersConfig>,
+pub(crate) fn build_route_parameters_config_from_model(
+	route_params_model: Option<ldk_server_json_models::types::RouteParametersConfig>,
 ) -> Result<Option<RouteParametersConfig>, LdkServerError> {
-	match proto_route_params {
+	match route_params_model {
 		Some(params) => {
 			let max_path_count = params.max_path_count.try_into().map_err(|_| {
 				LdkServerError::new(

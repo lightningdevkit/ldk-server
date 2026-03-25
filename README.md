@@ -7,7 +7,7 @@
 
 The primary goal of LDK Server is to provide an efficient, stable, and API-first solution for deploying and managing
 a Lightning Network node. With its streamlined setup, LDK Server enables users to easily set up, configure, and run
-a Lightning node while exposing a robust, language-agnostic API via [Protocol Buffers (Protobuf)](https://protobuf.dev/).
+a Lightning node while exposing a robust, language-agnostic REST API with JSON.
 
 ### Features
 
@@ -15,7 +15,7 @@ a Lightning node while exposing a robust, language-agnostic API via [Protocol Bu
     - Deploy a Lightning Network node with minimal configuration, no coding required.
 
 - **API-First Design**:
-    - Exposes a well-defined API using Protobuf, allowing seamless integration with HTTP-clients or applications.
+    - Exposes a well-defined JSON REST API, allowing seamless integration with HTTP-clients or applications.
 
 - **Powered by LDK**:
     - Built on top of LDK-Node, leveraging the modular, reliable, and high-performance architecture of LDK.

@@ -10,9 +10,9 @@
 use std::str::FromStr;
 
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_protos::api::{Bolt11SendRequest, Bolt11SendResponse};
+use ldk_server_json_models::api::{Bolt11SendRequest, Bolt11SendResponse};
 
-use crate::api::build_route_parameters_config_from_proto;
+use crate::api::build_route_parameters_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 
@@ -22,7 +22,7 @@ pub(crate) fn handle_bolt11_send_request(
 	let invoice = Bolt11Invoice::from_str(request.invoice.as_str())
 		.map_err(|_| ldk_node::NodeError::InvalidInvoice)?;
 
-	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+	let route_parameters = build_route_parameters_config_from_model(request.route_parameters)?;
 
 	let payment_id = match request.amount_msat {
 		None => context.node.bolt11_payment().send(&invoice, route_parameters),
@@ -31,6 +31,6 @@ pub(crate) fn handle_bolt11_send_request(
 		},
 	}?;
 
-	let response = Bolt11SendResponse { payment_id: payment_id.to_string() };
+	let response = Bolt11SendResponse { payment_id: payment_id.0 };
 	Ok(response)
 }

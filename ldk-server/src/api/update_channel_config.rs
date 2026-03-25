@@ -7,13 +7,11 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::str::FromStr;
-
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
-use ldk_server_protos::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
+use ldk_server_json_models::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
 
-use crate::api::build_channel_config_from_proto;
+use crate::api::build_channel_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use crate::service::Context;
@@ -37,19 +35,20 @@ pub(crate) fn handle_update_channel_config_request(
 		})?
 		.config;
 
-	let updated_channel_config = build_channel_config_from_proto(
+	let updated_channel_config = build_channel_config_from_model(
 		current_config,
 		request.channel_config.ok_or_else(|| {
 			LdkServerError::new(InvalidRequestError, "Channel config must be provided.")
 		})?,
 	)?;
 
-	let counterparty_node_id = PublicKey::from_str(&request.counterparty_node_id).map_err(|e| {
-		LdkServerError::new(
-			InvalidRequestError,
-			format!("Invalid counterparty node id, error {}", e),
-		)
-	})?;
+	let counterparty_node_id =
+		PublicKey::from_slice(&request.counterparty_node_id).map_err(|e| {
+			LdkServerError::new(
+				InvalidRequestError,
+				format!("Invalid counterparty node id, error {}", e),
+			)
+		})?;
 
 	context
 		.node

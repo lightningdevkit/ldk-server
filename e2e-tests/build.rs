@@ -21,7 +21,7 @@ fn main() {
 			"-p",
 			"ldk-server",
 			"--features",
-			"events-rabbitmq,experimental-lsps2-support",
+			"experimental-lsps2-support",
 			"-p",
 			"ldk-server-cli",
 		])
@@ -45,6 +45,6 @@ fn main() {
 	println!("cargo:rerun-if-changed=../ldk-server/Cargo.toml");
 	println!("cargo:rerun-if-changed=../ldk-server-cli/src");
 	println!("cargo:rerun-if-changed=../ldk-server-cli/Cargo.toml");
-	println!("cargo:rerun-if-changed=../ldk-server-protos/src");
-	println!("cargo:rerun-if-changed=../ldk-server-protos/Cargo.toml");
+	println!("cargo:rerun-if-changed=../ldk-server-json-models/src");
+	println!("cargo:rerun-if-changed=../ldk-server-json-models/Cargo.toml");
 }

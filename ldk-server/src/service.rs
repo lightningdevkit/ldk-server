@@ -18,7 +18,7 @@ use hyper::{Request, Response, StatusCode};
 use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
-use ldk_server_protos::endpoints::{
+use ldk_server_json_models::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
@@ -27,10 +27,13 @@ use ldk_server_protos::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
-use prost::Message;
+use ldk_server_json_models::events::Event;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use tokio::sync::broadcast;
 
 use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
 use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
@@ -69,25 +72,28 @@ use crate::api::spontaneous_send::handle_spontaneous_send_request;
 use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
+use crate::io::events::sse::SseBody;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
-use crate::util::proto_adapter::to_error_response;
+use crate::util::adapter::to_error_response;
 
 // Maximum request body size: 10 MB
 // This prevents memory exhaustion from large requests
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
 #[derive(Clone)]
-pub struct NodeService {
+pub(crate) struct NodeService {
 	node: Arc<Node>,
 	paginated_kv_store: Arc<dyn PaginatedKVStore>,
 	api_key: String,
+	event_sender: broadcast::Sender<Event>,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
+		event_sender: broadcast::Sender<Event>,
 	) -> Self {
-		Self { node, paginated_kv_store, api_key }
+		Self { node, paginated_kv_store, api_key, event_sender }
 	}
 }
 
@@ -165,24 +171,51 @@ pub(crate) struct Context {
 	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore>,
 }
 
+type BoxBody = http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>;
+type ServiceResponse = Response<BoxBody>;
+
 impl Service<Request<Incoming>> for NodeService {
-	type Response = Response<Full<Bytes>>;
+	type Response = ServiceResponse;
 	type Error = hyper::Error;
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
+		// Handle CORS preflight
+		if req.method() == hyper::Method::OPTIONS {
+			return Box::pin(async {
+				Ok(with_cors_headers(
+					Response::builder().status(StatusCode::NO_CONTENT).body(empty_body()).unwrap(),
+				))
+			});
+		}
+
+		let inner = self.call_inner(req);
+		Box::pin(async move { inner.await.map(with_cors_headers) })
+	}
+}
+
+impl NodeService {
+	fn call_inner(
+		&self, req: Request<Incoming>,
+	) -> Pin<Box<dyn Future<Output = Result<ServiceResponse, hyper::Error>> + Send>> {
+		if req.uri().path() == "/openapi.json" {
+			return Box::pin(async {
+				static OPENAPI_JSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+					use utoipa::OpenApi;
+					crate::openapi::ApiDoc::openapi().to_json().unwrap()
+				});
+				Ok(Response::builder()
+					.header("Content-Type", "application/json")
+					.body(Full::new(Bytes::from(OPENAPI_JSON.as_str())).boxed())
+					.unwrap())
+			});
+		}
+
 		// Extract auth params from headers (validation happens after body is read)
 		let auth_params = match extract_auth_params(&req) {
 			Ok(params) => params,
 			Err(e) => {
-				let (error_response, status_code) = to_error_response(e);
-				return Box::pin(async move {
-					Ok(Response::builder()
-						.status(status_code)
-						.body(Full::new(Bytes::from(error_response.encode_to_vec())))
-						// unwrap safety: body only errors when previous chained calls failed.
-						.unwrap())
-				});
+				return Box::pin(async move { Ok(error_to_response(e)) });
 			},
 		};
 
@@ -191,6 +224,7 @@ impl Service<Request<Incoming>> for NodeService {
 			paginated_kv_store: Arc::clone(&self.paginated_kv_store),
 		};
 		let api_key = self.api_key.clone();
+		let event_sender = self.event_sender.clone();
 
 		// Exclude '/' from path pattern matching.
 		match &req.uri().path()[1..] {
@@ -427,13 +461,25 @@ impl Service<Request<Incoming>> for NodeService {
 				api_key,
 				handle_graph_get_node_request,
 			)),
+			SUBSCRIBE_PATH => Box::pin(async move {
+				if let Err(e) =
+					validate_hmac_auth(auth_params.timestamp, &auth_params.hmac_hex, &[], &api_key)
+				{
+					return Ok(error_to_response(e));
+				}
+				let sse_body = SseBody::new(event_sender.subscribe());
+				Ok(Response::builder()
+					.header("Content-Type", "text/event-stream")
+					.header("Cache-Control", "no-cache")
+					.body(sse_body.boxed())
+					.unwrap())
+			}),
 			path => {
 				let error = format!("Unknown request: {}", path).into_bytes();
 				Box::pin(async {
 					Ok(Response::builder()
 						.status(StatusCode::BAD_REQUEST)
-						.body(Full::new(Bytes::from(error)))
-						// unwrap safety: body only errors when previous chained calls failed.
+						.body(Full::new(Bytes::from(error)).boxed())
 						.unwrap())
 				})
 			},
@@ -441,66 +487,63 @@ impl Service<Request<Incoming>> for NodeService {
 	}
 }
 
+fn error_to_response(e: LdkServerError) -> ServiceResponse {
+	let (error_response, status_code) = to_error_response(e);
+	Response::builder()
+		.status(status_code)
+		.header("Content-Type", "application/json")
+		.body(Full::new(Bytes::from(serde_json::to_vec(&error_response).unwrap())).boxed())
+		.unwrap()
+}
+
+fn empty_body() -> BoxBody {
+	Full::new(Bytes::new()).boxed()
+}
+
+fn with_cors_headers(mut response: ServiceResponse) -> ServiceResponse {
+	let headers = response.headers_mut();
+	headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+	headers.insert("Access-Control-Allow-Methods", "GET, POST, OPTIONS".parse().unwrap());
+	headers.insert("Access-Control-Allow-Headers", "Content-Type, X-Auth".parse().unwrap());
+	response
+}
+
 async fn handle_request<
-	T: Message + Default,
-	R: Message,
+	T: DeserializeOwned,
+	R: Serialize,
 	F: Fn(Context, T) -> Result<R, LdkServerError>,
 >(
 	context: Context, request: Request<Incoming>, auth_params: AuthParams, api_key: String,
 	handler: F,
-) -> Result<<NodeService as Service<Request<Incoming>>>::Response, hyper::Error> {
-	// Limit the size of the request body to prevent abuse
+) -> Result<ServiceResponse, hyper::Error> {
 	let limited_body = Limited::new(request.into_body(), MAX_BODY_SIZE);
 	let bytes = match limited_body.collect().await {
 		Ok(collected) => collected.to_bytes(),
 		Err(_) => {
-			let (error_response, status_code) = to_error_response(LdkServerError::new(
+			return Ok(error_to_response(LdkServerError::new(
 				InvalidRequestError,
 				"Request body too large or failed to read.",
-			));
-			return Ok(Response::builder()
-				.status(status_code)
-				.body(Full::new(Bytes::from(error_response.encode_to_vec())))
-				// unwrap safety: body only errors when previous chained calls failed.
-				.unwrap());
+			)));
 		},
 	};
 
-	// Validate HMAC authentication with the request body
 	if let Err(e) =
 		validate_hmac_auth(auth_params.timestamp, &auth_params.hmac_hex, &bytes, &api_key)
 	{
-		let (error_response, status_code) = to_error_response(e);
-		return Ok(Response::builder()
-			.status(status_code)
-			.body(Full::new(Bytes::from(error_response.encode_to_vec())))
-			// unwrap safety: body only errors when previous chained calls failed.
-			.unwrap());
+		return Ok(error_to_response(e));
 	}
 
-	match T::decode(bytes) {
+	let decode_bytes = if bytes.is_empty() { &b"{}"[..] } else { &bytes[..] };
+	match serde_json::from_slice::<T>(decode_bytes) {
 		Ok(request) => match handler(context, request) {
 			Ok(response) => Ok(Response::builder()
-				.body(Full::new(Bytes::from(response.encode_to_vec())))
-				// unwrap safety: body only errors when previous chained calls failed.
+				.header("Content-Type", "application/json")
+				.body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap())).boxed())
 				.unwrap()),
-			Err(e) => {
-				let (error_response, status_code) = to_error_response(e);
-				Ok(Response::builder()
-					.status(status_code)
-					.body(Full::new(Bytes::from(error_response.encode_to_vec())))
-					// unwrap safety: body only errors when previous chained calls failed.
-					.unwrap())
-			},
+			Err(e) => Ok(error_to_response(e)),
 		},
 		Err(_) => {
-			let (error_response, status_code) =
-				to_error_response(LdkServerError::new(InvalidRequestError, "Malformed request."));
-			Ok(Response::builder()
-				.status(status_code)
-				.body(Full::new(Bytes::from(error_response.encode_to_vec())))
-				// unwrap safety: body only errors when previous chained calls failed.
-				.unwrap())
+			Ok(error_to_response(LdkServerError::new(InvalidRequestError, "Malformed request.")))
 		},
 	}
 }

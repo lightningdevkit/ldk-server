@@ -12,23 +12,23 @@ use std::str::FromStr;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::ChannelConfig;
 use ldk_node::lightning::ln::msgs::SocketAddress;
-use ldk_server_protos::api::{OpenChannelRequest, OpenChannelResponse};
+use ldk_server_json_models::api::{OpenChannelRequest, OpenChannelResponse};
 
-use crate::api::build_channel_config_from_proto;
+use crate::api::build_channel_config_from_model;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 
 pub(crate) fn handle_open_channel(
 	context: Context, request: OpenChannelRequest,
 ) -> Result<OpenChannelResponse, LdkServerError> {
-	let node_id = PublicKey::from_str(&request.node_pubkey)
+	let node_id = PublicKey::from_slice(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
 	let address = SocketAddress::from_str(&request.address)
 		.map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?;
 
 	let channel_config = request
 		.channel_config
-		.map(|proto_config| build_channel_config_from_proto(ChannelConfig::default(), proto_config))
+		.map(|config_model| build_channel_config_from_model(ChannelConfig::default(), config_model))
 		.transpose()?;
 
 	let user_channel_id = if request.announce_channel {

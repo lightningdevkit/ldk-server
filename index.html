@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LDK Server</title>
+  <style>
+    body { font-family: monospace; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    input, button { font-family: monospace; font-size: 14px; padding: 6px; }
+    input { width: 500px; }
+    button { cursor: pointer; }
+    pre { background: #f4f4f4; padding: 12px; overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    .error { color: red; }
+    .section { margin-bottom: 30px; }
+    h3 { margin-bottom: 8px; }
+    label { display: block; margin-bottom: 4px; font-size: 13px; color: #666; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ddd; font-family: monospace; font-size: 13px; }
+    th { font-weight: bold; color: #666; }
+    .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .status.connected { background: #4a4; }
+    .status.disconnected { background: #aaa; }
+    .pay-btn { font-size: 12px; padding: 3px 8px; }
+    .pay-btn:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <h2>LDK Server</h2>
+
+  <div class="section">
+    <h3>Connection</h3>
+    <label>Base URL</label>
+    <input id="base-url" value="https://127.0.0.1:3032">
+    <br><br>
+    <label>API Key (hex)</label>
+    <input id="api-key" type="password" placeholder="64-char hex API key">
+    <br><br>
+    <button id="connect-btn" onclick="connect()">Connect</button>
+    <span id="connect-status"></span>
+    <br><br>
+    <label>Node ID</label>
+    <span id="node-id" style="color:#333; word-break:break-all;"></span>
+  </div>
+
+  <div class="section">
+    <h3>Peers</h3>
+    <button onclick="listPeers()">Refresh</button>
+    <div id="peers-container"></div>
+    <pre id="peers-status"></pre>
+  </div>
+
+  <div class="section">
+    <h3>Send Payment</h3>
+    <input id="invoice" placeholder="BOLT11 invoice">
+    <button onclick="pay()">Pay</button>
+    <pre id="pay-result"></pre>
+  </div>
+
+  <div class="section">
+    <h3>Events</h3>
+    <button onclick="clearEvents()">Clear</button>
+    <pre id="events"></pre>
+  </div>
+
+  <script type="module">
+    import { fetchEventSource } from 'https://esm.sh/@microsoft/fetch-event-source@2.0.1';
+
+    let abortController = null;
+
+    function getBaseUrl() { return document.getElementById('base-url').value; }
+    function getApiKey() { return document.getElementById('api-key').value; }
+
+    // Persist base URL and API key in sessionStorage (cleared when tab closes)
+    function saveSettings() {
+      sessionStorage.setItem('ldk-base-url', getBaseUrl());
+      sessionStorage.setItem('ldk-api-key', getApiKey());
+    }
+    function loadSettings() {
+      const url = sessionStorage.getItem('ldk-base-url');
+      const key = sessionStorage.getItem('ldk-api-key');
+      if (url) document.getElementById('base-url').value = url;
+      if (key) document.getElementById('api-key').value = key;
+    }
+
+    async function hmacAuth(body = new Uint8Array()) {
+      const apiKey = getApiKey();
+      const timestamp = Math.floor(Date.now() / 1000);
+      const keyBytes = new TextEncoder().encode(apiKey);
+      const key = await crypto.subtle.importKey(
+        'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const tsBytes = new Uint8Array(8);
+      new DataView(tsBytes.buffer).setBigUint64(0, BigInt(timestamp));
+      const msg = new Uint8Array([...tsBytes, ...body]);
+      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg));
+      const hex = [...sig].map(b => b.toString(16).padStart(2, '0')).join('');
+      return `HMAC ${timestamp}:${hex}`;
+    }
+
+    async function apiPost(path, body = {}) {
+      const bodyStr = JSON.stringify(body);
+      const bodyBytes = new TextEncoder().encode(bodyStr);
+      const res = await fetch(`${getBaseUrl()}/${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth': await hmacAuth(bodyBytes),
+        },
+        body: bodyStr,
+      });
+      return res.json();
+    }
+
+    function appendEvent(data) {
+      const el = document.getElementById('events');
+      const time = new Date().toLocaleTimeString();
+      el.textContent = `[${time}] ${data}\n` + el.textContent;
+    }
+
+    function setConnectStatus(msg, isError) {
+      const el = document.getElementById('connect-status');
+      el.textContent = msg;
+      el.style.color = isError ? 'red' : '#4a4';
+    }
+
+    function setConnected(connected) {
+      const btn = document.getElementById('connect-btn');
+      btn.disabled = connected;
+      btn.style.opacity = connected ? '0.5' : '1';
+    }
+
+    window.connect = async function() {
+      if (abortController) {
+        abortController.abort();
+      }
+      abortController = new AbortController();
+      setConnectStatus('', false);
+      setConnected(false);
+
+      try {
+        const info = await apiPost('GetNodeInfo');
+        document.getElementById('node-id').textContent = info.node_id || '';
+      } catch (e) {
+        setConnectStatus(`Connection failed: ${e.message}`, true);
+        return;
+      }
+
+      listPeers();
+      setConnected(true);
+
+      const el = document.getElementById('events');
+      el.textContent = '';
+
+      await fetchEventSource(`${getBaseUrl()}/Subscribe`, {
+        headers: { 'X-Auth': await hmacAuth() },
+        signal: abortController.signal,
+        async onopen(res) {
+          if (!res.ok) {
+            const text = await res.text();
+            setConnectStatus(text || `Error ${res.status}`, true);
+            setConnected(false);
+          }
+        },
+        onmessage(ev) {
+          try {
+            const parsed = JSON.parse(ev.data);
+            appendEvent(JSON.stringify(parsed, null, 2));
+          } catch {
+            appendEvent(ev.data);
+          }
+        },
+        onerror(err) {
+          setConnectStatus('Disconnected', true);
+          setConnected(false);
+          throw err;
+        },
+      });
+    };
+
+    window.listPeers = async function() {
+      const container = document.getElementById('peers-container');
+      const status = document.getElementById('peers-status');
+      try {
+        const result = await apiPost('ListPeers');
+        if (!result.peers || result.peers.length === 0) {
+          container.innerHTML = '';
+          status.textContent = 'No peers';
+          return;
+        }
+        status.textContent = '';
+        let html = '<table><tr><th>Node ID</th><th>Address</th><th>Status</th><th></th></tr>';
+        for (const peer of result.peers) {
+          const shortId = peer.node_id.slice(0, 16) + '...';
+          const statusClass = peer.is_connected ? 'connected' : 'disconnected';
+          const statusLabel = peer.is_connected ? 'connected' : 'disconnected';
+          html += `<tr>
+            <td title="${peer.node_id}">${shortId}</td>
+            <td>${peer.address}</td>
+            <td><span class="status ${statusClass}"></span>${statusLabel}</td>
+            <td><button class="pay-btn" onclick="keysend('${peer.node_id}', this)">Send 10 sat</button></td>
+          </tr>`;
+        }
+        html += '</table>';
+        container.innerHTML = html;
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'error';
+      }
+    };
+
+    window.keysend = async function(nodeId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const result = await apiPost('SpontaneousSend', {
+          node_id: nodeId,
+          amount_msat: 10000,
+        });
+        if (result.payment_id) {
+          btn.textContent = 'Sent!';
+          setTimeout(() => { btn.textContent = 'Send 10 sat'; btn.disabled = false; }, 3000);
+        } else {
+          btn.textContent = 'Failed';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        btn.textContent = 'Error';
+        btn.disabled = false;
+      }
+    };
+
+    window.pay = async function() {
+      const el = document.getElementById('pay-result');
+      const invoice = document.getElementById('invoice').value;
+      if (!invoice) { el.textContent = 'Enter an invoice'; return; }
+      try {
+        el.textContent = 'Sending...';
+        const result = await apiPost('Bolt11Send', { invoice });
+        el.textContent = JSON.stringify(result, null, 2);
+        el.className = '';
+      } catch (e) {
+        el.textContent = `Error: ${e.message}`;
+        el.className = 'error';
+      }
+    };
+
+    window.clearEvents = function() {
+      document.getElementById('events').textContent = '';
+    };
+
+    // Initialize
+    loadSettings();
+    function onSettingsChanged() {
+      saveSettings();
+      setConnected(false);
+      setConnectStatus('', false);
+    }
+    document.getElementById('base-url').addEventListener('input', onSettingsChanged);
+    document.getElementById('api-key').addEventListener('input', onSettingsChanged);
+    if (getApiKey()) {
+      connect();
+    }
+  </script>
+</body>
+</html>

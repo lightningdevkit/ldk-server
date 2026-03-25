@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{GraphListNodesRequest, GraphListNodesResponse};
+use ldk_server_json_models::api::{GraphListNodesRequest, GraphListNodesResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;

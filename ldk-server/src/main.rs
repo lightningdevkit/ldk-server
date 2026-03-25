@@ -9,6 +9,7 @@
 
 mod api;
 mod io;
+mod openapi;
 mod service;
 mod util;
 
@@ -27,20 +28,17 @@ use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
-use ldk_server_protos::events;
-use ldk_server_protos::events::{event_envelope, EventEnvelope};
-use ldk_server_protos::types::Payment;
+use ldk_server_json_models::events;
+use ldk_server_json_models::types::Payment;
 use log::{debug, error, info};
-use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
+use tokio::sync::broadcast;
 
-use crate::io::events::event_publisher::EventPublisher;
 use crate::io::events::get_event_name;
-#[cfg(feature = "events-rabbitmq")]
-use crate::io::events::rabbitmq::{RabbitMqConfig, RabbitMqEventPublisher};
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
@@ -48,9 +46,9 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
+use crate::util::adapter::{forwarded_payment_to_model, payment_to_model};
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
-use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
 
@@ -222,18 +220,7 @@ fn main() {
 			},
 		});
 
-	#[cfg(not(feature = "events-rabbitmq"))]
-	let event_publisher: Arc<dyn EventPublisher> =
-		Arc::new(crate::io::events::event_publisher::NoopEventPublisher);
-
-	#[cfg(feature = "events-rabbitmq")]
-	let event_publisher: Arc<dyn EventPublisher> = {
-		let rabbitmq_config = RabbitMqConfig {
-			connection_string: config_file.rabbitmq_connection_string,
-			exchange_name: config_file.rabbitmq_exchange_name,
-		};
-		Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
-	};
+	let (event_sender, _) = broadcast::channel::<events::Event>(256);
 
 	info!("Starting up...");
 	match node.start() {
@@ -322,43 +309,43 @@ fn main() {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
 							publish_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentReceived(events::PaymentReceived {
-									payment: Some(payment_ref.clone()),
+								|payment_ref| events::Event::PaymentReceived(events::PaymentReceived {
+									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
 							publish_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
-									payment: Some(payment_ref.clone()),
+								|payment_ref| events::Event::PaymentSuccessful(events::PaymentSuccessful {
+									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
 							publish_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
-									payment: Some(payment_ref.clone()),
+								|payment_ref| events::Event::PaymentFailed(events::PaymentFailed {
+									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							publish_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentClaimable(events::PaymentClaimable {
-									payment: Some(payment_ref.clone()),
+								|payment_ref| events::Event::PaymentClaimable(events::PaymentClaimable {
+									payment: payment_ref.clone(),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
@@ -377,7 +364,7 @@ fn main() {
 								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
 							);
 
-							let forwarded_payment = forwarded_payment_to_proto(
+							let forwarded_payment = forwarded_payment_to_model(
 								prev_channel_id,
 								next_channel_id,
 								prev_user_channel_id,
@@ -398,22 +385,16 @@ fn main() {
 
 							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
 
-							match event_publisher.publish(EventEnvelope {
-									event: Some(event_envelope::Event::PaymentForwarded(events::PaymentForwarded {
-											forwarded_payment: Some(forwarded_payment.clone()),
-									})),
-							}).await {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to publish 'PaymentForwarded' event: {}", e);
-									continue;
-								}
-							};
+							let _ = event_sender.send(
+								events::Event::PaymentForwarded(events::PaymentForwarded {
+									forwarded_payment: forwarded_payment.clone(),
+								}),
+							);
 
 							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 								&forwarded_payment_id.to_lower_hex_string(),
 								forwarded_payment_creation_time,
-								&forwarded_payment.encode_to_vec(),
+								&serde_json::to_vec(&forwarded_payment).unwrap(),
 							) {
 								Ok(_) => {
 									if let Err(e) = event_node.event_handled() {
@@ -435,7 +416,7 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone());
+							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone(), event_sender.clone());
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
@@ -474,23 +455,18 @@ fn main() {
 	info!("Shutdown complete..");
 }
 
-async fn publish_event_and_upsert_payment(
-	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> event_envelope::Event,
-	event_node: &Node, event_publisher: Arc<dyn EventPublisher>,
-	paginated_store: Arc<dyn PaginatedKVStore>,
+fn publish_event_and_upsert_payment(
+	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> events::Event, event_node: &Node,
+	event_sender: &broadcast::Sender<events::Event>, paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	if let Some(payment_details) = event_node.payment(payment_id) {
-		let payment = payment_to_proto(payment_details);
+		let payment = payment_to_model(payment_details);
 
 		let event = payment_to_event(&payment);
 		let event_name = get_event_name(&event);
-		match event_publisher.publish(EventEnvelope { event: Some(event) }).await {
-			Ok(_) => {},
-			Err(e) => {
-				error!("Failed to publish '{event_name}' event, : {e}");
-				return;
-			},
-		};
+		if event_sender.send(event).is_err() {
+			debug!("No active subscribers for '{event_name}' event");
+		}
 
 		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
 	} else {
@@ -507,9 +483,9 @@ fn upsert_payment_details(
 	match paginated_store.write(
 		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-		&payment.id,
+		&payment.id.to_lower_hex_string(),
 		time,
-		&payment.encode_to_vec(),
+		&serde_json::to_vec(&payment).unwrap(),
 	) {
 		Ok(_) => {
 			if let Err(e) = event_node.event_handled() {

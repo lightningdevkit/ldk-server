@@ -7,12 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{GraphGetChannelRequest, GraphGetChannelResponse};
+use ldk_server_json_models::api::{GraphGetChannelRequest, GraphGetChannelResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
-use crate::util::proto_adapter::graph_channel_to_proto;
+use crate::util::adapter::graph_channel_to_model;
 
 pub(crate) fn handle_graph_get_channel_request(
 	context: Context, request: GraphGetChannelRequest,
@@ -28,6 +28,6 @@ pub(crate) fn handle_graph_get_channel_request(
 			)
 		})?;
 
-	let response = GraphGetChannelResponse { channel: Some(graph_channel_to_proto(channel_info)) };
+	let response = GraphGetChannelResponse { channel: Some(graph_channel_to_model(channel_info)) };
 	Ok(response)
 }

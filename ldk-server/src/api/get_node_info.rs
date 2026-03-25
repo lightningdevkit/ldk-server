@@ -7,8 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
-use ldk_server_protos::types::BestBlock;
+use ldk_node::bitcoin::hashes::Hash as _;
+use ldk_server_json_models::api::{GetNodeInfoRequest, GetNodeInfoResponse};
+use ldk_server_json_models::types::BestBlock;
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
@@ -19,7 +20,7 @@ pub(crate) fn handle_get_node_info_request(
 	let node_status = context.node.status();
 
 	let best_block = BestBlock {
-		block_hash: node_status.current_best_block.block_hash.to_string(),
+		block_hash: node_status.current_best_block.block_hash.to_byte_array(),
 		height: node_status.current_best_block.height,
 	};
 
@@ -37,7 +38,7 @@ pub(crate) fn handle_get_node_info_request(
 
 	let node_alias = context.node.node_alias().map(|alias| alias.to_string());
 
-	let node_id = context.node.node_id().to_string();
+	let node_id = context.node.node_id();
 
 	let node_uris = {
 		let addrs = if announcement_addresses.is_empty() {
@@ -48,8 +49,8 @@ pub(crate) fn handle_get_node_info_request(
 		addrs.into_iter().map(|a| format!("{node_id}@{a}")).collect()
 	};
 	let response = GetNodeInfoResponse {
-		node_id,
-		current_best_block: Some(best_block),
+		node_id: node_id.serialize(),
+		current_best_block: best_block,
 		latest_lightning_wallet_sync_timestamp: node_status.latest_lightning_wallet_sync_timestamp,
 		latest_onchain_wallet_sync_timestamp: node_status.latest_onchain_wallet_sync_timestamp,
 		latest_fee_rate_cache_update_timestamp: node_status.latest_fee_rate_cache_update_timestamp,
