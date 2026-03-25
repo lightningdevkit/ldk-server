@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
+pub const DEFAULT_REST_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -66,6 +67,7 @@ pub struct TlsConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct NodeConfig {
+	#[serde(default = "default_rest_service_address")]
 	pub rest_service_address: String,
 	network: String,
 }
@@ -98,4 +100,54 @@ pub fn load_config(path: &PathBuf) -> Result<Config, String> {
 		.map_err(|e| format!("Failed to read config file '{}': {}", path.display(), e))?;
 	toml::from_str(&contents)
 		.map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
+}
+
+pub fn resolve_base_url(cli_base_url: Option<String>, config: Option<&Config>) -> String {
+	cli_base_url
+		.or_else(|| config.map(|config| config.node.rest_service_address.clone()))
+		.unwrap_or_else(default_rest_service_address)
+}
+
+fn default_rest_service_address() -> String {
+	DEFAULT_REST_SERVICE_ADDRESS.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{resolve_base_url, Config, DEFAULT_REST_SERVICE_ADDRESS};
+
+	#[test]
+	fn config_defaults_rest_service_address() {
+		let config: Config = toml::from_str(
+			r#"
+				[node]
+				network = "regtest"
+			"#,
+		)
+		.unwrap();
+
+		assert_eq!(config.node.rest_service_address, DEFAULT_REST_SERVICE_ADDRESS);
+	}
+
+	#[test]
+	fn resolve_base_url_uses_cli_arg_first() {
+		let config: Config = toml::from_str(
+			r#"
+				[node]
+				network = "regtest"
+				rest_service_address = "127.0.0.1:3002"
+			"#,
+		)
+		.unwrap();
+
+		assert_eq!(
+			resolve_base_url(Some("127.0.0.1:4000".to_string()), Some(&config)),
+			"127.0.0.1:4000"
+		);
+	}
+
+	#[test]
+	fn resolve_base_url_falls_back_to_default() {
+		assert_eq!(resolve_base_url(None, None), DEFAULT_REST_SERVICE_ADDRESS);
+	}
 }

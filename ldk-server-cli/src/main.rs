@@ -13,7 +13,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use config::{
 	api_key_path_for_storage_dir, cert_path_for_storage_dir, get_default_api_key_path,
-	get_default_cert_path, get_default_config_path, load_config,
+	get_default_cert_path, get_default_config_path, load_config, resolve_base_url,
+	DEFAULT_REST_SERVICE_ADDRESS,
 };
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
@@ -79,7 +80,13 @@ const DEFAULT_DIR: &str = if cfg!(target_os = "macos") {
 	override_usage = "ldk-server-cli [OPTIONS] <COMMAND>"
 )]
 struct Cli {
-	#[arg(short, long, help = "Base URL of the server. If not provided, reads from config file")]
+	#[arg(
+		short,
+		long,
+		help = format!(
+			"Base URL of the server. Defaults to config file or {DEFAULT_REST_SERVICE_ADDRESS}"
+		)
+	)]
 	base_url: Option<String>,
 
 	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_key"))]
@@ -570,12 +577,7 @@ async fn main() {
 		});
 
 	// Get base URL from argument then from config file
-	let base_url =
-		cli.base_url.or_else(|| config.as_ref().map(|c| c.node.rest_service_address.clone()))
-			.unwrap_or_else(|| {
-				eprintln!("Base URL not provided. Use --base-url or ensure config file exists at {DEFAULT_DIR}/config.toml");
-				std::process::exit(1);
-			});
+	let base_url = resolve_base_url(cli.base_url, config.as_ref());
 
 	// Get TLS cert path from argument, then from config tls.cert_path, then from storage dir,
 	// then try default location.
