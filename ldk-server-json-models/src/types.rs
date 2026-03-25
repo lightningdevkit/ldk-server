@@ -8,12 +8,14 @@
 // licenses.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Represents a payment.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PaymentDetails.html>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Payment {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub id: [u8; 32],
 	/// The kind of the payment.
@@ -32,7 +34,7 @@ pub struct Payment {
 	/// The timestamp, in seconds since start of the UNIX epoch, when this entry was last updated.
 	pub latest_update_timestamp: u64,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentKind {
 	Onchain(Onchain),
@@ -43,24 +45,26 @@ pub enum PaymentKind {
 	Spontaneous(Spontaneous),
 }
 /// Represents an on-chain payment.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Onchain {
 	/// The transaction identifier of this payment.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub txid: [u8; 32],
 	/// The confirmation status of this payment.
 	pub status: ConfirmationStatus,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfirmationStatus {
 	Confirmed(Confirmed),
 	Unconfirmed(Unconfirmed),
 }
 /// The on-chain transaction is confirmed in the best chain.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Confirmed {
 	/// The hex representation of hash of the block in which the transaction was confirmed.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub block_hash: [u8; 32],
 	/// The height under which the block was confirmed.
@@ -69,31 +73,37 @@ pub struct Confirmed {
 	pub timestamp: u64,
 }
 /// The on-chain transaction is unconfirmed.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Unconfirmed {}
 /// Represents a BOLT 11 payment.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11 {
 	/// The payment hash, i.e., the hash of the preimage.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub hash: [u8; 32],
 	/// The pre-image used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub preimage: Option<[u8; 32]>,
 	/// The secret used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub secret: Option<[u8; 32]>,
 }
 /// Represents a BOLT 11 payment intended to open an LSPS 2 just-in-time channel.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11Jit {
 	/// The payment hash, i.e., the hash of the preimage.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub hash: [u8; 32],
 	/// The pre-image used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub preimage: Option<[u8; 32]>,
 	/// The secret used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub secret: Option<[u8; 32]>,
 	/// Limits applying to how much fee we allow an LSP to deduct from the payment amount.
@@ -110,18 +120,22 @@ pub struct Bolt11Jit {
 	pub counterparty_skimmed_fee_msat: Option<u64>,
 }
 /// Represents a BOLT 12 'offer' payment, i.e., a payment for an Offer.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12Offer {
 	/// The payment hash, i.e., the hash of the preimage.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub hash: Option<[u8; 32]>,
 	/// The pre-image used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub preimage: Option<[u8; 32]>,
 	/// The secret used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub secret: Option<[u8; 32]>,
 	/// The hex-encoded ID of the offer this payment is for.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub offer_id: [u8; 32],
 	/// The payer's note for the payment.
@@ -134,15 +148,18 @@ pub struct Bolt12Offer {
 	pub quantity: Option<u64>,
 }
 /// Represents a BOLT 12 'refund' payment, i.e., a payment for a Refund.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12Refund {
 	/// The payment hash, i.e., the hash of the preimage.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub hash: Option<[u8; 32]>,
 	/// The pre-image used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub preimage: Option<[u8; 32]>,
 	/// The secret used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub secret: Option<[u8; 32]>,
 	/// The payer's note for the payment.
@@ -155,12 +172,14 @@ pub struct Bolt12Refund {
 	pub quantity: Option<u64>,
 }
 /// Represents a spontaneous ("keysend") payment.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Spontaneous {
 	/// The payment hash, i.e., the hash of the preimage.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub hash: [u8; 32],
 	/// The pre-image used by the payment.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub preimage: Option<[u8; 32]>,
 }
@@ -168,7 +187,7 @@ pub struct Spontaneous {
 /// See \[`LdkChannelConfig::accept_underpaying_htlcs`\] for more information.
 ///
 /// \[`LdkChannelConfig::accept_underpaying_htlcs`\]: lightning::util::config::ChannelConfig::accept_underpaying_htlcs
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct LspFeeLimits {
 	/// The maximal total amount we allow any configured LSP withhold from us when forwarding the
 	/// payment.
@@ -179,20 +198,24 @@ pub struct LspFeeLimits {
 }
 /// A forwarded payment through our node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ForwardedPayment {
 	/// The channel id of the incoming channel between the previous node and us.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub prev_channel_id: [u8; 32],
 	/// The channel id of the outgoing channel between the next node and us.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub next_channel_id: [u8; 32],
 	/// The `user_channel_id` of the incoming channel between the previous node and us.
 	pub prev_user_channel_id: String,
 	/// The node id of the previous node.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub prev_node_id: [u8; 33],
 	/// The node id of the next node.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub next_node_id: [u8; 33],
 	/// The `user_channel_id` of the outgoing channel between the next node and us.
@@ -222,7 +245,7 @@ pub struct ForwardedPayment {
 	/// The caveat described above the `total_fee_earned_msat` field applies here as well.
 	pub outbound_amount_forwarded_msat: Option<u64>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Channel {
 	/// The channel ID (prior to funding transaction generation, this is a random 32-byte
 	/// identifier, afterwards this is the transaction ID of the funding transaction XOR the
@@ -230,9 +253,11 @@ pub struct Channel {
 	///
 	/// Note that this means this value is *not* persistent - it can change once during the
 	/// lifetime of the channel.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The node ID of our the channel's remote counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The channel's funding transaction output, if we've negotiated the funding transaction with
@@ -330,7 +355,7 @@ pub struct Channel {
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ChannelConfig {
 	/// Amount (in millionths of a satoshi) charged per satoshi for payments forwarded outbound
 	/// over the channel.
@@ -364,7 +389,7 @@ pub struct ChannelConfig {
 /// and fees on commitment transaction(s) broadcasted by our counterparty in excess of
 /// our own fee estimate.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html#structfield.max_dust_htlc_exposure>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MaxDustHtlcExposure {
 	/// This sets a fixed limit on the total dust exposure in millisatoshis.
@@ -375,24 +400,26 @@ pub enum MaxDustHtlcExposure {
 	FeeRateMultiplier(u64),
 }
 /// Represent a transaction outpoint.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OutPoint {
 	/// The referenced transaction's txid.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub txid: [u8; 32],
 	/// The index of the referenced output in its transaction's vout.
 	pub vout: u32,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct BestBlock {
 	/// The block's hash
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub block_hash: [u8; 32],
 	/// The height at which the block was confirmed.
 	pub height: u32,
 }
 /// Details about the status of a known Lightning balance.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LightningBalance {
 	ClaimableOnChannelClose(ClaimableOnChannelClose),
@@ -405,12 +432,14 @@ pub enum LightningBalance {
 /// The channel is not yet closed (or the commitment or closing transaction has not yet appeared in a block).
 /// The given balance is claimable (less on-chain fees) if the channel is force-closed now.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.ClaimableOnChannelClose>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ClaimableOnChannelClose {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount available to claim, in satoshis, excluding the on-chain fees which will be required to do so.
@@ -453,12 +482,14 @@ pub struct ClaimableOnChannelClose {
 }
 /// The channel has been closed, and the given balance is ours but awaiting confirmations until we consider it spendable.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.ClaimableAwaitingConfirmations>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ClaimableAwaitingConfirmations {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount available to claim, in satoshis, possibly excluding the on-chain fees which were spent in broadcasting
@@ -476,12 +507,14 @@ pub struct ClaimableAwaitingConfirmations {
 /// Once the spending transaction confirms, before it has reached enough confirmations to be considered safe from chain
 /// reorganizations, the balance will instead be provided via `LightningBalance::ClaimableAwaitingConfirmations`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.ContentiousClaimable>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ContentiousClaimable {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount available to claim, in satoshis, excluding the on-chain fees which were spent in broadcasting
@@ -490,21 +523,25 @@ pub struct ContentiousClaimable {
 	/// The height at which the counterparty may be able to claim the balance if we have not done so.
 	pub timeout_height: u32,
 	/// The payment hash that locks this HTLC.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 	/// The preimage that can be used to claim this HTLC.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_preimage: [u8; 32],
 }
 /// HTLCs which we sent to our counterparty which are claimable after a timeout (less on-chain fees) if the counterparty
 /// does not know the preimage for the HTLCs. These are somewhat likely to be claimed by our counterparty before we do.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.MaybeTimeoutClaimableHTLC>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct MaybeTimeoutClaimableHtlc {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount available to claim, in satoshis, excluding the on-chain fees which were spent in broadcasting
@@ -513,6 +550,7 @@ pub struct MaybeTimeoutClaimableHtlc {
 	/// The height at which we will be able to claim the balance if our counterparty has not done so.
 	pub claimable_height: u32,
 	/// The payment hash whose preimage our counterparty needs to claim this HTLC.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 	/// Indicates whether this HTLC represents a payment which was sent outbound from us.
@@ -522,12 +560,14 @@ pub struct MaybeTimeoutClaimableHtlc {
 /// This will only be claimable if we receive the preimage from the node to which we forwarded this HTLC before the
 /// timeout.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.MaybePreimageClaimableHTLC>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct MaybePreimageClaimableHtlc {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount available to claim, in satoshis, excluding the on-chain fees which were spent in broadcasting
@@ -537,6 +577,7 @@ pub struct MaybePreimageClaimableHtlc {
 	/// claimed it ourselves.
 	pub expiry_height: u32,
 	/// The payment hash whose preimage we need to claim this HTLC.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 }
@@ -545,19 +586,21 @@ pub struct MaybePreimageClaimableHtlc {
 /// Thus, we're able to claim all outputs in the commitment transaction, one of which has the following amount.
 ///
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.LightningBalance.html#variant.CounterpartyRevokedOutputClaimable>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CounterpartyRevokedOutputClaimable {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub channel_id: [u8; 32],
 	/// The identifier of our channel counterparty.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount, in satoshis, of the output which we can claim.
 	pub amount_satoshis: u64,
 }
 /// Details about the status of a known balance currently being swept to our on-chain wallet.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PendingSweepBalance {
 	PendingBroadcast(PendingBroadcast),
@@ -566,9 +609,10 @@ pub enum PendingSweepBalance {
 }
 /// The spendable output is about to be swept, but a spending transaction has yet to be generated and broadcast.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.PendingSweepBalance.html#variant.PendingBroadcast>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PendingBroadcast {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub channel_id: Option<[u8; 32]>,
 	/// The amount, in satoshis, of the output being swept.
@@ -576,14 +620,16 @@ pub struct PendingBroadcast {
 }
 /// A spending transaction has been generated and broadcast and is awaiting confirmation on-chain.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.PendingSweepBalance.html#variant.BroadcastAwaitingConfirmation>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct BroadcastAwaitingConfirmation {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub channel_id: Option<[u8; 32]>,
 	/// The best height when we last broadcast a transaction spending the output being swept.
 	pub latest_broadcast_height: u32,
 	/// The identifier of the transaction spending the swept output we last broadcast.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub latest_spending_txid: [u8; 32],
 	/// The amount, in satoshis, of the output being swept.
@@ -593,15 +639,18 @@ pub struct BroadcastAwaitingConfirmation {
 ///
 /// It will be considered irrevocably confirmed after reaching `ANTI_REORG_DELAY`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.PendingSweepBalance.html#variant.AwaitingThresholdConfirmations>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct AwaitingThresholdConfirmations {
 	/// The identifier of the channel this balance belongs to.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub channel_id: Option<[u8; 32]>,
 	/// The identifier of the confirmed transaction spending the swept output.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub latest_spending_txid: [u8; 32],
 	/// The hash of the block in which the spending transaction was confirmed.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub confirmation_hash: [u8; 32],
 	/// The height at which the spending transaction was confirmed.
@@ -610,12 +659,12 @@ pub struct AwaitingThresholdConfirmations {
 	pub amount_satoshis: u64,
 }
 /// Token used to determine start of next page in paginated APIs.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PageToken {
 	pub token: String,
 	pub index: i64,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Bolt11InvoiceDescription {
 	Direct(String),
@@ -623,7 +672,7 @@ pub enum Bolt11InvoiceDescription {
 }
 /// Configuration options for payment routing and pathfinding.
 /// See <https://docs.rs/lightning/0.2.0/lightning/routing/router/struct.RouteParametersConfig.html> for more details on each field.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct RouteParametersConfig {
 	/// The maximum total fees, in millisatoshi, that may accrue during route finding.
 	/// Defaults to 1% of the payment amount + 50 sats
@@ -640,7 +689,7 @@ pub struct RouteParametersConfig {
 	pub max_channel_saturation_power_of_half: u32,
 }
 /// Routing fees for a channel as part of the network graph.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphRoutingFees {
 	/// Flat routing fee in millisatoshis.
 	pub base_msat: u32,
@@ -649,7 +698,7 @@ pub struct GraphRoutingFees {
 }
 /// Details about one direction of a channel in the network graph,
 /// as received within a `ChannelUpdate`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphChannelUpdate {
 	/// When the last update to the channel direction was issued.
 	/// Value is opaque, as set in the announcement.
@@ -667,12 +716,14 @@ pub struct GraphChannelUpdate {
 }
 /// Details about a channel in the network graph (both directions).
 /// Received within a channel announcement.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphChannel {
 	/// Source node of the first direction of the channel (hex-encoded public key).
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_one: [u8; 33],
 	/// Source node of the second direction of the channel (hex-encoded public key).
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_two: [u8; 33],
 	/// The channel capacity as seen on-chain, if chain lookup is available.
@@ -683,7 +734,7 @@ pub struct GraphChannel {
 	pub two_to_one: Option<GraphChannelUpdate>,
 }
 /// Information received in the latest node_announcement from this node.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphNodeAnnouncement {
 	/// When the last known update to the node state was issued.
 	/// Value is opaque, as set in the announcement.
@@ -698,9 +749,10 @@ pub struct GraphNodeAnnouncement {
 }
 /// Details of a known Lightning peer.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Peer {
 	/// The hex-encoded node ID of the peer.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_id: [u8; 33],
 	/// The network address of the peer.
@@ -711,7 +763,7 @@ pub struct Peer {
 	pub is_connected: bool,
 }
 /// Details about a node in the network graph, known from the network announcement.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphNode {
 	/// All valid channels a node has announced.
 	pub channels: Vec<u64>,
@@ -721,7 +773,9 @@ pub struct GraphNode {
 	pub announcement_info: Option<GraphNodeAnnouncement>,
 }
 /// Represents the direction of a payment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentDirection {
 	/// The payment is inbound.
@@ -730,7 +784,9 @@ pub enum PaymentDirection {
 	Outbound,
 }
 /// Represents the current status of a payment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentStatus {
 	/// The payment is still pending.
@@ -742,7 +798,9 @@ pub enum PaymentStatus {
 }
 /// Indicates whether the balance is derived from a cooperative close, a force-close (for holder or counterparty),
 /// or whether it is for an HTLC.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum BalanceSource {
 	/// The channel was force closed by the holder.

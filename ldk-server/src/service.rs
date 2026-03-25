@@ -198,6 +198,19 @@ impl NodeService {
 	fn call_inner(
 		&self, req: Request<Incoming>,
 	) -> Pin<Box<dyn Future<Output = Result<ServiceResponse, hyper::Error>> + Send>> {
+		if req.uri().path() == "/openapi.json" {
+			return Box::pin(async {
+				static OPENAPI_JSON: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+					use utoipa::OpenApi;
+					crate::openapi::ApiDoc::openapi().to_json().unwrap()
+				});
+				Ok(Response::builder()
+					.header("Content-Type", "application/json")
+					.body(Full::new(Bytes::from(OPENAPI_JSON.as_str())).boxed())
+					.unwrap())
+			});
+		}
+
 		// Extract auth params from headers (validation happens after body is read)
 		let auth_params = match extract_auth_params(&req) {
 			Ok(params) => params,

@@ -8,18 +8,20 @@
 // licenses.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Retrieve the latest node info like `node_id`, `current_best_block` etc.
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.node_id>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.status>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetNodeInfoRequest {}
 /// The response `content` for the `GetNodeInfo` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetNodeInfoResponse {
 	/// The hex-encoded `node-id` or public key for our own lightning node.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_id: [u8; 33],
 	/// The best block to which our Lightning wallet is currently synced.
@@ -67,17 +69,17 @@ pub struct GetNodeInfoResponse {
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OnchainReceiveRequest {}
 /// The response `content` for the `OnchainReceive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`..
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OnchainReceiveResponse {
 	/// A Bitcoin on-chain address.
 	pub address: String,
 }
 /// Send an on-chain payment to the given address.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OnchainSendRequest {
 	/// The address to send coins to.
 	pub address: String,
@@ -100,9 +102,10 @@ pub struct OnchainSendRequest {
 }
 /// The response `content` for the `OnchainSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OnchainSendResponse {
 	/// The transaction ID of the broadcasted transaction.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub txid: [u8; 32],
 }
@@ -112,7 +115,7 @@ pub struct OnchainSendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveRequest {
 	/// The amount in millisatoshi to send. If unset, a "zero-amount" or variable-amount invoice is returned.
 	pub amount_msat: Option<u64>,
@@ -124,16 +127,18 @@ pub struct Bolt11ReceiveRequest {
 }
 /// The response `content` for the `Bolt11Receive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveResponse {
 	/// An invoice for a payment within the Lightning Network.
 	/// With the details of the invoice, the sender has all the data necessary to send a payment
 	/// to the recipient.
 	pub invoice: String,
 	/// The hex-encoded 32-byte payment hash.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 	/// The hex-encoded 32-byte payment secret.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_secret: [u8; 32],
 }
@@ -144,7 +149,7 @@ pub struct Bolt11ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveForHashRequest {
 	/// The amount in millisatoshi to receive. If unset, a "zero-amount" or variable-amount invoice is returned.
 	pub amount_msat: Option<u64>,
@@ -154,12 +159,13 @@ pub struct Bolt11ReceiveForHashRequest {
 	/// Invoice expiry time in seconds.
 	pub expiry_secs: u32,
 	/// The hex-encoded 32-byte payment hash to use for the invoice.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 }
 /// The response `content` for the `Bolt11ReceiveForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveForHashResponse {
 	/// An invoice for a payment within the Lightning Network.
 	/// With the details of the invoice, the sender has all the data necessary to send a payment
@@ -169,40 +175,43 @@ pub struct Bolt11ReceiveForHashResponse {
 /// Manually claim a payment for a given payment hash with the corresponding preimage.
 /// This should be used to claim payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ClaimForHashRequest {
 	/// The hex-encoded 32-byte payment hash.
 	/// If provided, it will be used to verify that the preimage matches.
+	#[schema(value_type = Option<String>)]
 	#[serde(default, with = "crate::serde_utils::opt_hex_32")]
 	pub payment_hash: Option<[u8; 32]>,
 	/// The amount in millisatoshi that is claimable.
 	/// If not provided, skips amount verification.
 	pub claimable_amount_msat: Option<u64>,
 	/// The hex-encoded 32-byte payment preimage.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub preimage: [u8; 32],
 }
 /// The response `content` for the `Bolt11ClaimForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ClaimForHashResponse {}
 /// Manually fail a payment for a given payment hash.
 /// This should be used to reject payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11FailForHashRequest {
 	/// The hex-encoded 32-byte payment hash.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_hash: [u8; 32],
 }
 /// The response `content` for the `Bolt11FailForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11FailForHashResponse {}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 /// LSPS2 just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveViaJitChannelRequest {
 	/// The amount in millisatoshi to request.
 	pub amount_msat: u64,
@@ -216,7 +225,7 @@ pub struct Bolt11ReceiveViaJitChannelRequest {
 }
 /// The response `content` for the `Bolt11ReceiveViaJitChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveViaJitChannelResponse {
 	/// An invoice for a payment within the Lightning Network.
 	pub invoice: String,
@@ -224,7 +233,7 @@ pub struct Bolt11ReceiveViaJitChannelResponse {
 /// Return a variable-amount BOLT11 invoice that can be used to receive a payment via an LSPS2
 /// just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 	/// An optional description to attach along with the invoice.
 	/// Will be set in the description field of the encoded payment request.
@@ -237,14 +246,14 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 }
 /// The response `content` for the `Bolt11ReceiveVariableAmountViaJitChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
 	/// An invoice for a payment within the Lightning Network.
 	pub invoice: String,
 }
 /// Send a payment for a BOLT11 invoice.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11SendRequest {
 	/// An invoice for a payment within the Lightning Network.
 	pub invoice: String,
@@ -257,9 +266,10 @@ pub struct Bolt11SendRequest {
 }
 /// The response `content` for the `Bolt11Send` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt11SendResponse {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_id: [u8; 32],
 }
@@ -268,7 +278,7 @@ pub struct Bolt11SendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive_variable_amount>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12ReceiveRequest {
 	/// An optional description to attach along with the offer.
 	/// Will be set in the description field of the encoded offer.
@@ -282,13 +292,14 @@ pub struct Bolt12ReceiveRequest {
 }
 /// The response `content` for the `Bolt12Receive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12ReceiveResponse {
 	/// An offer for a payment within the Lightning Network.
 	/// With the details of the offer, the sender has all the data necessary to send a payment
 	/// to the recipient.
 	pub offer: String,
 	/// The hex-encoded offer id.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub offer_id: [u8; 32],
 }
@@ -296,7 +307,7 @@ pub struct Bolt12ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send_using_amount>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12SendRequest {
 	/// An offer for a payment within the Lightning Network.
 	pub offer: String,
@@ -313,19 +324,21 @@ pub struct Bolt12SendRequest {
 }
 /// The response `content` for the `Bolt12Send` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Bolt12SendResponse {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_id: [u8; 32],
 }
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpontaneousSendRequest {
 	/// The amount in millisatoshis to send.
 	pub amount_msat: u64,
 	/// The hex-encoded public key of the node to send the payment to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_id: [u8; 33],
 	/// Configuration options for payment routing and pathfinding.
@@ -333,17 +346,19 @@ pub struct SpontaneousSendRequest {
 }
 /// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpontaneousSendResponse {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_id: [u8; 32],
 }
 /// Creates a new outbound channel to the given remote node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect_open_channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OpenChannelRequest {
 	/// The hex-encoded public key of the node to open a channel with.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_pubkey: [u8; 33],
 	/// An address which can be used to connect to a remote peer.
@@ -360,18 +375,19 @@ pub struct OpenChannelRequest {
 }
 /// The response `content` for the `OpenChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct OpenChannelResponse {
 	/// The local channel id of the created channel that user can use to refer to channel.
 	pub user_channel_id: String,
 }
 /// Increases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_in>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpliceInRequest {
 	/// The local `user_channel_id` of the channel.
 	pub user_channel_id: String,
 	/// The hex-encoded public key of the channel's counterparty node.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The amount of sats to splice into the channel.
@@ -379,15 +395,16 @@ pub struct SpliceInRequest {
 }
 /// The response `content` for the `SpliceIn` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpliceInResponse {}
 /// Decreases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_out>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpliceOutRequest {
 	/// The local `user_channel_id` of this channel.
 	pub user_channel_id: String,
 	/// The hex-encoded public key of the channel's counterparty node.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// A Bitcoin on-chain address to send the spliced-out funds.
@@ -399,18 +416,19 @@ pub struct SpliceOutRequest {
 }
 /// The response `content` for the `SpliceOut` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SpliceOutResponse {
 	/// The Bitcoin on-chain address where the funds will be sent.
 	pub address: String,
 }
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct UpdateChannelConfigRequest {
 	/// The local `user_channel_id` of this channel.
 	pub user_channel_id: String,
 	/// The hex-encoded public key of the counterparty node to update channel config with.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The updated channel configuration settings for a channel.
@@ -418,29 +436,31 @@ pub struct UpdateChannelConfigRequest {
 }
 /// The response `content` for the `UpdateChannelConfig` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct UpdateChannelConfigResponse {}
 /// Closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.close_channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CloseChannelRequest {
 	/// The local `user_channel_id` of this channel.
 	pub user_channel_id: String,
 	/// The hex-encoded public key of the node to close a channel with.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 }
 /// The response `content` for the `CloseChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CloseChannelResponse {}
 /// Force closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.force_close_channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ForceCloseChannelRequest {
 	/// The local `user_channel_id` of this channel.
 	pub user_channel_id: String,
 	/// The hex-encoded public key of the node to close a channel with.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub counterparty_node_id: [u8; 33],
 	/// The reason for force-closing.
@@ -448,30 +468,31 @@ pub struct ForceCloseChannelRequest {
 }
 /// The response `content` for the `ForceCloseChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ForceCloseChannelResponse {}
 /// Returns a list of known channels.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_channels>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListChannelsRequest {}
 /// The response `content` for the `ListChannels` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListChannelsResponse {
 	/// List of channels.
 	pub channels: Vec<super::types::Channel>,
 }
 /// Returns payment details for a given payment_id.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.payment>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetPaymentDetailsRequest {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_32")]
 	pub payment_id: [u8; 32],
 }
 /// The response `content` for the `GetPaymentDetails` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetPaymentDetailsResponse {
 	/// Represents a payment.
 	/// Will be `None` if payment doesn't exist.
@@ -479,7 +500,7 @@ pub struct GetPaymentDetailsResponse {
 }
 /// Retrieves list of all payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_payments>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListPaymentsRequest {
 	/// `page_token` is a pagination token.
 	///
@@ -491,7 +512,7 @@ pub struct ListPaymentsRequest {
 }
 /// The response `content` for the `ListPayments` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListPaymentsResponse {
 	/// List of payments.
 	pub payments: Vec<super::types::Payment>,
@@ -512,7 +533,7 @@ pub struct ListPaymentsResponse {
 }
 /// Retrieves list of all forwarded payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListForwardedPaymentsRequest {
 	/// `page_token` is a pagination token.
 	///
@@ -524,7 +545,7 @@ pub struct ListForwardedPaymentsRequest {
 }
 /// The response `content` for the `ListForwardedPayments` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListForwardedPaymentsResponse {
 	/// List of forwarded payments.
 	pub forwarded_payments: Vec<super::types::ForwardedPayment>,
@@ -545,58 +566,62 @@ pub struct ListForwardedPaymentsResponse {
 }
 /// Sign a message with the node's secret key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SignMessageRequest {
 	/// The message to sign, as raw bytes.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::bytes_hex")]
 	pub message: Vec<u8>,
 }
 /// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SignMessageResponse {
 	/// The signature of the message, as a zbase32-encoded string.
 	pub signature: String,
 }
 /// Verify a signature against a message and public key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct VerifySignatureRequest {
 	/// The message that was signed, as raw bytes.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::bytes_hex")]
 	pub message: Vec<u8>,
 	/// The signature to verify, as a zbase32-encoded string.
 	pub signature: String,
 	/// The hex-encoded public key of the signer.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub public_key: [u8; 33],
 }
 /// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct VerifySignatureResponse {
 	/// Whether the signature is valid.
 	pub valid: bool,
 }
 /// Export the pathfinding scores used by the router.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ExportPathfindingScoresRequest {}
 /// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ExportPathfindingScoresResponse {
 	/// The serialized pathfinding scores data.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::bytes_hex")]
 	pub scores: Vec<u8>,
 }
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetBalancesRequest {}
 /// The response `content` for the `GetBalances` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GetBalancesResponse {
 	/// The total balance of our on-chain wallet.
 	pub total_onchain_balance_sats: u64,
@@ -632,9 +657,10 @@ pub struct GetBalancesResponse {
 }
 /// Connect to a peer on the Lightning Network.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ConnectPeerRequest {
 	/// The hex-encoded public key of the node to connect to.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_pubkey: [u8; 33],
 	/// An address which can be used to connect to a remote peer.
@@ -646,63 +672,64 @@ pub struct ConnectPeerRequest {
 }
 /// The response `content` for the `ConnectPeer` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ConnectPeerResponse {}
 /// Disconnect from a peer and remove it from the peer store.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.disconnect>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct DisconnectPeerRequest {
 	/// The hex-encoded public key of the node to disconnect from.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_pubkey: [u8; 33],
 }
 /// The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct DisconnectPeerResponse {}
 /// Returns a list of peers.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListPeersRequest {}
 /// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ListPeersResponse {
 	/// List of peers.
 	pub peers: Vec<super::types::Peer>,
 }
 /// Returns a list of all known short channel IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphListChannelsRequest {}
 /// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphListChannelsResponse {
 	/// List of short channel IDs known to the network graph.
 	pub short_channel_ids: Vec<u64>,
 }
 /// Returns information on a channel with the given short channel ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.channel>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphGetChannelRequest {
 	/// The short channel ID to look up.
 	pub short_channel_id: u64,
 }
 /// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphGetChannelResponse {
 	/// The channel information.
 	pub channel: Option<super::types::GraphChannel>,
 }
 /// Returns a list of all known node IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphListNodesRequest {}
 /// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphListNodesResponse {
 	/// List of hex-encoded node IDs known to the network graph.
 	pub node_ids: Vec<String>,
@@ -713,7 +740,7 @@ pub struct GraphListNodesResponse {
 /// has an offer and/or invoice, it will try to pay the offer first followed by the invoice.
 /// If they both fail, the on-chain payment will be paid.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.UnifiedPayment.html#method.send>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct UnifiedSendRequest {
 	/// A BIP 21 URI or BIP 353 Human-Readable Name to pay.
 	pub uri: String,
@@ -724,16 +751,17 @@ pub struct UnifiedSendRequest {
 }
 /// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct UnifiedSendResponse {
 	#[serde(flatten)]
+	#[schema(inline)]
 	pub payment_result: Option<UnifiedSendPaymentResult>,
 }
 /// The payment result of a unified send operation.
 ///
 /// Note: Variants use `String` instead of `[u8; 32]` because `#[serde(with)]`
 /// is not supported on enum tuple variants.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UnifiedSendPaymentResult {
 	/// An on-chain payment was made. Contains the hex-encoded transaction ID.
@@ -745,15 +773,16 @@ pub enum UnifiedSendPaymentResult {
 }
 /// Returns information on a node with the given ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node>
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphGetNodeRequest {
 	/// The hex-encoded node ID to look up.
+	#[schema(value_type = String)]
 	#[serde(with = "crate::serde_utils::hex_33")]
 	pub node_id: [u8; 33],
 }
 /// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct GraphGetNodeResponse {
 	/// The node information.
 	pub node: Option<super::types::GraphNode>,

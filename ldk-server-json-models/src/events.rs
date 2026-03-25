@@ -8,11 +8,12 @@
 // licenses.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// An event emitted by the LDK Server to notify consumers of payment lifecycle changes.
 ///
 /// Events are published to the configured messaging system (e.g., RabbitMQ) as JSON.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Event {
 	PaymentReceived(PaymentReceived),
@@ -23,21 +24,21 @@ pub enum Event {
 }
 
 /// PaymentReceived indicates a payment has been received.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PaymentReceived {
 	/// The payment details for the received payment.
 	pub payment: super::types::Payment,
 }
 
 /// PaymentSuccessful indicates a sent payment was successful.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PaymentSuccessful {
 	/// The payment details for the successful payment.
 	pub payment: super::types::Payment,
 }
 
 /// PaymentFailed indicates a sent payment has failed.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PaymentFailed {
 	/// The payment details for the failed payment.
 	pub payment: super::types::Payment,
@@ -45,14 +46,14 @@ pub struct PaymentFailed {
 
 /// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
 /// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PaymentClaimable {
 	/// The payment details for the claimable payment.
 	pub payment: super::types::Payment,
 }
 
 /// PaymentForwarded indicates a payment was forwarded through the node.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct PaymentForwarded {
 	/// The forwarded payment details.
 	pub forwarded_payment: super::types::ForwardedPayment,

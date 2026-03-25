@@ -8,10 +8,11 @@
 // licenses.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// When HttpStatusCode is not ok (200), the response `content` contains a serialized `ErrorResponse`
 /// with the relevant ErrorCode and `message`
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
 	/// The error message containing a generic description of the error condition in English.
 	/// It is intended for a human audience only and should not be parsed to extract any information
@@ -23,7 +24,9 @@ pub struct ErrorResponse {
 	pub error_code: ErrorCode,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
+)]
 pub enum ErrorCode {
 	/// Will never be used as `error_code` by server.
 	UnknownError,

@@ -9,6 +9,7 @@
 
 mod api;
 mod io;
+mod openapi;
 mod service;
 mod util;
 
