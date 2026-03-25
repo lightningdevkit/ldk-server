@@ -21,6 +21,8 @@ use ldk_node::liquidity::LSPS2ServiceConfig;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_REST_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
+
 #[cfg(not(test))]
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 
@@ -211,7 +213,7 @@ impl ConfigBuilder {
 
 		let rest_service_addr = self
 			.rest_service_address
-			.ok_or_else(|| missing_field_err("rest_service_address"))?
+			.unwrap_or_else(|| DEFAULT_REST_SERVICE_ADDRESS.to_string())
 			.parse::<SocketAddr>()
 			.map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
@@ -1109,7 +1111,6 @@ mod tests {
 		validate_missing!("rpc_password", missing_field_msg("bitcoind_rpc_password"));
 		validate_missing!("rpc_user", missing_field_msg("bitcoind_rpc_user"));
 		validate_missing!("rpc_address", missing_field_msg("bitcoind_rpc_address"));
-		validate_missing!("rest_service_address =", missing_field_msg("rest_service_address"));
 		validate_missing!("network =", missing_field_msg("network"));
 	}
 
@@ -1196,7 +1197,6 @@ mod tests {
 		validate_missing!(bitcoind_rpc_user, missing_field_msg("bitcoind_rpc_user"));
 		validate_missing!(bitcoind_rpc_address, missing_field_msg("bitcoind_rpc_address"));
 		validate_missing!(node_network, missing_field_msg("network"));
-		validate_missing!(node_rest_service_address, missing_field_msg("rest_service_address"));
 	}
 
 	#[test]
@@ -1308,5 +1308,36 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+	}
+
+	#[test]
+	#[cfg(not(feature = "experimental-lsps2-support"))]
+	#[cfg(not(feature = "events-rabbitmq"))]
+	fn test_default_rest_service_address() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_default_rest_service_address.toml";
+
+		// Config without rest_service_address
+		let toml_config = r#"
+				[node]
+				network = "regtest"
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+				"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(
+			config.rest_service_addr,
+			SocketAddr::from_str(DEFAULT_REST_SERVICE_ADDRESS).unwrap()
+		);
 	}
 }
