@@ -2,6 +2,9 @@ name: Integration Tests
 
 on: [ push, pull_request ]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,11 +29,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Enable caching for bitcoind
         id: cache-bitcoind
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: bin/bitcoind-${{ runner.os }}-${{ runner.arch }}
           key: bitcoind-${{ runner.os }}-${{ runner.arch }}

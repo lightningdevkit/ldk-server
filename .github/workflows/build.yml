@@ -2,6 +2,13 @@ name: Continuous Integration Checks
 
 on: [ push, pull_request ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -23,7 +30,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
       - name: Install Rust ${{ matrix.toolchain }} toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal --default-toolchain ${{ matrix.toolchain }}
