@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -1165,6 +1166,41 @@ where
 	}
 }
 
+/// Escapes Unicode bidirectional control characters as `\uXXXX` so they are visible
+/// in terminal output rather than silently reordering displayed text.
+/// serde_json already escapes ASCII control characters (U+0000–U+001F), but bidi
+/// overrides (U+200E–U+2069) pass through unescaped.
+fn sanitize_for_terminal(s: String) -> String {
+	fn is_bidi_control(c: char) -> bool {
+		matches!(
+			c,
+			'\u{200E}' // LEFT-TO-RIGHT MARK
+			| '\u{200F}' // RIGHT-TO-LEFT MARK
+			| '\u{202A}' // LEFT-TO-RIGHT EMBEDDING
+			| '\u{202B}' // RIGHT-TO-LEFT EMBEDDING
+			| '\u{202C}' // POP DIRECTIONAL FORMATTING
+			| '\u{202D}' // LEFT-TO-RIGHT OVERRIDE
+			| '\u{202E}' // RIGHT-TO-LEFT OVERRIDE
+			| '\u{2066}' // LEFT-TO-RIGHT ISOLATE
+			| '\u{2067}' // RIGHT-TO-LEFT ISOLATE
+			| '\u{2068}' // FIRST STRONG ISOLATE
+			| '\u{2069}' // POP DIRECTIONAL ISOLATE
+		)
+	}
+	if !s.chars().any(is_bidi_control) {
+		return s;
+	}
+	let mut out = String::with_capacity(s.len());
+	for c in s.chars() {
+		if is_bidi_control(c) {
+			write!(out, "\\u{:04X}", c as u32).unwrap();
+		} else {
+			out.push(c);
+		}
+	}
+	out
+}
+
 fn handle_response_result<Rs, Js>(response: Result<Rs, LdkServerError>)
 where
 	Rs: Into<Js>,
@@ -1174,7 +1210,7 @@ where
 		Ok(response) => {
 			let json_response: Js = response.into();
 			match serde_json::to_string_pretty(&json_response) {
-				Ok(json) => println!("{json}"),
+				Ok(json) => println!("{}", sanitize_for_terminal(json)),
 				Err(e) => {
 					eprintln!("Error serializing response ({json_response:?}) to JSON: {e}");
 					std::process::exit(1);
