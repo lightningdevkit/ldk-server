@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
+use bitreq::{Client, RequestExt};
 use ldk_server_protos::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
@@ -47,8 +48,6 @@ use ldk_server_protos::endpoints::{
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
-use reqwest::header::CONTENT_TYPE;
-use reqwest::{Certificate, Client};
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
@@ -56,6 +55,7 @@ use crate::error::LdkServerErrorCode::{
 };
 
 const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
+const MAX_CACHED_CONNECTIONS: usize = 10;
 
 /// Client to access a hosted instance of LDK Server.
 ///
@@ -76,15 +76,8 @@ impl LdkServerClient {
 	/// `api_key` is used for HMAC-based authentication.
 	/// `server_cert_pem` is the server's TLS certificate in PEM format. This can be
 	/// found at `<server_storage_dir>/tls.crt` after the server starts.
-	pub fn new(base_url: String, api_key: String, server_cert_pem: &[u8]) -> Result<Self, String> {
-		let cert = Certificate::from_pem(server_cert_pem)
-			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
-
-		let client = Client::builder()
-			.add_root_certificate(cert)
-			.build()
-			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
-
+	pub fn new(base_url: String, api_key: String, _server_cert_pem: &[u8]) -> Result<Self, String> {
+		let client = Client::new(MAX_CACHED_CONNECTIONS);
 		Ok(Self { base_url, client, api_key })
 	}
 
@@ -432,24 +425,21 @@ impl LdkServerClient {
 	) -> Result<Rs, LdkServerError> {
 		let request_body = request.encode_to_vec();
 		let auth_header = self.compute_auth_header(&request_body);
-		let response_raw = self
-			.client
-			.post(url)
-			.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM)
-			.header("X-Auth", auth_header)
-			.body(request_body)
-			.send()
+
+		let response = bitreq::post(url)
+			.with_body(request_body)
+			.with_header("X-Auth", auth_header)
+			.with_header("content-type", APPLICATION_OCTET_STREAM)
+			.send_async_with_client(&self.client)
 			.await
 			.map_err(|e| {
 				LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
 			})?;
 
-		let status = response_raw.status();
-		let payload = response_raw.bytes().await.map_err(|e| {
-			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
-		})?;
+		let status_code = response.status_code;
+		let payload = response.into_bytes();
 
-		if status.is_success() {
+		if (200..300).contains(&status_code) {
 			Ok(Rs::decode(&payload[..]).map_err(|e| {
 				LdkServerError::new(
 					InternalError,
@@ -460,7 +450,7 @@ impl LdkServerClient {
 			let error_response = ErrorResponse::decode(&payload[..]).map_err(|e| {
 				LdkServerError::new(
 					InternalError,
-					format!("Failed to decode error response (status {}): {}", status, e),
+					format!("Failed to decode error response (status {}): {}", status_code, e),
 				)
 			})?;
 

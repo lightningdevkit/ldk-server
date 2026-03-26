@@ -9,6 +9,6 @@ serde = ["ldk-server-protos/serde"]
 
 [dependencies]
 ldk-server-protos = { path = "../ldk-server-protos" }
-reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls"] }
+bitreq = { version = "0.3.2", default-features = false, features = [ "async-https" ] }
 prost = { version = "0.11.6", default-features = false, features = ["std", "prost-derive"] }
 bitcoin_hashes = "0.14"
