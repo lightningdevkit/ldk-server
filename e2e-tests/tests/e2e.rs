@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, LdkServerHandle, RabbitMqEventConsumer, TestBitcoind,
+	wait_for_onchain_balance, wait_for_usable_channel, LdkServerHandle, RabbitMqEventConsumer,
+	TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -240,9 +241,27 @@ async fn test_cli_open_channel() {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&["open-channel", server_b.node_id(), &addr, "100000sat", "--announce-channel"],
+		&[
+			"open-channel",
+			server_b.node_id(),
+			"100000sat",
+			"--address",
+			&addr,
+			"--announce-channel",
+		],
 	);
-	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
+	let first_user_channel_id = output["user_channel_id"].as_str().unwrap().to_string();
+	assert!(!first_user_channel_id.is_empty());
+
+	// Confirm first channel is usable before opening a second one.
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_usable_channel(server_a.client(), &bitcoind, Duration::from_secs(60)).await;
+
+	// Open a second channel without specifying address (resolved by backend from connected peers).
+	let output = run_cli(&server_a, &["open-channel", server_b.node_id(), "50000sat"]);
+	let second_user_channel_id = output["user_channel_id"].as_str().unwrap().to_string();
+	assert!(!second_user_channel_id.is_empty());
+	assert_ne!(first_user_channel_id, second_user_channel_id);
 }
 
 #[tokio::test]

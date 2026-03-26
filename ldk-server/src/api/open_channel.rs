@@ -16,6 +16,7 @@ use ldk_server_protos::api::{OpenChannelRequest, OpenChannelResponse};
 
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
+use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
 
 pub(crate) fn handle_open_channel(
@@ -23,8 +24,23 @@ pub(crate) fn handle_open_channel(
 ) -> Result<OpenChannelResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
-	let address = SocketAddress::from_str(&request.address)
-		.map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?;
+	let address = match request.address {
+		Some(address) => {
+			SocketAddress::from_str(&address).map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?
+		},
+		None => context
+			.node
+			.list_peers()
+			.into_iter()
+			.find(|peer| peer.node_id == node_id)
+			.map(|peer| peer.address)
+			.ok_or_else(|| {
+				LdkServerError::new(
+					InvalidRequestError,
+					"Address is required unless the peer is currently connected. Provide an address or connect-peer first.".to_string(),
+				)
+			})?,
+	};
 
 	let channel_config = request
 		.channel_config
