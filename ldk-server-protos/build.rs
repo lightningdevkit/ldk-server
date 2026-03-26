@@ -11,6 +11,9 @@
 extern crate prost_build;
 
 #[cfg(genproto)]
+extern crate tonic_build;
+
+#[cfg(genproto)]
 use std::{env, fs, io::Write, path::Path};
 
 #[cfg(genproto)]
@@ -34,7 +37,9 @@ fn main() {
 
 #[cfg(genproto)]
 fn generate_protos() {
-	prost_build::Config::new()
+	let mut prost_config = prost_build::Config::new();
+	prost_config
+		.protoc_arg("--experimental_allow_proto3_optional")
 		.bytes(&["."])
 		.type_attribute(
 			".",
@@ -72,8 +77,13 @@ fn generate_protos() {
 		.field_attribute(
 			"api.UnifiedSendResponse.payment_result",
 			"#[cfg_attr(feature = \"serde\", serde(flatten))]",
-		)
-		.compile_protos(
+		);
+
+	tonic_build::configure()
+		.server_mod_attribute("api", "#[cfg(feature = \"server\")]")
+		.client_mod_attribute("api", "#[cfg(feature = \"client\")]")
+		.compile_protos_with_config(
+			prost_config,
 			&[
 				"src/proto/api.proto",
 				"src/proto/types.proto",

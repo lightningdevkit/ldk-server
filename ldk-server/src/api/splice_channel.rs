@@ -18,10 +18,10 @@ use ldk_server_protos::api::{
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
-use crate::service::Context;
+use crate::grpc_service::Context;
 
 pub(crate) fn handle_splice_in_request(
-	context: Context, request: SpliceInRequest,
+	context: &Context, request: SpliceInRequest,
 ) -> Result<SpliceInResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
 	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
@@ -32,7 +32,7 @@ pub(crate) fn handle_splice_in_request(
 }
 
 pub(crate) fn handle_splice_out_request(
-	context: Context, request: SpliceOutRequest,
+	context: &Context, request: SpliceOutRequest,
 ) -> Result<SpliceOutResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
 	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;

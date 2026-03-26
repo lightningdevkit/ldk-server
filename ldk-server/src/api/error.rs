@@ -39,7 +39,7 @@ impl fmt::Display for LdkServerError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, dead_code)]
 pub(crate) enum LdkServerErrorCode {
 	/// Please refer to [`protos::error::ErrorCode::InvalidRequestError`].
 	InvalidRequestError,

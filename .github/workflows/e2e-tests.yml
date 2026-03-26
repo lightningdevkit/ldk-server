@@ -1,0 +1,37 @@
+name: E2E Tests
+
+on: [ push, pull_request ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+      - name: Install Rust stable toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal --default-toolchain stable
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+      - name: Cache bitcoind binary
+        id: cache-bitcoind
+        uses: actions/cache@v5
+        with:
+          path: bin/bitcoind-${{ runner.os }}-${{ runner.arch }}
+          key: bitcoind-${{ runner.os }}-${{ runner.arch }}
+      - name: Download bitcoind
+        if: steps.cache-bitcoind.outputs.cache-hit != 'true'
+        run: |
+          source ./scripts/download_bitcoind.sh
+          mkdir -p bin
+          mv "$BITCOIND_EXE" bin/bitcoind-${{ runner.os }}-${{ runner.arch }}
+      - name: Run E2E tests
+        run: cd e2e-tests && cargo test
+        env:
+          RUST_LOG: info
+          RUST_BACKTRACE: 1
+          BITCOIND_EXE: ${{ github.workspace }}/bin/bitcoind-${{ runner.os }}-${{ runner.arch }}

@@ -17,10 +17,10 @@ use ldk_server_protos::api::{
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
-use crate::service::Context;
+use crate::grpc_service::Context;
 
 pub(crate) fn handle_close_channel_request(
-	context: Context, request: CloseChannelRequest,
+	context: &Context, request: CloseChannelRequest,
 ) -> Result<CloseChannelResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
 	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
@@ -31,7 +31,7 @@ pub(crate) fn handle_close_channel_request(
 }
 
 pub(crate) fn handle_force_close_channel_request(
-	context: Context, request: ForceCloseChannelRequest,
+	context: &Context, request: ForceCloseChannelRequest,
 ) -> Result<ForceCloseChannelResponse, LdkServerError> {
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
 	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;

@@ -11,11 +11,11 @@ use ldk_server_protos::api::{GraphGetChannelRequest, GraphGetChannelResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
-use crate::service::Context;
+use crate::grpc_service::Context;
 use crate::util::proto_adapter::graph_channel_to_proto;
 
 pub(crate) fn handle_graph_get_channel_request(
-	context: Context, request: GraphGetChannelRequest,
+	context: &Context, request: GraphGetChannelRequest,
 ) -> Result<GraphGetChannelResponse, LdkServerError> {
 	let channel_info =
 		context.node.network_graph().channel(request.short_channel_id).ok_or_else(|| {

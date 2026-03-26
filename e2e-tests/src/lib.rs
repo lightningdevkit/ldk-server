@@ -87,13 +87,12 @@ impl TestBitcoind {
 /// Handle to a running ldk-server child process.
 pub struct LdkServerHandle {
 	child: Option<Child>,
-	pub rest_port: u16,
+	pub grpc_port: u16,
 	pub p2p_port: u16,
 	pub storage_dir: PathBuf,
 	pub api_key: String,
 	pub tls_cert_path: PathBuf,
 	pub node_id: String,
-	pub exchange_name: String,
 	client: LdkServerClient,
 }
 
@@ -103,19 +102,17 @@ impl LdkServerHandle {
 	pub async fn start(bitcoind: &TestBitcoind) -> Self {
 		#[allow(deprecated)]
 		let storage_dir = tempfile::tempdir().unwrap().into_path();
-		let rest_port = find_available_port();
+		let grpc_port = find_available_port();
 		let p2p_port = find_available_port();
 
 		let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
 		let rpc_address = format!("{rpc_host}:{rpc_port_num}");
 
-		let exchange_name = format!("e2e_test_exchange_{rest_port}");
-
 		let config_content = format!(
 			r#"[node]
 network = "regtest"
 listening_addresses = ["127.0.0.1:{p2p_port}"]
-rest_service_address = "127.0.0.1:{rest_port}"
+grpc_service_address = "127.0.0.1:{grpc_port}"
 alias = "e2e-test-node"
 
 [storage.disk]
@@ -125,10 +122,6 @@ dir_path = "{storage_dir}"
 rpc_address = "{rpc_address}"
 rpc_user = "{rpc_user}"
 rpc_password = "{rpc_password}"
-
-[rabbitmq]
-connection_string = "amqp://guest:guest@localhost:5672/%2f"
-exchange_name = "{exchange_name}"
 
 [liquidity.lsps2_service]
 advertise_service = false
@@ -191,18 +184,17 @@ client_trusts_lsp = true
 		// Read TLS cert
 		let tls_cert_pem = std::fs::read(&tls_cert_path).unwrap();
 
-		let base_url = format!("127.0.0.1:{rest_port}");
-		let client = LdkServerClient::new(base_url, api_key.clone(), &tls_cert_pem).unwrap();
+		let base_url = format!("127.0.0.1:{grpc_port}");
+		let client = LdkServerClient::new(base_url, api_key.clone(), &tls_cert_pem).await.unwrap();
 
 		let mut handle = Self {
 			child: Some(child),
-			rest_port,
+			grpc_port,
 			p2p_port,
 			storage_dir,
 			api_key,
 			tls_cert_path,
 			node_id: String::new(),
-			exchange_name,
 			client,
 		};
 
@@ -222,7 +214,7 @@ client_trusts_lsp = true
 	}
 
 	pub fn base_url(&self) -> String {
-		format!("127.0.0.1:{}", self.rest_port)
+		format!("127.0.0.1:{}", self.grpc_port)
 	}
 }
 
@@ -350,22 +342,26 @@ pub async fn wait_for_usable_channel(
 ) {
 	let start = std::time::Instant::now();
 	loop {
-		let channels = client.list_channels(ListChannelsRequest {}).await.unwrap();
-		if channels.channels.iter().any(|c| c.is_usable) {
-			return;
-		}
-		if start.elapsed() > timeout {
-			let chan_info: Vec<_> = channels
-				.channels
-				.iter()
-				.map(|c| {
-					format!(
-						"id={} is_ready={} is_usable={} value={}",
-						c.user_channel_id, c.is_channel_ready, c.is_usable, c.channel_value_sats
-					)
-				})
-				.collect();
-			panic!("Timed out waiting for usable channel. Channels: {:?}", chan_info);
+		if let Ok(channels) = client.list_channels(ListChannelsRequest {}).await {
+			if channels.channels.iter().any(|c| c.is_usable) {
+				return;
+			}
+			if start.elapsed() > timeout {
+				let chan_info: Vec<_> = channels
+					.channels
+					.iter()
+					.map(|c| {
+						format!(
+							"id={} is_ready={} is_usable={} value={}",
+							c.user_channel_id, c.is_channel_ready, c.is_usable,
+							c.channel_value_sats
+						)
+					})
+					.collect();
+				panic!("Timed out waiting for usable channel. Channels: {:?}", chan_info);
+			}
+		} else if start.elapsed() > timeout {
+			panic!("Timed out waiting for usable channel (connection error)");
 		}
 		// Mine a block to trigger chain sync in the LDK nodes
 		bitcoind.mine_blocks(1);
@@ -377,9 +373,10 @@ pub async fn wait_for_usable_channel(
 pub async fn wait_for_onchain_balance(client: &LdkServerClient, timeout: Duration) {
 	let start = std::time::Instant::now();
 	loop {
-		let bal = client.get_balances(GetBalancesRequest {}).await.unwrap();
-		if bal.spendable_onchain_balance_sats > 0 {
-			return;
+		if let Ok(bal) = client.get_balances(GetBalancesRequest {}).await {
+			if bal.spendable_onchain_balance_sats > 0 {
+				return;
+			}
 		}
 		if start.elapsed() > timeout {
 			panic!("Timed out waiting for on-chain balance");
@@ -428,95 +425,28 @@ pub async fn setup_funded_channel(
 	open_resp.user_channel_id
 }
 
-/// RabbitMQ event consumer for verifying events published by ldk-server.
-pub struct RabbitMqEventConsumer {
-	_connection: lapin::Connection,
-	channel: lapin::Channel,
-	consumer: lapin::Consumer,
+/// gRPC event stream consumer for verifying events published by ldk-server.
+pub struct GrpcEventConsumer {
+	stream: tonic::Streaming<ldk_server_protos::events::EventEnvelope>,
 }
 
-impl RabbitMqEventConsumer {
-	/// Connect to RabbitMQ and create an exclusive queue bound to the given exchange.
-	pub async fn new(exchange_name: &str) -> Self {
-		use lapin::options::{
-			BasicConsumeOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
-		};
-		use lapin::types::FieldTable;
-		use lapin::{ConnectionProperties, ExchangeKind};
-
-		let connection = lapin::Connection::connect(
-			"amqp://guest:guest@localhost:5672/%2f",
-			ConnectionProperties::default(),
-		)
-		.await
-		.expect("Failed to connect to RabbitMQ");
-
-		let channel = connection.create_channel().await.expect("Failed to create channel");
-
-		// Declare exchange (idempotent — may already exist from the server)
-		channel
-			.exchange_declare(
-				exchange_name,
-				ExchangeKind::Fanout,
-				ExchangeDeclareOptions { durable: true, ..Default::default() },
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to declare exchange");
-
-		// Create exclusive auto-delete queue with server-generated name
-		let queue = channel
-			.queue_declare(
-				"",
-				QueueDeclareOptions { exclusive: true, auto_delete: true, ..Default::default() },
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to declare queue");
-		let queue_name = queue.name().to_string();
-
-		channel
-			.queue_bind(
-				&queue_name,
-				exchange_name,
-				"",
-				QueueBindOptions::default(),
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to bind queue");
-
-		let consumer = channel
-			.basic_consume(
-				&queue_name,
-				&format!("consumer_{}", queue_name),
-				BasicConsumeOptions::default(),
-				FieldTable::default(),
-			)
-			.await
-			.expect("Failed to start consumer");
-
-		Self { _connection: connection, channel, consumer }
+impl GrpcEventConsumer {
+	/// Subscribe to the event stream from the given server.
+	pub async fn new(client: &LdkServerClient) -> Self {
+		let stream = client.subscribe_events().await.expect("Failed to subscribe to events");
+		Self { stream }
 	}
 
 	/// Consume up to `count` events, waiting up to `timeout` for each.
 	pub async fn consume_events(
 		&mut self, count: usize, timeout: Duration,
 	) -> Vec<ldk_server_protos::events::EventEnvelope> {
-		use futures_util::StreamExt;
-		use lapin::options::BasicAckOptions;
-		use prost::Message;
+		use tokio_stream::StreamExt;
 
 		let mut events = Vec::new();
 		for _ in 0..count {
-			match tokio::time::timeout(timeout, self.consumer.next()).await {
-				Ok(Some(Ok(delivery))) => {
-					let event = ldk_server_protos::events::EventEnvelope::decode(&*delivery.data)
-						.expect("Failed to decode event");
-					self.channel
-						.basic_ack(delivery.delivery_tag, BasicAckOptions::default())
-						.await
-						.expect("Failed to ack");
+			match tokio::time::timeout(timeout, self.stream.next()).await {
+				Ok(Some(Ok(event))) => {
 					events.push(event);
 				},
 				_ => break,

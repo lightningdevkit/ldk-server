@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, LdkServerHandle, RabbitMqEventConsumer, TestBitcoind,
+	wait_for_onchain_balance, GrpcEventConsumer, LdkServerHandle, TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -453,8 +453,8 @@ async fn test_cli_bolt11_send() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
 	// Set up event consumers before any payments
-	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = GrpcEventConsumer::new(server_a.client()).await;
+	let mut consumer_b = GrpcEventConsumer::new(server_b.client()).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
@@ -558,8 +558,8 @@ async fn test_cli_spontaneous_send() {
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
-	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = GrpcEventConsumer::new(server_a.client()).await;
+	let mut consumer_b = GrpcEventConsumer::new(server_b.client()).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
@@ -782,8 +782,8 @@ async fn test_forwarded_payment_event() {
 	// B: LSP node (all e2e servers include LSPS2 service config)
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
-	// Set up RabbitMQ consumer on B before any payments
-	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	// Set up event consumer on B before any payments
+	let mut consumer_b = GrpcEventConsumer::new(server_b.client()).await;
 
 	// Open channel A -> B (1M sats, larger for JIT forwarding)
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 1_000_000).await;
@@ -860,8 +860,8 @@ async fn test_hodl_invoice_claim() {
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
-	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = GrpcEventConsumer::new(server_a.client()).await;
+	let mut consumer_b = GrpcEventConsumer::new(server_b.client()).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
@@ -942,8 +942,8 @@ async fn test_hodl_invoice_fail() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
 	// Set up event consumers before any payments
-	let mut consumer_a = RabbitMqEventConsumer::new(&server_a.exchange_name).await;
-	let mut consumer_b = RabbitMqEventConsumer::new(&server_b.exchange_name).await;
+	let mut consumer_a = GrpcEventConsumer::new(server_a.client()).await;
+	let mut consumer_b = GrpcEventConsumer::new(server_b.client()).await;
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 

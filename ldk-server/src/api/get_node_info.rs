@@ -11,10 +11,10 @@ use ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_protos::types::BestBlock;
 
 use crate::api::error::LdkServerError;
-use crate::service::Context;
+use crate::grpc_service::Context;
 
 pub(crate) fn handle_get_node_info_request(
-	context: Context, _request: GetNodeInfoRequest,
+	context: &Context, _request: GetNodeInfoRequest,
 ) -> Result<GetNodeInfoResponse, LdkServerError> {
 	let node_status = context.node.status();
 

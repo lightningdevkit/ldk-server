@@ -11,10 +11,8 @@ use std::fs;
 use std::net::IpAddr;
 
 use base64::Engine;
-use ring::rand::SystemRandom;
+use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio_rustls::rustls::ServerConfig;
 
 use crate::util::config::TlsConfig;
 
@@ -44,71 +42,41 @@ const TAG_UTC_TIME: u8 = 0x17;
 const TAG_SEQUENCE: u8 = 0x30;
 const TAG_SET: u8 = 0x31;
 
-/// Gets or generates TLS configuration. If custom paths are provided, uses those.
+/// TLS certificate and key PEM data.
+pub struct TlsPem {
+	pub cert_pem: String,
+	pub key_pem: String,
+}
+
+/// Gets or generates TLS certificate/key PEM files. If custom paths are provided, uses those.
 /// Otherwise, generates a self-signed certificate in the storage directory.
-pub fn get_or_generate_tls_config(
+/// Returns the PEM-encoded certificate and key.
+pub fn get_or_generate_tls_pem(
 	tls_config: Option<TlsConfig>, storage_dir: &str,
-) -> Result<ServerConfig, String> {
-	if let Some(config) = tls_config {
+) -> Result<TlsPem, String> {
+	let (cert_path, key_path, hosts) = if let Some(config) = tls_config {
 		let cert_path = config.cert_path.unwrap_or(format!("{storage_dir}/tls.crt"));
 		let key_path = config.key_path.unwrap_or(format!("{storage_dir}/tls.key"));
-		if !fs::exists(&cert_path).unwrap_or(false) || !fs::exists(&key_path).unwrap_or(false) {
-			generate_self_signed_cert(&cert_path, &key_path, &config.hosts)?;
-		}
-		load_tls_config(&cert_path, &key_path)
+		(cert_path, key_path, config.hosts)
 	} else {
-		// Check if we already have generated certs, if we don't, generate new ones
 		let cert_path = format!("{storage_dir}/tls.crt");
 		let key_path = format!("{storage_dir}/tls.key");
-		if !fs::exists(&cert_path).unwrap_or(false) || !fs::exists(&key_path).unwrap_or(false) {
-			generate_self_signed_cert(&cert_path, &key_path, &[])?;
-		}
+		(cert_path, key_path, vec![])
+	};
 
-		load_tls_config(&cert_path, &key_path)
-	}
-}
-
-/// Parses a PEM-encoded certificate file and returns the DER-encoded certificates.
-fn parse_pem_certs(pem_data: &str) -> Result<Vec<CertificateDer<'static>>, String> {
-	let mut certs = Vec::new();
-
-	for block in pem_data.split(PEM_CERT_END) {
-		if let Some(start) = block.find(PEM_CERT_BEGIN) {
-			let base64_content: String = block[start + PEM_CERT_BEGIN.len()..]
-				.lines()
-				.filter(|line| !line.starts_with("-----") && !line.is_empty())
-				.collect();
-
-			let der = base64::engine::general_purpose::STANDARD
-				.decode(&base64_content)
-				.map_err(|e| format!("Failed to decode certificate base64: {e}"))?;
-
-			certs.push(CertificateDer::from(der));
-		}
+	if !fs::exists(&cert_path).unwrap_or(false) || !fs::exists(&key_path).unwrap_or(false) {
+		generate_self_signed_cert(&cert_path, &key_path, &hosts)?;
 	}
 
-	Ok(certs)
-}
+	let cert_pem = fs::read_to_string(&cert_path)
+		.map_err(|e| format!("Failed to read TLS certificate file '{cert_path}': {e}"))?;
+	let key_pem = fs::read_to_string(&key_path)
+		.map_err(|e| format!("Failed to read TLS key file '{key_path}': {e}"))?;
 
-/// Parses a PEM-encoded PKCS#8 private key file and returns the DER-encoded key.
-fn parse_pem_private_key(pem_data: &str) -> Result<PrivateKeyDer<'static>, String> {
-	let start = pem_data.find(PEM_KEY_BEGIN).ok_or("Missing BEGIN PRIVATE KEY marker")?;
-	let end = pem_data.find(PEM_KEY_END).ok_or("Missing END PRIVATE KEY marker")?;
-
-	let base64_content: String = pem_data[start + PEM_KEY_BEGIN.len()..end]
-		.lines()
-		.filter(|line| !line.starts_with("-----") && !line.is_empty())
-		.collect();
-
-	let der = base64::engine::general_purpose::STANDARD
-		.decode(&base64_content)
-		.map_err(|e| format!("Failed to decode private key base64: {e}"))?;
-
-	Ok(PrivateKeyDer::Pkcs8(der.into()))
+	Ok(TlsPem { cert_pem, key_pem })
 }
 
 /// Generates a self-signed TLS certificate and saves it to the storage directory.
-/// Returns the paths to the generated cert and key files.
 fn generate_self_signed_cert(
 	cert_path: &str, key_path: &str, configure_hosts: &[String],
 ) -> Result<(), String> {
@@ -152,7 +120,7 @@ fn build_self_signed_cert(
 	key_pair: &EcdsaKeyPair, hosts: &[String], rng: &SystemRandom,
 ) -> Result<Vec<u8>, String> {
 	// Build TBSCertificate
-	let tbs_cert = build_tbs_certificate(key_pair, hosts)?;
+	let tbs_cert = build_tbs_certificate(key_pair, hosts, rng)?;
 
 	// Sign the TBSCertificate
 	let signature = key_pair.sign(rng, &tbs_cert).map_err(|_| "Failed to sign certificate")?;
@@ -174,18 +142,22 @@ fn build_self_signed_cert(
 ///
 /// This is the core certificate data that gets signed. The structure contains:
 /// - Version (v3)
-/// - Serial number (fixed to 1)
+/// - Serial number (random 16-byte value per RFC 5280 §4.1.2.2)
 /// - Signature algorithm identifier
 /// - Issuer and subject distinguished names (both set to CN=localhost)
 /// - Validity period (2026-01-01 to 2049-12-31)
 /// - Subject public key info
 /// - Extensions (Subject Alternative Names for the provided hosts)
-fn build_tbs_certificate(key_pair: &EcdsaKeyPair, hosts: &[String]) -> Result<Vec<u8>, String> {
+fn build_tbs_certificate(
+	key_pair: &EcdsaKeyPair, hosts: &[String], rng: &SystemRandom,
+) -> Result<Vec<u8>, String> {
 	// version [0] EXPLICIT INTEGER { v3(2) }
 	let version = der_context_explicit(0, &der_integer(&[2]));
 
-	// serialNumber INTEGER (fixed to 1)
-	let serial_number = der_integer(&[1]);
+	// serialNumber INTEGER (random 16 bytes per RFC 5280 §4.1.2.2)
+	let mut serial_bytes = [0u8; 16];
+	rng.fill(&mut serial_bytes).map_err(|_| "Failed to generate serial number")?;
+	let serial_number = der_integer(&serial_bytes);
 
 	// signature AlgorithmIdentifier (ECDSA with SHA-256)
 	let sig_alg_oid = der_oid(OID_ECDSA_WITH_SHA256);
@@ -392,76 +364,12 @@ fn der_context_implicit(tag_num: u8, content: &[u8]) -> Vec<u8> {
 	der_tag_length_value(0x80 | tag_num, content)
 }
 
-/// Loads TLS configuration from provided paths.
-fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, String> {
-	let cert_pem = fs::read_to_string(cert_path)
-		.map_err(|e| format!("Failed to read TLS certificate file '{cert_path}': {e}"))?;
-	let key_pem = fs::read_to_string(key_path)
-		.map_err(|e| format!("Failed to read TLS key file '{key_path}': {e}"))?;
-
-	let certs = parse_pem_certs(&cert_pem)?;
-
-	if certs.is_empty() {
-		return Err("No certificates found in certificate file".to_string());
-	}
-
-	let key = parse_pem_private_key(&key_pem)?;
-
-	ServerConfig::builder()
-		.with_no_client_auth()
-		.with_single_cert(certs, key)
-		.map_err(|e| format!("Failed to build TLS server config: {e}"))
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	#[test]
-	fn test_parse_pem_certs() {
-		let pem = "-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnVu\ndXNlZDAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM\nBnVudXNlZDBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC7o96FCEcJsggt0c0dSfEB\nmm6vv1LdCoxXnhOSCutoJgJgmCPBjU1doFFKwAtXjfOv0eSLZ3NHLu0LRKmVvOsP\nAgMBAAGjUzBRMB0GA1UdDgQWBBQK3fc0myO0psd71FJd8v7VCmDJOzAfBgNVHSME\nGDAWgBQK3fc0myO0psd71FJd8v7VCmDJOzAPBgNVHRMBAf8EBTADAQH/MA0GCSqG\nSIb3DQEBCwUAA0EAhJg0cx2pFfVfGBfbJQNFa+A4ynJBMqKYlbUnJBfWPwg13RhC\nivLjYyhKzEbnOug0TuFfVaUBGfBYbPgaJQ4BAg==\n-----END CERTIFICATE-----\n";
-
-		let certs = parse_pem_certs(pem).unwrap();
-		assert_eq!(certs.len(), 1);
-		assert!(!certs[0].is_empty());
-	}
-
-	#[test]
-	fn test_parse_pem_certs_multiple() {
-		let pem = "-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnVu\ndXNlZDAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM\nBnVudXNlZDBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC7o96FCEcJsggt0c0dSfEB\nmm6vv1LdCoxXnhOSCutoJgJgmCPBjU1doFFKwAtXjfOv0eSLZ3NHLu0LRKmVvOsP\nAgMBAAGjUzBRMB0GA1UdDgQWBBQK3fc0myO0psd71FJd8v7VCmDJOzAfBgNVHSME\nGDAWgBQK3fc0myO0psd71FJd8v7VCmDJOzAPBgNVHRMBAf8EBTADAQH/MA0GCSqG\nSIb3DQEBCwUAA0EAhJg0cx2pFfVfGBfbJQNFa+A4ynJBMqKYlbUnJBfWPwg13RhC\nivLjYyhKzEbnOug0TuFfVaUBGfBYbPgaJQ4BAg==\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnVu\ndXNlZDAeFw0yMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMBExDzANBgNVBAMM\nBnVudXNlZDBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC7o96FCEcJsggt0c0dSfEB\nmm6vv1LdCoxXnhOSCutoJgJgmCPBjU1doFFKwAtXjfOv0eSLZ3NHLu0LRKmVvOsP\nAgMBAAGjUzBRMB0GA1UdDgQWBBQK3fc0myO0psd71FJd8v7VCmDJOzAfBgNVHSME\nGDAWgBQK3fc0myO0psd71FJd8v7VCmDJOzAPBgNVHRMBAf8EBTADAQH/MA0GCSqG\nSIb3DQEBCwUAA0EAhJg0cx2pFfVfGBfbJQNFa+A4ynJBMqKYlbUnJBfWPwg13RhC\nivLjYyhKzEbnOug0TuFfVaUBGfBYbPgaJQ4BAg==\n-----END CERTIFICATE-----\n";
-
-		let certs = parse_pem_certs(pem).unwrap();
-		assert_eq!(certs.len(), 2);
-	}
-
-	#[test]
-	fn test_parse_pem_certs_empty() {
-		let certs = parse_pem_certs("").unwrap();
-		assert!(certs.is_empty());
-
-		let certs = parse_pem_certs("not a cert").unwrap();
-		assert!(certs.is_empty());
-	}
-
-	#[test]
-	fn test_parse_pem_private_key_pkcs8() {
-		let pem = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg2a2rwplBQLzHPDvn\nsaw8HKDP6WYBSF684gcz+D7zeVShRANCAAQq8R/E45tTNWMEpK8abYM7VzuJxpPS\nhJCi6bzjOPGHawEO8safLOWFaV7GqLJM0OdM3eu/qcz8HwgI3T8EVHQK\n-----END PRIVATE KEY-----\n";
-
-		let key = parse_pem_private_key(pem).unwrap();
-		assert!(matches!(key, PrivateKeyDer::Pkcs8(_)));
-	}
-
-	#[test]
-	fn test_parse_pem_private_key_invalid() {
-		let result = parse_pem_private_key("");
-		assert!(result.is_err());
-
-		let result = parse_pem_private_key("not a key");
-		assert!(result.is_err());
-	}
-
-	#[test]
-	fn test_generate_and_load_roundtrip() {
+	fn test_generate_roundtrip() {
 		let temp_dir = std::env::temp_dir();
 		let mut suffix_bytes = [0u8; 8];
 		getrandom::getrandom(&mut suffix_bytes).unwrap();
@@ -469,23 +377,27 @@ mod tests {
 		let cert_path = temp_dir.join(format!("test_tls_cert_{suffix}.pem"));
 		let key_path = temp_dir.join(format!("test_tls_key_{suffix}.pem"));
 
-		// Clean up any existing files to be safe
 		let _ = fs::remove_file(&cert_path);
 		let _ = fs::remove_file(&key_path);
 
-		// Generate cert
 		generate_self_signed_cert(cert_path.to_str().unwrap(), key_path.to_str().unwrap(), &[])
 			.unwrap();
 
-		// Verify files exist
 		assert!(cert_path.exists());
 		assert!(key_path.exists());
 
-		// Load config
-		let res = load_tls_config(cert_path.to_str().unwrap(), key_path.to_str().unwrap());
-		assert!(res.is_ok());
+		let cert_pem = fs::read_to_string(&cert_path).unwrap();
+		let key_pem = fs::read_to_string(&key_path).unwrap();
+		assert!(cert_pem.contains(PEM_CERT_BEGIN));
+		assert!(key_pem.contains(PEM_KEY_BEGIN));
 
-		// Clean up
+		// Verify the generated cert/key can be loaded as a valid TLS identity
+		let identity = tonic::transport::Identity::from_pem(&cert_pem, &key_pem);
+		let tls_config = tonic::transport::ServerTlsConfig::new().identity(identity);
+		tonic::transport::Server::builder()
+			.tls_config(tls_config)
+			.expect("Generated cert/key should produce a valid TLS config");
+
 		let _ = fs::remove_file(&cert_path);
 		let _ = fs::remove_file(&key_path);
 	}

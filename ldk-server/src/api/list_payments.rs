@@ -14,13 +14,13 @@ use prost::Message;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
+use crate::grpc_service::Context;
 use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
-use crate::service::Context;
 
 pub(crate) fn handle_list_payments_request(
-	context: Context, request: ListPaymentsRequest,
+	context: &Context, request: ListPaymentsRequest,
 ) -> Result<ListPaymentsResponse, LdkServerError> {
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context

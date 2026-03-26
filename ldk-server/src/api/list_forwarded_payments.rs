@@ -14,14 +14,14 @@ use prost::Message;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InternalServerError;
+use crate::grpc_service::Context;
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
-use crate::service::Context;
 
 pub(crate) fn handle_list_forwarded_payments_request(
-	context: Context, request: ListForwardedPaymentsRequest,
+	context: &Context, request: ListForwardedPaymentsRequest,
 ) -> Result<ListForwardedPaymentsResponse, LdkServerError> {
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context

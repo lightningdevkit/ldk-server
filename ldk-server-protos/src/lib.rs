@@ -8,7 +8,6 @@
 // licenses.
 
 pub mod api;
-pub mod endpoints;
 pub mod error;
 pub mod events;
 #[cfg(feature = "serde")]

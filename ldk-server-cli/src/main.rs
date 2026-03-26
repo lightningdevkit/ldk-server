@@ -15,7 +15,7 @@ use clap_complete::{generate, Shell};
 use config::{
 	api_key_path_for_storage_dir, cert_path_for_storage_dir, get_default_api_key_path,
 	get_default_cert_path, get_default_config_path, load_config, resolve_base_url,
-	DEFAULT_REST_SERVICE_ADDRESS,
+	DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
@@ -86,7 +86,7 @@ struct Cli {
 		short,
 		long,
 		help = format!(
-			"Base URL of the server. Defaults to config file or {DEFAULT_REST_SERVICE_ADDRESS}"
+			"Base URL of the server. Defaults to config file or {DEFAULT_GRPC_SERVICE_ADDRESS}"
 		)
 	)]
 	base_url: Option<String>,
@@ -612,10 +612,11 @@ async fn main() {
 		std::process::exit(1);
 	});
 
-	let client = LdkServerClient::new(base_url, api_key, &server_cert_pem).unwrap_or_else(|e| {
-		eprintln!("Failed to create client: {e}");
-		std::process::exit(1);
-	});
+	let client =
+		LdkServerClient::new(base_url, api_key, &server_cert_pem).await.unwrap_or_else(|e| {
+			eprintln!("Failed to create client: {e}");
+			std::process::exit(1);
+		});
 
 	match cli.command {
 		Commands::GetNodeInfo => {

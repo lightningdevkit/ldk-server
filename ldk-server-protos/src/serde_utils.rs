@@ -25,9 +25,9 @@ macro_rules! stringify_enum_serializer {
 		where
 			S: serde::Serializer,
 		{
-			let name = match <$enum_type>::from_i32(*value) {
-				Some(v) => v.as_str_name(),
-				None => "UNKNOWN",
+			let name = match <$enum_type>::try_from(*value) {
+				Ok(v) => v.as_str_name(),
+				Err(_) => "UNKNOWN",
 			};
 			serializer.serialize_str(name)
 		}

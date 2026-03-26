@@ -21,7 +21,7 @@ use ldk_node::liquidity::LSPS2ServiceConfig;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_REST_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
+const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
 
 #[cfg(not(test))]
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
@@ -46,14 +46,10 @@ pub struct Config {
 	pub alias: Option<NodeAlias>,
 	pub network: Network,
 	pub tls_config: Option<TlsConfig>,
-	pub rest_service_addr: SocketAddr,
+	pub grpc_service_addr: SocketAddr,
 	pub storage_dir_path: Option<String>,
 	pub chain_source: ChainSource,
 	pub rgs_server_url: Option<String>,
-	#[cfg_attr(not(feature = "events-rabbitmq"), allow(dead_code))]
-	pub rabbitmq_connection_string: String,
-	#[cfg_attr(not(feature = "events-rabbitmq"), allow(dead_code))]
-	pub rabbitmq_exchange_name: String,
 	pub lsps2_client_config: Option<LSPSClientConfig>,
 	#[cfg_attr(not(feature = "experimental-lsps2-support"), allow(dead_code))]
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
@@ -91,7 +87,7 @@ struct ConfigBuilder {
 	alias: Option<String>,
 	network: Option<Network>,
 	tls_config: Option<TlsConfig>,
-	rest_service_address: Option<String>,
+	grpc_service_address: Option<String>,
 	storage_dir_path: Option<String>,
 	electrum_url: Option<String>,
 	esplora_url: Option<String>,
@@ -99,8 +95,6 @@ struct ConfigBuilder {
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
 	rgs_server_url: Option<String>,
-	rabbitmq_connection_string: Option<String>,
-	rabbitmq_exchange_name: Option<String>,
 	lsps2: Option<LiquidityConfig>,
 	log_level: Option<String>,
 	log_file_path: Option<String>,
@@ -115,8 +109,8 @@ impl ConfigBuilder {
 				node.listening_addresses.or(self.listening_addresses.clone());
 			self.announcement_addresses =
 				node.announcement_addresses.or(self.announcement_addresses.clone());
-			self.rest_service_address =
-				node.rest_service_address.or(self.rest_service_address.clone());
+			self.grpc_service_address =
+				node.grpc_service_address.or(self.grpc_service_address.clone());
 			self.alias = node.alias.or(self.alias.clone());
 			self.pathfinding_scores_source_url =
 				node.pathfinding_scores_source_url.or(self.pathfinding_scores_source_url.clone());
@@ -148,11 +142,6 @@ impl ConfigBuilder {
 			self.log_file_path = log.file.or(self.log_file_path.clone());
 		}
 
-		if let Some(rabbitmq) = toml.rabbitmq {
-			self.rabbitmq_connection_string = Some(rabbitmq.connection_string);
-			self.rabbitmq_exchange_name = Some(rabbitmq.exchange_name);
-		}
-
 		if let Some(liquidity) = toml.liquidity {
 			self.lsps2 = Some(liquidity);
 		}
@@ -179,8 +168,8 @@ impl ConfigBuilder {
 			self.announcement_addresses = Some(node_announcement_addresses.clone());
 		}
 
-		if let Some(node_rest_service_address) = &args.node_rest_service_address {
-			self.rest_service_address = Some(node_rest_service_address.clone());
+		if let Some(node_grpc_service_address) = &args.node_grpc_service_address {
+			self.grpc_service_address = Some(node_grpc_service_address.clone());
 		}
 
 		if let Some(node_alias) = &args.node_alias {
@@ -211,9 +200,9 @@ impl ConfigBuilder {
 	fn build(self) -> io::Result<Config> {
 		let network = self.network.ok_or_else(|| missing_field_err("network"))?;
 
-		let rest_service_addr = self
-			.rest_service_address
-			.unwrap_or_else(|| DEFAULT_REST_SERVICE_ADDRESS.to_string())
+		let grpc_service_addr = self
+			.grpc_service_address
+			.unwrap_or_else(|| DEFAULT_GRPC_SERVICE_ADDRESS.to_string())
 			.parse::<SocketAddr>()
 			.map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
@@ -315,30 +304,6 @@ impl ConfigBuilder {
 			.transpose()?
 			.unwrap_or(LevelFilter::Debug);
 
-		#[cfg(feature = "events-rabbitmq")]
-		let (rabbitmq_connection_string, rabbitmq_exchange_name) = {
-			let connection_string = self.rabbitmq_connection_string.ok_or_else(|| io::Error::new(
-				io::ErrorKind::InvalidInput,
-				"Both `rabbitmq.connection_string` and `rabbitmq.exchange_name` must be configured if enabling `events-rabbitmq` feature."
-			))?;
-			let exchange_name = self.rabbitmq_exchange_name.ok_or_else(|| io::Error::new(
-				io::ErrorKind::InvalidInput,
-				"Both `rabbitmq.connection_string` and `rabbitmq.exchange_name` must be configured if enabling `events-rabbitmq` feature."
-			))?;
-
-			if connection_string.is_empty() || exchange_name.is_empty() {
-				return Err(io::Error::new(
-					io::ErrorKind::InvalidInput,
-					"Both `rabbitmq.connection_string` and `rabbitmq.exchange_name` must be configured if enabling `events-rabbitmq` feature."
-				));
-			}
-
-			(connection_string, exchange_name)
-		};
-
-		#[cfg(not(feature = "events-rabbitmq"))]
-		let (rabbitmq_connection_string, rabbitmq_exchange_name) = (String::new(), String::new());
-
 		let lsps2_client_config = self
 			.lsps2
 			.as_ref()
@@ -370,12 +335,10 @@ impl ConfigBuilder {
 			announcement_addrs,
 			alias,
 			tls_config: self.tls_config,
-			rest_service_addr,
+			grpc_service_addr,
 			storage_dir_path: self.storage_dir_path,
 			chain_source,
 			rgs_server_url: self.rgs_server_url,
-			rabbitmq_connection_string,
-			rabbitmq_exchange_name,
 			lsps2_client_config,
 			lsps2_service_config,
 			log_level,
@@ -393,7 +356,6 @@ pub struct TomlConfig {
 	bitcoind: Option<BitcoindConfig>,
 	electrum: Option<ElectrumConfig>,
 	esplora: Option<EsploraConfig>,
-	rabbitmq: Option<RabbitmqConfig>,
 	liquidity: Option<LiquidityConfig>,
 	log: Option<LogConfig>,
 	tls: Option<TomlTlsConfig>,
@@ -404,7 +366,7 @@ struct NodeConfig {
 	network: Option<Network>,
 	listening_addresses: Option<Vec<String>>,
 	announcement_addresses: Option<Vec<String>>,
-	rest_service_address: Option<String>,
+	grpc_service_address: Option<String>,
 	alias: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
 	rgs_server_url: Option<String>,
@@ -441,12 +403,6 @@ struct EsploraConfig {
 struct LogConfig {
 	level: Option<String>,
 	file: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct RabbitmqConfig {
-	connection_string: String,
-	exchange_name: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -568,10 +524,10 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
-		env = "LDK_SERVER_NODE_REST_SERVICE_ADDRESS",
-		help = "The rest service address for the LDK Server API."
+		env = "LDK_SERVER_NODE_GRPC_SERVICE_ADDRESS",
+		help = "The gRPC service address for the LDK Server API."
 	)]
-	node_rest_service_address: Option<String>,
+	node_grpc_service_address: Option<String>,
 
 	#[arg(
 		long,
@@ -692,7 +648,7 @@ mod tests {
 				network = "regtest"
 				listening_addresses = ["localhost:3001"]
 				announcement_addresses = ["54.3.7.81:3001"]
-				rest_service_address = "127.0.0.1:3002"
+				grpc_service_address = "127.0.0.1:3002"
 				alias = "LDK Server"
 				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"
 
@@ -712,10 +668,6 @@ mod tests {
 				rpc_address = "127.0.0.1:8332"
 				rpc_user = "bitcoind-testuser"
 				rpc_password = "bitcoind-testpassword"
-
-				[rabbitmq]
-				connection_string = "rabbitmq_connection_string"
-				exchange_name = "rabbitmq_exchange_name"
 
 				[liquidity.lsps2_client]
 				node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
@@ -740,7 +692,7 @@ mod tests {
 			node_network: Some(Network::Regtest),
 			node_listening_addresses: Some(vec!["localhost:3008".to_string()]),
 			node_announcement_addresses: Some(vec!["54.3.7.81:3001".to_string()]),
-			node_rest_service_address: Some(String::from("127.0.0.1:3009")),
+			node_grpc_service_address: Some(String::from("127.0.0.1:3009")),
 			bitcoind_rpc_address: Some(String::from("127.0.1.9:18443")),
 			bitcoind_rpc_user: Some(String::from("bitcoind-testuser_cli")),
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
@@ -756,7 +708,7 @@ mod tests {
 			node_network: None,
 			node_listening_addresses: None,
 			node_announcement_addresses: None,
-			node_rest_service_address: None,
+			node_grpc_service_address: None,
 			node_alias: None,
 			bitcoind_rpc_address: None,
 			bitcoind_rpc_user: None,
@@ -788,19 +740,12 @@ mod tests {
 
 		let alias = "LDK Server";
 
-		#[cfg(feature = "events-rabbitmq")]
-		let (expected_rabbit_conn, expected_rabbit_exchange) =
-			("rabbitmq_connection_string".to_string(), "rabbitmq_exchange_name".to_string());
-
-		#[cfg(not(feature = "events-rabbitmq"))]
-		let (expected_rabbit_conn, expected_rabbit_exchange) = (String::new(), String::new());
-
 		let expected = Config {
 			listening_addrs: Some(vec![SocketAddress::from_str("localhost:3001").unwrap()]),
 			announcement_addrs: Some(vec![SocketAddress::from_str("54.3.7.81:3001").unwrap()]),
 			alias: Some(parse_alias(alias).unwrap()),
 			network: Network::Regtest,
-			rest_service_addr: SocketAddr::from_str("127.0.0.1:3002").unwrap(),
+			grpc_service_addr: SocketAddr::from_str("127.0.0.1:3002").unwrap(),
 			storage_dir_path: Some("/tmp".to_string()),
 			tls_config: Some(TlsConfig {
 				cert_path: Some("/path/to/tls.crt".to_string()),
@@ -814,8 +759,6 @@ mod tests {
 				rpc_password: "bitcoind-testpassword".to_string(),
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
-			rabbitmq_connection_string: expected_rabbit_conn,
-			rabbitmq_exchange_name: expected_rabbit_exchange,
 			lsps2_client_config: Some(LSPSClientConfig {
 				node_id: PublicKey::from_str(
 					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
@@ -845,12 +788,10 @@ mod tests {
 		assert_eq!(config.announcement_addrs, expected.announcement_addrs);
 		assert_eq!(config.alias, expected.alias);
 		assert_eq!(config.network, expected.network);
-		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
+		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
-		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
-		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
@@ -865,7 +806,7 @@ mod tests {
 			network = "regtest"
 			listening_addresses = ["localhost:3001"]
 			announcement_addresses = ["54.3.7.81:3001"]
-			rest_service_address = "127.0.0.1:3002"
+			grpc_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
 			pathfinding_scores_source_url = "https://example.com/"
 
@@ -883,10 +824,6 @@ mod tests {
 
 			[electrum]
 			server_url = "ssl://electrum.blockstream.info:50002"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_client]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
@@ -920,7 +857,7 @@ mod tests {
 			network = "regtest"
 			listening_addresses = ["localhost:3001"]
 			announcement_addresses = ["54.3.7.81:3001"]
-			rest_service_address = "127.0.0.1:3002"
+			grpc_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
 			pathfinding_scores_source_url = "https://example.com/"
 
@@ -940,10 +877,6 @@ mod tests {
 			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_client]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
@@ -981,7 +914,7 @@ mod tests {
 			network = "regtest"
 			listening_addresses = ["localhost:3001"]
 			announcement_addresses = ["54.3.7.81:3001"]
-			rest_service_address = "127.0.0.1:3002"
+			grpc_service_address = "127.0.0.1:3002"
 			alias = "LDK Server"
 			pathfinding_scores_source_url = "https://example.com/"
 
@@ -1004,10 +937,6 @@ mod tests {
 
 			[esplora]
 			server_url = "https://mempool.space/api"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_client]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
@@ -1043,16 +972,12 @@ mod tests {
 		let toml_config = r#"
 			[node]
 			network = "regtest"
-			rest_service_address = "127.0.0.1:3002"
+			grpc_service_address = "127.0.0.1:3002"
 
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1100,14 +1025,6 @@ mod tests {
 			);
 		}
 
-		#[cfg(feature = "events-rabbitmq")]
-		{
-			validate_missing!(
-				"[rabbitmq]",
-				"Both `rabbitmq.connection_string` and `rabbitmq.exchange_name` must be configured if enabling `events-rabbitmq` feature."
-			);
-		}
-
 		validate_missing!("rpc_password", missing_field_msg("bitcoind_rpc_password"));
 		validate_missing!("rpc_user", missing_field_msg("bitcoind_rpc_user"));
 		validate_missing!("rpc_address", missing_field_msg("bitcoind_rpc_address"));
@@ -1124,7 +1041,6 @@ mod tests {
 
 	#[test]
 	#[cfg(not(feature = "experimental-lsps2-support"))]
-	#[cfg(not(feature = "events-rabbitmq"))]
 	fn test_config_from_args_config() {
 		let args_config = default_args_config();
 		let config = load_config(&args_config).unwrap();
@@ -1141,8 +1057,8 @@ mod tests {
 			)
 			.unwrap()]),
 			network: Network::Regtest,
-			rest_service_addr: SocketAddr::from_str(
-				args_config.node_rest_service_address.as_deref().unwrap(),
+			grpc_service_addr: SocketAddr::from_str(
+				args_config.node_grpc_service_address.as_deref().unwrap(),
 			)
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap()).unwrap()),
@@ -1155,8 +1071,6 @@ mod tests {
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
 			rgs_server_url: None,
-			rabbitmq_connection_string: String::new(),
-			rabbitmq_exchange_name: String::new(),
 			lsps2_client_config: None,
 			lsps2_service_config: None,
 			log_level: LevelFilter::Trace,
@@ -1167,19 +1081,16 @@ mod tests {
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
 		assert_eq!(config.announcement_addrs, expected.announcement_addrs);
 		assert_eq!(config.network, expected.network);
-		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
+		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
-		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
-		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert!(config.lsps2_service_config.is_none());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 	}
 
 	#[test]
 	#[cfg(not(feature = "experimental-lsps2-support"))]
-	#[cfg(not(feature = "events-rabbitmq"))]
 	fn test_config_missing_fields_in_args_config() {
 		macro_rules! validate_missing {
 			($field:ident, $err_msg:expr) => {
@@ -1209,13 +1120,6 @@ mod tests {
 		args_config.config_file =
 			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
 
-		#[cfg(feature = "events-rabbitmq")]
-		let (expected_rabbit_conn, expected_rabbit_exchange) =
-			("rabbitmq_connection_string".to_string(), "rabbitmq_exchange_name".to_string());
-
-		#[cfg(not(feature = "events-rabbitmq"))]
-		let (expected_rabbit_conn, expected_rabbit_exchange) = (String::new(), String::new());
-
 		let (host, port) =
 			parse_host_port(args_config.bitcoind_rpc_address.clone().unwrap().as_str()).unwrap();
 
@@ -1230,8 +1134,8 @@ mod tests {
 			)
 			.unwrap()]),
 			network: Network::Regtest,
-			rest_service_addr: SocketAddr::from_str(
-				args_config.node_rest_service_address.as_deref().unwrap(),
+			grpc_service_addr: SocketAddr::from_str(
+				args_config.node_grpc_service_address.as_deref().unwrap(),
 			)
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap()).unwrap()),
@@ -1248,8 +1152,6 @@ mod tests {
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
-			rabbitmq_connection_string: expected_rabbit_conn,
-			rabbitmq_exchange_name: expected_rabbit_exchange,
 			lsps2_client_config: Some(LSPSClientConfig {
 				node_id: PublicKey::from_str(
 					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
@@ -1278,26 +1180,14 @@ mod tests {
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
 		assert_eq!(config.announcement_addrs, expected.announcement_addrs);
 		assert_eq!(config.network, expected.network);
-		assert_eq!(config.rest_service_addr, expected.rest_service_addr);
+		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
-		assert_eq!(config.rabbitmq_connection_string, expected.rabbitmq_connection_string);
-		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
-	}
-
-	#[test]
-	#[cfg(feature = "events-rabbitmq")]
-	fn test_error_if_rabbitmq_feature_without_valid_config_file() {
-		let args_config = empty_args_config();
-		let result = load_config(&args_config);
-		assert!(result.is_err());
-		let err = result.unwrap_err();
-		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 	}
 
 	#[test]
@@ -1312,12 +1202,11 @@ mod tests {
 
 	#[test]
 	#[cfg(not(feature = "experimental-lsps2-support"))]
-	#[cfg(not(feature = "events-rabbitmq"))]
-	fn test_default_rest_service_address() {
+	fn test_default_grpc_service_address() {
 		let storage_path = std::env::temp_dir();
-		let config_file_name = "test_default_rest_service_address.toml";
+		let config_file_name = "test_default_grpc_service_address.toml";
 
-		// Config without rest_service_address
+		// Config without grpc_service_address
 		let toml_config = r#"
 				[node]
 				network = "regtest"
@@ -1336,8 +1225,8 @@ mod tests {
 
 		let config = load_config(&args_config).unwrap();
 		assert_eq!(
-			config.rest_service_addr,
-			SocketAddr::from_str(DEFAULT_REST_SERVICE_ADDRESS).unwrap()
+			config.grpc_service_addr,
+			SocketAddr::from_str(DEFAULT_GRPC_SERVICE_ADDRESS).unwrap()
 		);
 	}
 }

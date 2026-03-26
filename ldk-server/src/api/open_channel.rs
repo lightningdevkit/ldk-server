@@ -16,10 +16,10 @@ use ldk_server_protos::api::{OpenChannelRequest, OpenChannelResponse};
 
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
-use crate::service::Context;
+use crate::grpc_service::Context;
 
 pub(crate) fn handle_open_channel(
-	context: Context, request: OpenChannelRequest,
+	context: &Context, request: OpenChannelRequest,
 ) -> Result<OpenChannelResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;

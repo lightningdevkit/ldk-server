@@ -2,6 +2,7 @@ syntax = "proto3";
 package api;
 
 import 'types.proto';
+import 'events.proto';
 
 // Retrieve the latest node info like `node_id`, `current_best_block` etc.
 // See more:
@@ -10,8 +11,7 @@ import 'types.proto';
 message GetNodeInfoRequest {
 }
 
-// The response `content` for the `GetNodeInfo` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GetNodeInfo` RPC. On failure, a gRPC error status is returned.
 message GetNodeInfoResponse {
 
   // The hex-encoded `node-id` or public key for our own lightning node.
@@ -77,8 +77,7 @@ message GetNodeInfoResponse {
 message OnchainReceiveRequest {
 }
 
-// The response `content` for the `OnchainReceive` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`..
+// The response for the `OnchainReceive` RPC. On failure, a gRPC error status is returned.
 message OnchainReceiveResponse {
 
   // A Bitcoin on-chain address.
@@ -111,8 +110,7 @@ message OnchainSendRequest {
   optional uint64 fee_rate_sat_per_vb = 4;
 }
 
-// The response `content` for the `OnchainSend` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `OnchainSend` RPC. On failure, a gRPC error status is returned.
 message OnchainSendResponse {
 
   // The transaction ID of the broadcasted transaction.
@@ -138,8 +136,7 @@ message Bolt11ReceiveRequest {
   uint32 expiry_secs = 3;
 }
 
-// The response `content` for the `Bolt11Receive` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11Receive` RPC. On failure, a gRPC error status is returned.
 message Bolt11ReceiveResponse {
 
   // An invoice for a payment within the Lightning Network.
@@ -177,8 +174,7 @@ message Bolt11ReceiveForHashRequest {
   string payment_hash = 4;
 }
 
-// The response `content` for the `Bolt11ReceiveForHash` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11ReceiveForHash` RPC. On failure, a gRPC error status is returned.
 message Bolt11ReceiveForHashResponse {
 
   // An invoice for a payment within the Lightning Network.
@@ -204,8 +200,7 @@ message Bolt11ClaimForHashRequest {
   string preimage = 3;
 }
 
-// The response `content` for the `Bolt11ClaimForHash` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
 message Bolt11ClaimForHashResponse {}
 
 // Manually fail a payment for a given payment hash.
@@ -217,8 +212,7 @@ message Bolt11FailForHashRequest {
   string payment_hash = 1;
 }
 
-// The response `content` for the `Bolt11FailForHash` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
 message Bolt11FailForHashResponse {}
 
 // Return a BOLT11 payable invoice that can be used to request and receive a payment via an
@@ -240,8 +234,7 @@ message Bolt11ReceiveViaJitChannelRequest {
   optional uint64 max_total_lsp_fee_limit_msat = 4;
 }
 
-// The response `content` for the `Bolt11ReceiveViaJitChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11ReceiveViaJitChannel` RPC. On failure, a gRPC error status is returned.
 message Bolt11ReceiveViaJitChannelResponse {
 
   // An invoice for a payment within the Lightning Network.
@@ -265,8 +258,7 @@ message Bolt11ReceiveVariableAmountViaJitChannelRequest {
   optional uint64 max_proportional_lsp_fee_limit_ppm_msat = 3;
 }
 
-// The response `content` for the `Bolt11ReceiveVariableAmountViaJitChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11ReceiveVariableAmountViaJitChannel` RPC. On failure, a gRPC error status is returned.
 message Bolt11ReceiveVariableAmountViaJitChannelResponse {
 
   // An invoice for a payment within the Lightning Network.
@@ -291,8 +283,7 @@ message Bolt11SendRequest {
 
 }
 
-// The response `content` for the `Bolt11Send` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt11Send` RPC. On failure, a gRPC error status is returned.
 message Bolt11SendResponse {
 
   // An identifier used to uniquely identify a payment in hex-encoded form.
@@ -320,8 +311,7 @@ message Bolt12ReceiveRequest {
   optional uint64 quantity = 4;
 }
 
-// The response `content` for the `Bolt12Receive` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt12Receive` RPC. On failure, a gRPC error status is returned.
 message Bolt12ReceiveResponse {
 
   // An offer for a payment within the Lightning Network.
@@ -357,8 +347,7 @@ message Bolt12SendRequest {
   optional types.RouteParametersConfig route_parameters = 5;
 }
 
-// The response `content` for the `Bolt12Send` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `Bolt12Send` RPC. On failure, a gRPC error status is returned.
 message Bolt12SendResponse {
 
   // An identifier used to uniquely identify a payment in hex-encoded form.
@@ -378,8 +367,7 @@ message SpontaneousSendRequest {
   optional types.RouteParametersConfig route_parameters = 3;
 }
 
-// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.
 message SpontaneousSendResponse {
   // An identifier used to uniquely identify a payment in hex-encoded form.
   string payment_id = 1;
@@ -409,8 +397,7 @@ message OpenChannelRequest {
   bool announce_channel = 6;
 }
 
-// The response `content` for the `OpenChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
 message OpenChannelResponse {
 
   // The local channel id of the created channel that user can use to refer to channel.
@@ -431,8 +418,7 @@ message SpliceInRequest {
   uint64 splice_amount_sats = 3;
 }
 
-// The response `content` for the `SpliceIn` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `SpliceIn` RPC. On failure, a gRPC error status is returned.
 message SpliceInResponse {}
 
 // Decreases the channel balance by the given amount.
@@ -454,8 +440,7 @@ message SpliceOutRequest {
   uint64 splice_amount_sats = 4;
 }
 
-// The response `content` for the `SpliceOut` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `SpliceOut` RPC. On failure, a gRPC error status is returned.
 message SpliceOutResponse {
 
   // The Bitcoin on-chain address where the funds will be sent.
@@ -476,8 +461,7 @@ message UpdateChannelConfigRequest {
   types.ChannelConfig channel_config = 3;
 }
 
-// The response `content` for the `UpdateChannelConfig` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `UpdateChannelConfig` RPC. On failure, a gRPC error status is returned.
 message UpdateChannelConfigResponse {
 }
 
@@ -492,8 +476,7 @@ message CloseChannelRequest {
   string counterparty_node_id = 2;
 }
 
-// The response `content` for the `CloseChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `CloseChannel` RPC. On failure, a gRPC error status is returned.
 message CloseChannelResponse {}
 
 // Force closes the channel specified by given request.
@@ -507,16 +490,14 @@ message ForceCloseChannelRequest {
   optional string force_close_reason = 3;
 }
 
-// The response `content` for the `ForceCloseChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ForceCloseChannel` RPC. On failure, a gRPC error status is returned.
 message ForceCloseChannelResponse {}
 
 // Returns a list of known channels.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_channels
 message ListChannelsRequest {}
 
-// The response `content` for the `ListChannels` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ListChannels` RPC. On failure, a gRPC error status is returned.
 message ListChannelsResponse {
 
   // List of channels.
@@ -530,8 +511,7 @@ message GetPaymentDetailsRequest {
   string payment_id = 1;
 }
 
-// The response `content` for the `GetPaymentDetails` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GetPaymentDetails` RPC. On failure, a gRPC error status is returned.
 message GetPaymentDetailsResponse {
   // Represents a payment.
   // Will be `None` if payment doesn't exist.
@@ -550,8 +530,7 @@ message ListPaymentsRequest {
   optional types.PageToken page_token = 1;
 }
 
-// The response `content` for the `ListPayments` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
 message ListPaymentsResponse {
   // List of payments.
   repeated types.Payment payments = 1;
@@ -584,8 +563,7 @@ message ListForwardedPaymentsRequest {
   optional types.PageToken page_token = 1;
 }
 
-// The response `content` for the `ListForwardedPayments` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
 message ListForwardedPaymentsResponse {
   // List of forwarded payments.
   repeated types.ForwardedPayment forwarded_payments = 1;
@@ -613,8 +591,7 @@ message SignMessageRequest {
   bytes message = 1;
 }
 
-// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `SignMessage` RPC. On failure, a gRPC error status is returned.
 message SignMessageResponse {
   // The signature of the message, as a zbase32-encoded string.
   string signature = 1;
@@ -633,8 +610,7 @@ message VerifySignatureRequest {
   string public_key = 3;
 }
 
-// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `VerifySignature` RPC. On failure, a gRPC error status is returned.
 message VerifySignatureResponse {
   // Whether the signature is valid.
   bool valid = 1;
@@ -644,8 +620,7 @@ message VerifySignatureResponse {
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores
 message ExportPathfindingScoresRequest {}
 
-// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ExportPathfindingScores` RPC. On failure, a gRPC error status is returned.
 message ExportPathfindingScoresResponse {
   // The serialized pathfinding scores data.
   bytes scores = 1;
@@ -655,8 +630,7 @@ message ExportPathfindingScoresResponse {
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances
 message GetBalancesRequest {}
 
-// The response `content` for the `GetBalances` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GetBalances` RPC. On failure, a gRPC error status is returned.
 message GetBalancesResponse {
   // The total balance of our on-chain wallet.
   uint64 total_onchain_balance_sats = 1;
@@ -711,8 +685,7 @@ message ConnectPeerRequest {
   bool persist = 3;
 }
 
-// The response `content` for the `ConnectPeer` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ConnectPeer` RPC. On failure, a gRPC error status is returned.
 message ConnectPeerResponse {}
 
 // Disconnect from a peer and remove it from the peer store.
@@ -722,16 +695,14 @@ message DisconnectPeerRequest {
   string node_pubkey = 1;
 }
 
-// The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `DisconnectPeer` RPC. On failure, a gRPC error status is returned.
 message DisconnectPeerResponse {}
 
 // Returns a list of peers.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers
 message ListPeersRequest {}
 
-// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `ListPeers` RPC. On failure, a gRPC error status is returned.
 message ListPeersResponse {
 
   // List of peers.
@@ -742,8 +713,7 @@ message ListPeersResponse {
 // See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels
 message GraphListChannelsRequest {}
 
-// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GraphListChannels` RPC. On failure, a gRPC error status is returned.
 message GraphListChannelsResponse {
   // List of short channel IDs known to the network graph.
   repeated uint64 short_channel_ids = 1;
@@ -756,8 +726,7 @@ message GraphGetChannelRequest {
   uint64 short_channel_id = 1;
 }
 
-// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GraphGetChannel` RPC. On failure, a gRPC error status is returned.
 message GraphGetChannelResponse {
   // The channel information.
   types.GraphChannel channel = 1;
@@ -767,8 +736,7 @@ message GraphGetChannelResponse {
 // See more: https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes
 message GraphListNodesRequest {}
 
-// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GraphListNodes` RPC. On failure, a gRPC error status is returned.
 message GraphListNodesResponse {
   // List of hex-encoded node IDs known to the network graph.
   repeated string node_ids = 1;
@@ -792,8 +760,7 @@ message UnifiedSendRequest {
   optional types.RouteParametersConfig route_parameters = 3;
 }
 
-// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `UnifiedSend` RPC. On failure, a gRPC error status is returned.
 message UnifiedSendResponse {
 
   oneof payment_result {
@@ -816,8 +783,7 @@ message GraphGetNodeRequest {
   string node_id = 1;
 }
 
-// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `GraphGetNode` RPC. On failure, a gRPC error status is returned.
 message GraphGetNodeResponse {
   // The node information.
   types.GraphNode node = 1;
@@ -830,8 +796,7 @@ message DecodeInvoiceRequest {
   string invoice = 1;
 }
 
-// The response `content` for the `DecodeInvoice` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
 message DecodeInvoiceResponse {
   // The hex-encoded public key of the destination node.
   string destination = 1;
@@ -886,8 +851,7 @@ message DecodeOfferRequest {
   string offer = 1;
 }
 
-// The response `content` for the `DecodeOffer` API, when HttpStatusCode is OK (200).
-// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+// The response for the `DecodeOffer` RPC. On failure, a gRPC error status is returned.
 message DecodeOfferResponse {
   // The hex-encoded offer ID.
   string offer_id = 1;
@@ -924,4 +888,87 @@ message DecodeOfferResponse {
 
   // Whether the offer has expired.
   bool is_expired = 12;
+}
+
+// Subscribe to a stream of server events (payment received, payment successful, etc.).
+message SubscribeEventsRequest {}
+
+// The LightningNode service provides a gRPC interface for managing a Lightning Network node.
+service LightningNode {
+  // Retrieve the latest node info.
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+  // Retrieve an overview of all known balances.
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
+  // Retrieve a new on-chain funding address.
+  rpc OnchainReceive(OnchainReceiveRequest) returns (OnchainReceiveResponse);
+  // Send an on-chain payment to the given address.
+  rpc OnchainSend(OnchainSendRequest) returns (OnchainSendResponse);
+  // Return a BOLT11 payable invoice.
+  rpc Bolt11Receive(Bolt11ReceiveRequest) returns (Bolt11ReceiveResponse);
+  // Return a BOLT11 payable invoice for a given payment hash.
+  rpc Bolt11ReceiveForHash(Bolt11ReceiveForHashRequest) returns (Bolt11ReceiveForHashResponse);
+  // Manually claim a payment for a given payment hash.
+  rpc Bolt11ClaimForHash(Bolt11ClaimForHashRequest) returns (Bolt11ClaimForHashResponse);
+  // Manually fail a payment for a given payment hash.
+  rpc Bolt11FailForHash(Bolt11FailForHashRequest) returns (Bolt11FailForHashResponse);
+  // Return a BOLT11 invoice for receiving via a JIT channel.
+  rpc Bolt11ReceiveViaJitChannel(Bolt11ReceiveViaJitChannelRequest) returns (Bolt11ReceiveViaJitChannelResponse);
+  // Return a variable-amount BOLT11 invoice for receiving via a JIT channel.
+  rpc Bolt11ReceiveVariableAmountViaJitChannel(Bolt11ReceiveVariableAmountViaJitChannelRequest) returns (Bolt11ReceiveVariableAmountViaJitChannelResponse);
+  // Send a payment for a BOLT11 invoice.
+  rpc Bolt11Send(Bolt11SendRequest) returns (Bolt11SendResponse);
+  // Return a BOLT12 offer.
+  rpc Bolt12Receive(Bolt12ReceiveRequest) returns (Bolt12ReceiveResponse);
+  // Send a payment for a BOLT12 offer.
+  rpc Bolt12Send(Bolt12SendRequest) returns (Bolt12SendResponse);
+  // Send a spontaneous payment (keysend).
+  rpc SpontaneousSend(SpontaneousSendRequest) returns (SpontaneousSendResponse);
+  // Create a new outbound channel.
+  rpc OpenChannel(OpenChannelRequest) returns (OpenChannelResponse);
+  // Splice funds into a channel.
+  rpc SpliceIn(SpliceInRequest) returns (SpliceInResponse);
+  // Splice funds out of a channel.
+  rpc SpliceOut(SpliceOutRequest) returns (SpliceOutResponse);
+  // Update the config for a channel.
+  rpc UpdateChannelConfig(UpdateChannelConfigRequest) returns (UpdateChannelConfigResponse);
+  // Close a channel cooperatively.
+  rpc CloseChannel(CloseChannelRequest) returns (CloseChannelResponse);
+  // Force close a channel.
+  rpc ForceCloseChannel(ForceCloseChannelRequest) returns (ForceCloseChannelResponse);
+  // List known channels.
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
+  // Get payment details by payment ID.
+  rpc GetPaymentDetails(GetPaymentDetailsRequest) returns (GetPaymentDetailsResponse);
+  // List all payments.
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  // List all forwarded payments.
+  rpc ListForwardedPayments(ListForwardedPaymentsRequest) returns (ListForwardedPaymentsResponse);
+  // Connect to a peer.
+  rpc ConnectPeer(ConnectPeerRequest) returns (ConnectPeerResponse);
+  // Disconnect from a peer.
+  rpc DisconnectPeer(DisconnectPeerRequest) returns (DisconnectPeerResponse);
+  // List peers.
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+  // Sign a message with the node's secret key.
+  rpc SignMessage(SignMessageRequest) returns (SignMessageResponse);
+  // Verify a signature against a message and public key.
+  rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
+  // Export the pathfinding scores used by the router.
+  rpc ExportPathfindingScores(ExportPathfindingScoresRequest) returns (ExportPathfindingScoresResponse);
+  // Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.
+  rpc UnifiedSend(UnifiedSendRequest) returns (UnifiedSendResponse);
+  // Decode a BOLT11 invoice and return its parsed fields.
+  rpc DecodeInvoice(DecodeInvoiceRequest) returns (DecodeInvoiceResponse);
+  // Decode a BOLT12 offer and return its parsed fields.
+  rpc DecodeOffer(DecodeOfferRequest) returns (DecodeOfferResponse);
+  // List all known short channel IDs in the network graph.
+  rpc GraphListChannels(GraphListChannelsRequest) returns (GraphListChannelsResponse);
+  // Get channel info from the network graph by short channel ID.
+  rpc GraphGetChannel(GraphGetChannelRequest) returns (GraphGetChannelResponse);
+  // List all known node IDs in the network graph.
+  rpc GraphListNodes(GraphListNodesRequest) returns (GraphListNodesResponse);
+  // Get node info from the network graph by node ID.
+  rpc GraphGetNode(GraphGetNodeRequest) returns (GraphGetNodeResponse);
+  // Subscribe to a stream of server events.
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream events.EventEnvelope);
 }
