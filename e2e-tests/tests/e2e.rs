@@ -149,6 +149,100 @@ async fn test_cli_bolt11_receive() {
 }
 
 #[tokio::test]
+async fn test_cli_decode_invoice() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	// Create a BOLT11 invoice with known parameters
+	let output =
+		run_cli(&server, &["bolt11-receive", "50000sat", "-d", "decode test", "-e", "3600"]);
+	let invoice_str = output["invoice"].as_str().unwrap();
+
+	// Decode it
+	let decoded = run_cli(&server, &["decode-invoice", invoice_str]);
+
+	// Verify fields match
+	assert_eq!(decoded["destination"], server.node_id());
+	assert_eq!(decoded["payment_hash"], output["payment_hash"]);
+	assert_eq!(decoded["amount_msat"], 50_000_000);
+	assert_eq!(decoded["description"], "decode test");
+	assert!(decoded.get("description_hash").is_none() || decoded["description_hash"].is_null());
+	assert_eq!(decoded["expiry"], 3600);
+	assert_eq!(decoded["currency"], "regtest");
+	assert_eq!(decoded["payment_secret"], output["payment_secret"]);
+	assert!(decoded["timestamp"].as_u64().unwrap() > 0);
+	assert!(decoded["min_final_cltv_expiry_delta"].as_u64().unwrap() > 0);
+	assert_eq!(decoded["is_expired"], false);
+
+	// Verify features — LDK BOLT11 invoices always set VariableLengthOnion, PaymentSecret,
+	// and BasicMPP.
+	let features = decoded["features"].as_object().unwrap();
+	assert!(!features.is_empty(), "Expected at least one feature");
+
+	let feature_names: Vec<&str> = features.values().filter_map(|f| f["name"].as_str()).collect();
+	assert!(
+		feature_names.contains(&"VariableLengthOnion"),
+		"Expected VariableLengthOnion in features: {:?}",
+		feature_names
+	);
+	assert!(
+		feature_names.contains(&"PaymentSecret"),
+		"Expected PaymentSecret in features: {:?}",
+		feature_names
+	);
+	assert!(
+		feature_names.contains(&"BasicMPP"),
+		"Expected BasicMPP in features: {:?}",
+		feature_names
+	);
+
+	// Every entry should have the expected structure
+	for (bit, feature) in features {
+		assert!(bit.parse::<u32>().is_ok(), "Feature key should be a bit number: {}", bit);
+		assert!(feature.get("name").is_some(), "Feature missing name field");
+		assert!(feature.get("is_required").is_some(), "Feature missing is_required field");
+		assert!(feature.get("is_known").is_some(), "Feature missing is_known field");
+	}
+
+	// Also test a variable-amount invoice
+	let output_var = run_cli(&server, &["bolt11-receive", "-d", "no amount"]);
+	let decoded_var =
+		run_cli(&server, &["decode-invoice", output_var["invoice"].as_str().unwrap()]);
+	assert!(decoded_var.get("amount_msat").is_none() || decoded_var["amount_msat"].is_null());
+	assert_eq!(decoded_var["description"], "no amount");
+
+	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
+	// serde_json escapes control chars (U+0000–U+001F) as \uXXXX in JSON.
+	let desc_with_ansi = "pay me\x1b[31m RED \x1b[0m";
+	let output_ansi = run_cli(&server, &["bolt11-receive", "-d", desc_with_ansi]);
+	let raw_decoded = run_cli_raw(
+		&server,
+		&["decode-invoice", output_ansi["invoice"].as_str().unwrap()],
+	);
+	assert!(
+		!raw_decoded.contains('\x1b'),
+		"Raw CLI output must not contain ANSI escape bytes"
+	);
+
+	// Test that Unicode bidi override characters in the description are escaped
+	// (sanitize_for_terminal replaces them with \uXXXX in CLI output)
+	let desc_with_bidi = "pay me\u{202E}evil";
+	let output_bidi = run_cli(&server, &["bolt11-receive", "-d", desc_with_bidi]);
+	let raw_bidi = run_cli_raw(
+		&server,
+		&["decode-invoice", output_bidi["invoice"].as_str().unwrap()],
+	);
+	assert!(
+		!raw_bidi.contains('\u{202E}'),
+		"Raw CLI output must not contain bidi override characters"
+	);
+	assert!(
+		raw_bidi.contains("\\u202E"),
+		"Bidi characters should be escaped as \\uXXXX in output"
+	);
+}
+
+#[tokio::test]
 async fn test_cli_bolt12_receive() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
@@ -163,6 +257,80 @@ async fn test_cli_bolt12_receive() {
 	let offer: Offer = offer_str.parse().unwrap();
 	let offer_id = <[u8; 32]>::from_hex(output["offer_id"].as_str().unwrap()).unwrap();
 	assert_eq!(offer.id().0, offer_id);
+}
+
+#[tokio::test]
+async fn test_cli_decode_offer() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	// BOLT12 offers need announced channels for blinded reply paths
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Create a BOLT12 offer with known parameters
+	let output = run_cli(&server_a, &["bolt12-receive", "decode offer test"]);
+	let offer_str = output["offer"].as_str().unwrap();
+
+	// Decode it
+	let decoded = run_cli(&server_a, &["decode-offer", offer_str]);
+
+	// Verify fields match
+	assert_eq!(decoded["offer_id"], output["offer_id"]);
+	assert_eq!(decoded["description"], "decode offer test");
+	assert_eq!(decoded["is_expired"], false);
+
+	// Chains should include regtest
+	let chains = decoded["chains"].as_array().unwrap();
+	assert!(chains.iter().any(|c| c == "regtest"), "Expected regtest in chains: {:?}", chains);
+
+	// Paths should be present (BOLT12 offers with blinded paths)
+	let paths = decoded["paths"].as_array().unwrap();
+	assert!(!paths.is_empty(), "Expected at least one blinded path");
+	for path in paths {
+		assert!(path["num_hops"].as_u64().unwrap() > 0);
+		assert!(!path["blinding_point"].as_str().unwrap().is_empty());
+	}
+
+	// Features — OfferContext has no known features in LDK, so this should be empty
+	let features = decoded["features"].as_object().unwrap();
+	assert!(features.is_empty(), "Expected empty offer features, got: {:?}", features);
+
+	// Variable-amount offer should have no amount
+	assert!(decoded.get("amount").is_none() || decoded["amount"].is_null());
+
+	// Test a fixed-amount offer
+	let output_fixed = run_cli(&server_a, &["bolt12-receive", "fixed amount", "50000sat"]);
+	let decoded_fixed =
+		run_cli(&server_a, &["decode-offer", output_fixed["offer"].as_str().unwrap()]);
+	assert_eq!(decoded_fixed["amount"]["amount"]["bitcoin_amount_msats"], 50_000_000);
+
+	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
+	let desc_with_ansi = "offer\x1b[31m RED \x1b[0m";
+	let output_ansi = run_cli(&server_a, &["bolt12-receive", desc_with_ansi]);
+	let raw_decoded = run_cli_raw(
+		&server_a,
+		&["decode-offer", output_ansi["offer"].as_str().unwrap()],
+	);
+	assert!(
+		!raw_decoded.contains('\x1b'),
+		"Raw CLI output must not contain ANSI escape bytes"
+	);
+
+	// Test that Unicode bidi override characters in the description are escaped
+	let desc_with_bidi = "offer\u{202E}evil";
+	let output_bidi = run_cli(&server_a, &["bolt12-receive", desc_with_bidi]);
+	let raw_bidi = run_cli_raw(
+		&server_a,
+		&["decode-offer", output_bidi["offer"].as_str().unwrap()],
+	);
+	assert!(
+		!raw_bidi.contains('\u{202E}'),
+		"Raw CLI output must not contain bidi override characters"
+	);
+	assert!(
+		raw_bidi.contains("\\u202E"),
+		"Bidi characters should be escaped as \\uXXXX in output"
+	);
 }
 
 #[tokio::test]

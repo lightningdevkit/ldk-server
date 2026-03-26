@@ -822,3 +822,106 @@ message GraphGetNodeResponse {
   // The node information.
   types.GraphNode node = 1;
 }
+
+// Decode a BOLT11 invoice and return its parsed fields.
+// This does not require a running node — it only parses the invoice string.
+message DecodeInvoiceRequest {
+  // The BOLT11 invoice string to decode.
+  string invoice = 1;
+}
+
+// The response `content` for the `DecodeInvoice` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message DecodeInvoiceResponse {
+  // The hex-encoded public key of the destination node.
+  string destination = 1;
+
+  // The hex-encoded 32-byte payment hash.
+  string payment_hash = 2;
+
+  // The amount in millisatoshis, if specified in the invoice.
+  optional uint64 amount_msat = 3;
+
+  // The creation timestamp in seconds since the UNIX epoch.
+  uint64 timestamp = 4;
+
+  // The invoice expiry time in seconds.
+  uint64 expiry = 5;
+
+  // The invoice description, if a direct description was provided.
+  optional string description = 6;
+
+  // The hex-encoded SHA-256 hash of the description, if a description hash was used.
+  optional string description_hash = 14;
+
+  // The fallback on-chain address, if any.
+  optional string fallback_address = 7;
+
+  // The minimum final CLTV expiry delta.
+  uint64 min_final_cltv_expiry_delta = 8;
+
+  // The hex-encoded 32-byte payment secret.
+  string payment_secret = 9;
+
+  // Route hints for finding a path to the payee.
+  repeated types.Bolt11RouteHint route_hints = 10;
+
+  // Feature bits advertised in the invoice, keyed by bit number.
+  map<uint32, types.Bolt11Feature> features = 11;
+
+  // The currency or network (e.g., "bitcoin", "testnet", "signet", "regtest").
+  string currency = 12;
+
+  // The payment metadata, hex-encoded. Only present if the invoice includes payment metadata.
+  optional string payment_metadata = 13;
+
+  // Whether the invoice has expired.
+  bool is_expired = 15;
+}
+
+// Decode a BOLT12 offer and return its parsed fields.
+// This does not require a running node — it only parses the offer string.
+message DecodeOfferRequest {
+  // The BOLT12 offer string to decode.
+  string offer = 1;
+}
+
+// The response `content` for the `DecodeOffer` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message DecodeOfferResponse {
+  // The hex-encoded offer ID.
+  string offer_id = 1;
+
+  // The description of the offer, if any.
+  optional string description = 2;
+
+  // The issuer of the offer, if any.
+  optional string issuer = 3;
+
+  // The amount, if specified.
+  types.OfferAmount amount = 4;
+
+  // The hex-encoded public key used by the issuer to sign invoices, if any.
+  optional string issuer_signing_pubkey = 5;
+
+  // The absolute expiry time in seconds since the UNIX epoch, if any.
+  optional uint64 absolute_expiry = 6;
+
+  // The supported quantity of items.
+  types.OfferQuantity quantity = 7;
+
+  // Blinded paths to the offer recipient.
+  repeated types.BlindedPath paths = 8;
+
+  // Feature bits advertised in the offer, keyed by bit number.
+  map<uint32, types.Bolt11Feature> features = 9;
+
+  // Supported blockchain networks (e.g., "bitcoin", "testnet", "signet", "regtest").
+  repeated string chains = 10;
+
+  // The metadata, hex-encoded, if any.
+  optional string metadata = 11;
+
+  // Whether the offer has expired.
+  bool is_expired = 12;
+}

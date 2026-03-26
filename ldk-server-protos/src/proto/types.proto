@@ -818,3 +818,90 @@ message GraphNode {
   // a channel announcement, but before receiving a node announcement.
   GraphNodeAnnouncement announcement_info = 2;
 }
+
+// Route hint for finding a path to the payee in a BOLT11 invoice.
+message Bolt11RouteHint {
+  // The hops in this route hint.
+  repeated Bolt11HopHint hop_hints = 1;
+}
+
+// A hop in a BOLT11 route hint.
+message Bolt11HopHint {
+  // The hex-encoded public key of the node at this hop.
+  string node_id = 1;
+
+  // The short channel ID.
+  uint64 short_channel_id = 2;
+
+  // The base fee in millisatoshis charged for routing through this hop.
+  uint32 fee_base_msat = 3;
+
+  // Fee proportional millionths charged for routing through this hop.
+  uint32 fee_proportional_millionths = 4;
+
+  // The CLTV expiry delta for this hop.
+  uint32 cltv_expiry_delta = 5;
+}
+
+// The amount specified in a BOLT12 offer.
+message OfferAmount {
+  oneof amount {
+    // Amount in millisatoshis for Bitcoin payments.
+    uint64 bitcoin_amount_msats = 1;
+
+    // Amount in a non-Bitcoin currency.
+    CurrencyAmount currency_amount = 2;
+  }
+}
+
+// A non-Bitcoin currency amount.
+message CurrencyAmount {
+  // ISO 4217 currency code (e.g., "USD", "EUR").
+  string iso4217_code = 1;
+
+  // The amount in the specified currency's minor unit.
+  uint64 amount = 2;
+}
+
+// The quantity of items supported by a BOLT12 offer.
+message OfferQuantity {
+  oneof quantity {
+    // Only one item may be requested.
+    bool one = 1;
+
+    // Up to this many items may be requested.
+    uint64 bounded = 2;
+
+    // Any number of items may be requested.
+    bool unbounded = 3;
+  }
+}
+
+// A blinded path to the offer recipient.
+message BlindedPath {
+  // The hex-encoded public key of the introduction node, if available.
+  // If the introduction node is a directed short channel ID, this will be empty
+  // and `introduction_scid` will be set instead.
+  optional string introduction_node_id = 1;
+
+  // The hex-encoded blinding point.
+  string blinding_point = 2;
+
+  // The number of blinded hops in the path.
+  uint32 num_hops = 3;
+
+  // If the introduction node is a directed short channel ID rather than a node ID.
+  optional uint64 introduction_scid = 4;
+}
+
+// A feature bit advertised in a BOLT11 invoice.
+message Bolt11Feature {
+  // Human-readable feature name.
+  string name = 1;
+
+  // Whether this feature is required.
+  bool is_required = 2;
+
+  // Whether this feature is known.
+  bool is_known = 3;
+}
