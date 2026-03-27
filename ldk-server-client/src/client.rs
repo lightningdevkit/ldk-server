@@ -7,10 +7,15 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
+use hyper::body::HttpBody as _;
+use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use ldk_server_grpc::api::SubscribeEventsRequest;
 use ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
@@ -44,17 +49,22 @@ use ldk_server_grpc::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH,
 	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH,
-	SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH,
-	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH,
+	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
+use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{decode_grpc_body, encode_grpc_frame, percent_decode};
 use prost::Message;
-use reqwest::{Certificate, Client};
+use reqwest::{header::HeaderMap, Certificate, Client};
+use rustls::{ClientConfig, RootCertStore};
+use rustls_pemfile::certs;
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
+
+type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
 
 /// Client to access a hosted instance of LDK Server via gRPC.
 ///
@@ -65,6 +75,7 @@ use crate::error::LdkServerErrorCode::{
 pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
+	streaming_client: StreamingClient,
 	api_key: String,
 }
 
@@ -78,13 +89,14 @@ impl LdkServerClient {
 	pub fn new(base_url: String, api_key: String, server_cert_pem: &[u8]) -> Result<Self, String> {
 		let cert = Certificate::from_pem(server_cert_pem)
 			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
+		let streaming_client = build_streaming_client(server_cert_pem)?;
 
 		let client = Client::builder()
 			.add_root_certificate(cert)
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, api_key })
+		Ok(Self { base_url, client, streaming_client, api_key })
 	}
 
 	/// Computes the HMAC-SHA256 authentication header value.
@@ -397,6 +409,13 @@ impl LdkServerClient {
 		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
 	}
 
+	/// Subscribe to a stream of server events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
+	pub async fn subscribe_events(&self) -> Result<EventStream, LdkServerError> {
+		self.grpc_server_streaming(&SubscribeEventsRequest {}, SUBSCRIBE_EVENTS_PATH).await
+	}
+
 	/// Send a unary gRPC request and decode the response.
 	async fn grpc_unary<Rq: Message, Rs: Message + Default>(
 		&self, request: &Rq, method: &str,
@@ -422,20 +441,8 @@ impl LdkServerClient {
 		// Check for Trailers-Only error responses (grpc-status in response headers).
 		// In gRPC, when there is no response body (error case), the server sends
 		// grpc-status as part of the initial HEADERS frame, readable as a regular header.
-		if let Some(status_val) = response.headers().get("grpc-status") {
-			if let Ok(status_str) = status_val.to_str() {
-				if let Ok(code) = status_str.parse::<u32>() {
-					if code != 0 {
-						let message = response
-							.headers()
-							.get("grpc-message")
-							.and_then(|v| v.to_str().ok())
-							.map(percent_decode)
-							.unwrap_or_default();
-						return Err(grpc_code_to_error(code, message));
-					}
-				}
-			}
+		if let Some(error) = grpc_error_from_headers(response.headers()) {
+			return Err(error);
 		}
 
 		// Read the response body
@@ -450,23 +457,255 @@ impl LdkServerClient {
 			LdkServerError::new(InternalError, format!("Failed to decode gRPC response: {}", e))
 		})
 	}
+
+	/// Open a server-streaming gRPC call and return a [`GrpcStream`] that
+	/// yields decoded messages of type `Rs` as they arrive.
+	async fn grpc_server_streaming<Rq: Message, Rs: Message + Default>(
+		&self, request: &Rq, method: &str,
+	) -> Result<GrpcStream<Rs>, LdkServerError> {
+		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
+
+		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
+		let auth_header = self.compute_auth_header();
+
+		let response = self
+			.streaming_client
+			.request(
+				HyperRequest::post(&url)
+					.version(Version::HTTP_2)
+					.header("content-type", "application/grpc+proto")
+					.header("te", "trailers")
+					.header("x-auth", auth_header)
+					.body(HyperBody::from(grpc_body))
+					.map_err(|e| {
+						LdkServerError::new(
+							InternalError,
+							format!("Failed to build gRPC request: {e}"),
+						)
+					})?,
+			)
+			.await
+			.map_err(|e| {
+				LdkServerError::new(InternalError, format!("gRPC request failed: {}", e))
+			})?;
+
+		let (parts, body) = response.into_parts();
+		if let Some(error) = grpc_error_from_headers(&parts.headers) {
+			return Err(error);
+		}
+
+		Ok(GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		})
+	}
 }
 
 /// Map a gRPC status code to an LdkServerError.
 fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
-	let error_code = match code {
-		3 => InvalidRequestError,  // INVALID_ARGUMENT
-		16 => AuthError,           // UNAUTHENTICATED
-		9 => LightningError,       // FAILED_PRECONDITION
-		13 => InternalServerError, // INTERNAL
-		_ => InternalError,
-	};
-	LdkServerError::new(error_code, message)
+	match code {
+		3 => LdkServerError::new(InvalidRequestError, message), // INVALID_ARGUMENT
+		9 => LdkServerError::new(LightningError, message),      // FAILED_PRECONDITION
+		13 => LdkServerError::new(InternalServerError, message), // INTERNAL
+		14 => LdkServerError::new(
+			InternalError,
+			if message.is_empty() {
+				"gRPC stream became unavailable".to_string()
+			} else {
+				format!("gRPC stream became unavailable: {message}")
+			},
+		),
+		16 => LdkServerError::new(AuthError, message), // UNAUTHENTICATED
+		_ => LdkServerError::new(
+			InternalError,
+			if message.is_empty() {
+				format!("gRPC status {code}")
+			} else {
+				format!("gRPC status {code}: {message}")
+			},
+		),
+	}
+}
+
+fn grpc_error_from_headers(headers: &HeaderMap) -> Option<LdkServerError> {
+	let code = headers.get("grpc-status")?.to_str().ok()?.parse::<u32>().ok()?;
+	if code == 0 {
+		return None;
+	}
+
+	let message = headers
+		.get("grpc-message")
+		.and_then(|v| v.to_str().ok())
+		.map(percent_decode)
+		.unwrap_or_default();
+	Some(grpc_code_to_error(code, message))
+}
+
+/// A server-streaming gRPC response that yields decoded protobuf messages of type `M`.
+///
+/// Call [`next_message`](GrpcStream::next_message) to receive the next message from the server.
+pub struct GrpcStream<M: Message + Default> {
+	body: hyper::Body,
+	buf: Vec<u8>,
+	trailers_checked: bool,
+	_marker: std::marker::PhantomData<M>,
+}
+
+/// Type alias for a streaming response that yields [`EventEnvelope`] messages.
+pub type EventStream = GrpcStream<EventEnvelope>;
+
+impl<M: Message + Default> GrpcStream<M> {
+	/// Wait for the next message from the server.
+	///
+	/// Returns `None` if the stream has ended.
+	pub async fn next_message(&mut self) -> Option<Result<M, LdkServerError>> {
+		loop {
+			// Try to decode a complete gRPC frame from the buffer
+			if self.buf.len() >= 5 {
+				let msg_len =
+					u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]])
+						as usize;
+				if self.buf.len() >= 5 + msg_len {
+					let proto_bytes = &self.buf[5..5 + msg_len];
+					let result = M::decode(proto_bytes).map_err(|e| {
+						LdkServerError::new(
+							InternalError,
+							format!("Failed to decode gRPC stream message: {}", e),
+						)
+					});
+					self.buf.drain(..5 + msg_len);
+					return Some(result);
+				}
+			}
+
+			// Need more data — read the next chunk from the response body
+			match self.body.data().await {
+				Some(Ok(chunk)) => self.buf.extend_from_slice(&chunk),
+				Some(Err(e)) => {
+					return Some(Err(LdkServerError::new(
+						InternalError,
+						format!("Failed to read gRPC stream: {}", e),
+					)));
+				},
+				None => {
+					if self.trailers_checked {
+						return None;
+					}
+					self.trailers_checked = true;
+					return self.finish_stream().await;
+				},
+			}
+		}
+	}
+
+	async fn finish_stream(&mut self) -> Option<Result<M, LdkServerError>> {
+		match self.body.trailers().await {
+			Ok(Some(trailers)) => {
+				if let Some(error) = grpc_error_from_headers(&trailers) {
+					return Some(Err(error));
+				}
+			},
+			Ok(None) => {},
+			Err(e) => {
+				return Some(Err(LdkServerError::new(
+					InternalError,
+					format!("Failed to read gRPC stream trailers: {}", e),
+				)));
+			},
+		}
+
+		if self.buf.is_empty() {
+			None
+		} else {
+			Some(Err(LdkServerError::new(
+				InternalError,
+				"gRPC stream ended with an incomplete frame",
+			)))
+		}
+	}
+}
+
+fn build_streaming_client(server_cert_pem: &[u8]) -> Result<StreamingClient, String> {
+	let mut pem_reader = Cursor::new(server_cert_pem);
+	let certs =
+		certs(&mut pem_reader).map_err(|e| format!("Failed to parse server certificate: {e}"))?;
+	if certs.is_empty() {
+		return Err("Failed to parse server certificate: no certificates found in PEM".to_string());
+	}
+
+	let mut roots = RootCertStore::empty();
+	let (added, _ignored) = roots.add_parsable_certificates(&certs);
+	if added == 0 {
+		return Err("Failed to build streaming client: certificate was not accepted".to_string());
+	}
+
+	let tls_config = ClientConfig::builder()
+		.with_safe_defaults()
+		.with_root_certificates(roots)
+		.with_no_client_auth();
+	let connector = HttpsConnectorBuilder::new()
+		.with_tls_config(tls_config)
+		.https_only()
+		.enable_http2()
+		.build();
+
+	Ok(HyperClient::builder().http2_only(true).build(connector))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use hyper::Body;
+	use reqwest::header::HeaderValue;
+
+	#[test]
+	fn test_grpc_error_from_headers_ignores_ok_status() {
+		let mut headers = HeaderMap::new();
+		headers.insert("grpc-status", HeaderValue::from_static("0"));
+		assert!(grpc_error_from_headers(&headers).is_none());
+	}
+
+	#[test]
+	fn test_grpc_error_from_headers_decodes_message() {
+		let mut headers = HeaderMap::new();
+		headers.insert("grpc-status", HeaderValue::from_static("3"));
+		headers.insert("grpc-message", HeaderValue::from_static("bad%20request"));
+
+		let err = grpc_error_from_headers(&headers).unwrap();
+		assert_eq!(err.error_code, InvalidRequestError);
+		assert_eq!(err.message, "bad request");
+	}
+
+	#[test]
+	fn test_grpc_code_to_error_marks_unavailable_streams() {
+		let err = grpc_code_to_error(14, "server shutting down".to_string());
+		assert_eq!(err.error_code, InternalError);
+		assert_eq!(err.message, "gRPC stream became unavailable: server shutting down");
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_surfaces_terminal_grpc_status() {
+		let (mut sender, body) = Body::channel();
+		let mut trailers = HeaderMap::new();
+		trailers.insert("grpc-status", HeaderValue::from_static("14"));
+		trailers.insert("grpc-message", HeaderValue::from_static("server%20restarting"));
+		sender.send_trailers(trailers).await.unwrap();
+		drop(sender);
+
+		let mut stream: EventStream = GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		};
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert_eq!(result.message, "gRPC stream became unavailable: server restarting");
+		assert!(stream.next_message().await.is_none());
+	}
 
 	#[test]
 	fn test_grpc_code_to_error_all_known_codes() {

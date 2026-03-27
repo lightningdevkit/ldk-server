@@ -12,3 +12,10 @@ ldk-server-grpc = { path = "../ldk-server-grpc" }
 reqwest = { version = "0.11.13", default-features = false, features = ["rustls-tls"] }
 prost = { version = "0.11.6", default-features = false, features = ["std", "prost-derive"] }
 bitcoin_hashes = "0.14"
+hyper = { version = "0.14", default-features = false, features = ["client", "http2", "runtime", "tcp"] }
+hyper-rustls = { version = "0.24", default-features = false, features = ["http2", "tls12", "tokio-runtime"] }
+rustls = "0.21"
+rustls-pemfile = "1"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["macros", "rt"] }

@@ -28,8 +28,8 @@ use ldk_server_grpc::endpoints::{
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -95,17 +95,19 @@ pub(crate) struct NodeService {
 	api_key: String,
 	metrics: Option<Arc<Metrics>>,
 	metrics_auth_header: Option<String>,
-	event_sender: broadcast::Sender<ldk_server_grpc::events::EventEnvelope>,
+	event_sender: broadcast::Sender<EventEnvelope>,
+	shutdown_rx: tokio::sync::watch::Receiver<bool>,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
 		metrics: Option<Arc<Metrics>>, metrics_auth_header: Option<String>,
-		event_sender: broadcast::Sender<ldk_server_grpc::events::EventEnvelope>,
+		event_sender: broadcast::Sender<EventEnvelope>,
+		shutdown_rx: tokio::sync::watch::Receiver<bool>,
 	) -> Self {
 		let context = Arc::new(Context { node, paginated_kv_store });
-		Self { context, api_key, metrics, metrics_auth_header, event_sender }
+		Self { context, api_key, metrics, metrics_auth_header, event_sender, shutdown_rx }
 	}
 }
 
@@ -220,11 +222,26 @@ impl Service<Request<Incoming>> for NodeService {
 
 		let context = Arc::clone(&self.context);
 		let path = req.uri().path().to_string();
-		let deadline = req
-			.headers()
-			.get("grpc-timeout")
-			.and_then(|v| v.to_str().ok())
-			.and_then(parse_grpc_timeout);
+		let deadline = match req.headers().get("grpc-timeout") {
+			Some(value) => {
+				let value = match value.to_str() {
+					Ok(value) => value,
+					Err(_) => {
+						let status = GrpcStatus::new(
+							GRPC_STATUS_INVALID_ARGUMENT,
+							"Invalid grpc-timeout header",
+						);
+						return Box::pin(async move { Ok(grpc_error_response(status)) });
+					},
+				};
+
+				match parse_grpc_timeout(value) {
+					Ok(timeout) => Some(timeout),
+					Err(status) => return Box::pin(async move { Ok(grpc_error_response(status)) }),
+				}
+			},
+			None => None,
+		};
 
 		// Strip the service prefix to get the method name
 		let method = match path.strip_prefix(GRPC_SERVICE_PREFIX) {
@@ -342,6 +359,52 @@ impl Service<Request<Incoming>> for NodeService {
 			},
 			DECODE_OFFER_PATH => {
 				Box::pin(handle_grpc_unary(context, req, handle_decode_offer_request))
+			},
+			SUBSCRIBE_EVENTS_PATH => {
+				let event_sender = self.event_sender.clone();
+				let mut shutdown_rx = self.shutdown_rx.clone();
+				Box::pin(async move {
+					let mut rx = event_sender.subscribe();
+					let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
+					tokio::spawn(async move {
+						loop {
+							tokio::select! {
+								result = rx.recv() => {
+									match result {
+										Ok(event) => {
+											let frame = encode_grpc_frame(&event.encode_to_vec());
+											if tx.send(Ok(frame)).await.is_err() {
+												break; // client disconnected
+											}
+										},
+										Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+											continue; // skip missed events, keep streaming
+										},
+										Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+											let _ = tx
+												.send(Err(GrpcStatus::new(
+													GRPC_STATUS_UNAVAILABLE,
+													"server shutting down",
+												)))
+												.await;
+											break;
+										},
+									}
+								},
+								_ = shutdown_rx.changed() => {
+									let _ = tx
+										.send(Err(GrpcStatus::new(
+											GRPC_STATUS_UNAVAILABLE,
+											"server shutting down",
+										)))
+										.await;
+									break;
+								},
+							}
+						}
+					});
+					Ok(grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false }))
+				})
 			},
 			_ => {
 				let status =
