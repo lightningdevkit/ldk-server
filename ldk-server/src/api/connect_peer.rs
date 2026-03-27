@@ -15,9 +15,10 @@ use ldk_server_protos::api::{ConnectPeerRequest, ConnectPeerResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_connect_peer(
-	context: Context, request: ConnectPeerRequest,
+pub(crate) async fn handle_connect_peer(
+	context: Arc<Context>, request: ConnectPeerRequest,
 ) -> Result<ConnectPeerResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_pubkey)
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;

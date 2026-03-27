@@ -12,9 +12,10 @@ use ldk_server_protos::types::BestBlock;
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_get_node_info_request(
-	context: Context, _request: GetNodeInfoRequest,
+pub(crate) async fn handle_get_node_info_request(
+	context: Arc<Context>, _request: GetNodeInfoRequest,
 ) -> Result<GetNodeInfoResponse, LdkServerError> {
 	let node_status = context.node.status();
 

@@ -18,9 +18,10 @@ use ldk_server_protos::types::{Bolt11HopHint, Bolt11RouteHint};
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_decode_invoice_request(
-	_context: Context, request: DecodeInvoiceRequest,
+pub(crate) async fn handle_decode_invoice_request(
+	_context: Arc<Context>, request: DecodeInvoiceRequest,
 ) -> Result<DecodeInvoiceResponse, LdkServerError> {
 	let invoice = Bolt11Invoice::from_str(request.invoice.as_str())
 		.map_err(|_| ldk_node::NodeError::InvalidInvoice)?;

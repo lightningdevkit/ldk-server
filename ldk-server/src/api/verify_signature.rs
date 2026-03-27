@@ -15,9 +15,10 @@ use ldk_server_protos::api::{VerifySignatureRequest, VerifySignatureResponse};
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_verify_signature_request(
-	context: Context, request: VerifySignatureRequest,
+pub(crate) async fn handle_verify_signature_request(
+	context: Arc<Context>, request: VerifySignatureRequest,
 ) -> Result<VerifySignatureResponse, LdkServerError> {
 	let public_key = PublicKey::from_str(&request.public_key).map_err(|_| {
 		LdkServerError::new(InvalidRequestError, "Invalid public_key provided.".to_string())

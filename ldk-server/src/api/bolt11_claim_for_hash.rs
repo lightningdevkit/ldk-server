@@ -15,9 +15,10 @@ use ldk_server_protos::api::{Bolt11ClaimForHashRequest, Bolt11ClaimForHashRespon
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_bolt11_claim_for_hash_request(
-	context: Context, request: Bolt11ClaimForHashRequest,
+pub(crate) async fn handle_bolt11_claim_for_hash_request(
+	context: Arc<Context>, request: Bolt11ClaimForHashRequest,
 ) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
 	let preimage_bytes = <[u8; 32]>::from_hex(&request.preimage).map_err(|_| {
 		LdkServerError::new(

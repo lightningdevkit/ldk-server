@@ -16,9 +16,10 @@ use ldk_server_protos::api::{
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 use crate::util::proto_adapter::proto_to_bolt11_description;
+use std::sync::Arc;
 
-pub(crate) fn handle_bolt11_receive_via_jit_channel_request(
-	context: Context, request: Bolt11ReceiveViaJitChannelRequest,
+pub(crate) async fn handle_bolt11_receive_via_jit_channel_request(
+	context: Arc<Context>, request: Bolt11ReceiveViaJitChannelRequest,
 ) -> Result<Bolt11ReceiveViaJitChannelResponse, LdkServerError> {
 	let description = proto_to_bolt11_description(request.description)?;
 	let invoice = context.node.bolt11_payment().receive_via_jit_channel(
@@ -31,8 +32,8 @@ pub(crate) fn handle_bolt11_receive_via_jit_channel_request(
 	Ok(Bolt11ReceiveViaJitChannelResponse { invoice: invoice.to_string() })
 }
 
-pub(crate) fn handle_bolt11_receive_variable_amount_via_jit_channel_request(
-	context: Context, request: Bolt11ReceiveVariableAmountViaJitChannelRequest,
+pub(crate) async fn handle_bolt11_receive_variable_amount_via_jit_channel_request(
+	context: Arc<Context>, request: Bolt11ReceiveVariableAmountViaJitChannelRequest,
 ) -> Result<Bolt11ReceiveVariableAmountViaJitChannelResponse, LdkServerError> {
 	let description = proto_to_bolt11_description(request.description)?;
 	let invoice = context.node.bolt11_payment().receive_variable_amount_via_jit_channel(

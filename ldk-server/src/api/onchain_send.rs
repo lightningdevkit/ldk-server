@@ -15,9 +15,10 @@ use ldk_server_protos::api::{OnchainSendRequest, OnchainSendResponse};
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_onchain_send_request(
-	context: Context, request: OnchainSendRequest,
+pub(crate) async fn handle_onchain_send_request(
+	context: Arc<Context>, request: OnchainSendRequest,
 ) -> Result<OnchainSendResponse, LdkServerError> {
 	let address = Address::from_str(&request.address)
 		.map_err(|_| ldk_node::NodeError::InvalidAddress)?

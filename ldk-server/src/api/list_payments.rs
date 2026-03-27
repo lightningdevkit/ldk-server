@@ -18,9 +18,10 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_list_payments_request(
-	context: Context, request: ListPaymentsRequest,
+pub(crate) async fn handle_list_payments_request(
+	context: Arc<Context>, request: ListPaymentsRequest,
 ) -> Result<ListPaymentsResponse, LdkServerError> {
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context

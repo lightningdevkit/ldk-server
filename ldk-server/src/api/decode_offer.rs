@@ -22,9 +22,10 @@ use ldk_server_protos::types::{BlindedPath, CurrencyAmount, OfferAmount, OfferQu
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_decode_offer_request(
-	_context: Context, request: DecodeOfferRequest,
+pub(crate) async fn handle_decode_offer_request(
+	_context: Arc<Context>, request: DecodeOfferRequest,
 ) -> Result<DecodeOfferResponse, LdkServerError> {
 	let offer =
 		Offer::from_str(request.offer.as_str()).map_err(|_| ldk_node::NodeError::InvalidOffer)?;

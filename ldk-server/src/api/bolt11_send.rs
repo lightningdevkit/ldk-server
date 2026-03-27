@@ -15,9 +15,10 @@ use ldk_server_protos::api::{Bolt11SendRequest, Bolt11SendResponse};
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_bolt11_send_request(
-	context: Context, request: Bolt11SendRequest,
+pub(crate) async fn handle_bolt11_send_request(
+	context: Arc<Context>, request: Bolt11SendRequest,
 ) -> Result<Bolt11SendResponse, LdkServerError> {
 	let invoice = Bolt11Invoice::from_str(request.invoice.as_str())
 		.map_err(|_| ldk_node::NodeError::InvalidInvoice)?;

@@ -12,9 +12,10 @@ use ldk_server_protos::api::{ListPeersRequest, ListPeersResponse};
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 use crate::util::proto_adapter::peer_to_proto;
+use std::sync::Arc;
 
-pub(crate) fn handle_list_peers_request(
-	context: Context, _request: ListPeersRequest,
+pub(crate) async fn handle_list_peers_request(
+	context: Arc<Context>, _request: ListPeersRequest,
 ) -> Result<ListPeersResponse, LdkServerError> {
 	let peers = context.node.list_peers().into_iter().map(peer_to_proto).collect();
 

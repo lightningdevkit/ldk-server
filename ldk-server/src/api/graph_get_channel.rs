@@ -13,9 +13,10 @@ use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
 use crate::util::proto_adapter::graph_channel_to_proto;
+use std::sync::Arc;
 
-pub(crate) fn handle_graph_get_channel_request(
-	context: Context, request: GraphGetChannelRequest,
+pub(crate) async fn handle_graph_get_channel_request(
+	context: Arc<Context>, request: GraphGetChannelRequest,
 ) -> Result<GraphGetChannelResponse, LdkServerError> {
 	let channel_info =
 		context.node.network_graph().channel(request.short_channel_id).ok_or_else(|| {

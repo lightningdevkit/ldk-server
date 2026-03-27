@@ -501,7 +501,8 @@ impl Service<Request<Incoming>> for NodeService {
 async fn handle_request<
 	T: Message + Default,
 	R: Message,
-	F: Fn(Context, T) -> Result<R, LdkServerError>,
+	Fut: Future<Output = Result<R, LdkServerError>> + Send,
+	F: Fn(Arc<Context>, T) -> Fut + Send,
 >(
 	context: Context, request: Request<Incoming>, auth_params: AuthParams, api_key: String,
 	handler: F,
@@ -536,7 +537,7 @@ async fn handle_request<
 	}
 
 	match T::decode(bytes) {
-		Ok(request) => match handler(context, request) {
+		Ok(request) => match handler(&context, request) {
 			Ok(response) => Ok(Response::builder()
 				.body(Full::new(Bytes::from(response.encode_to_vec())))
 				// unwrap safety: body only errors when previous chained calls failed.
