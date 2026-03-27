@@ -10,7 +10,7 @@
 use std::str::FromStr;
 
 use ldk_node::lightning::offers::offer::Offer;
-use ldk_server_protos::api::{Bolt12SendRequest, Bolt12SendResponse};
+use ldk_server_grpc::api::{Bolt12SendRequest, Bolt12SendResponse};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;

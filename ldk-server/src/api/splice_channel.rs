@@ -12,7 +12,7 @@ use std::str::FromStr;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Address;
 use ldk_node::UserChannelId;
-use ldk_server_protos::api::{
+use ldk_server_grpc::api::{
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
 };
 

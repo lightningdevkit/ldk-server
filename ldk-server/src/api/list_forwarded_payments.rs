@@ -8,8 +8,8 @@
 // licenses.
 
 use bytes::Bytes;
-use ldk_server_protos::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
-use ldk_server_protos::types::{ForwardedPayment, PageToken};
+use ldk_server_grpc::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
+use ldk_server_grpc::types::{ForwardedPayment, PageToken};
 use prost::Message;
 
 use crate::api::error::LdkServerError;

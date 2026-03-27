@@ -10,7 +10,7 @@
 use std::str::FromStr;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
-use ldk_server_protos::api::{SpontaneousSendRequest, SpontaneousSendResponse};
+use ldk_server_grpc::api::{SpontaneousSendRequest, SpontaneousSendResponse};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;

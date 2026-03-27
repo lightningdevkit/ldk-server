@@ -8,6 +8,7 @@
 // licenses.
 
 mod api;
+mod grpc;
 mod io;
 mod service;
 mod util;
@@ -29,9 +30,9 @@ use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
-use ldk_server_protos::events;
-use ldk_server_protos::events::{event_envelope, EventEnvelope};
-use ldk_server_protos::types::Payment;
+use ldk_server_grpc::events;
+use ldk_server_grpc::events::{event_envelope, EventEnvelope};
+use ldk_server_grpc::types::Payment;
 use log::{debug, error, info};
 use prost::Message;
 use tokio::net::TcpListener;

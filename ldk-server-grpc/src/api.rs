@@ -16,8 +16,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetNodeInfoRequest {}
-/// The response `content` for the `GetNodeInfo` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GetNodeInfo` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -88,8 +87,7 @@ pub struct GetNodeInfoResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainReceiveRequest {}
-/// The response `content` for the `OnchainReceive` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`..
+/// The response for the `OnchainReceive` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -128,8 +126,7 @@ pub struct OnchainSendRequest {
 	#[prost(uint64, optional, tag = "4")]
 	pub fee_rate_sat_per_vb: ::core::option::Option<u64>,
 }
-/// The response `content` for the `OnchainSend` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `OnchainSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -161,8 +158,7 @@ pub struct Bolt11ReceiveRequest {
 	#[prost(uint32, tag = "3")]
 	pub expiry_secs: u32,
 }
-/// The response `content` for the `Bolt11Receive` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11Receive` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -206,8 +202,7 @@ pub struct Bolt11ReceiveForHashRequest {
 	#[prost(string, tag = "4")]
 	pub payment_hash: ::prost::alloc::string::String,
 }
-/// The response `content` for the `Bolt11ReceiveForHash` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11ReceiveForHash` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -239,8 +234,7 @@ pub struct Bolt11ClaimForHashRequest {
 	#[prost(string, tag = "3")]
 	pub preimage: ::prost::alloc::string::String,
 }
-/// The response `content` for the `Bolt11ClaimForHash` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -258,8 +252,7 @@ pub struct Bolt11FailForHashRequest {
 	#[prost(string, tag = "1")]
 	pub payment_hash: ::prost::alloc::string::String,
 }
-/// The response `content` for the `Bolt11FailForHash` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -287,8 +280,7 @@ pub struct Bolt11ReceiveViaJitChannelRequest {
 	#[prost(uint64, optional, tag = "4")]
 	pub max_total_lsp_fee_limit_msat: ::core::option::Option<u64>,
 }
-/// The response `content` for the `Bolt11ReceiveViaJitChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11ReceiveViaJitChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -318,8 +310,7 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 	#[prost(uint64, optional, tag = "3")]
 	pub max_proportional_lsp_fee_limit_ppm_msat: ::core::option::Option<u64>,
 }
-/// The response `content` for the `Bolt11ReceiveVariableAmountViaJitChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11ReceiveVariableAmountViaJitChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -348,8 +339,7 @@ pub struct Bolt11SendRequest {
 	#[prost(message, optional, tag = "3")]
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
-/// The response `content` for the `Bolt11Send` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt11Send` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -383,8 +373,7 @@ pub struct Bolt12ReceiveRequest {
 	#[prost(uint64, optional, tag = "4")]
 	pub quantity: ::core::option::Option<u64>,
 }
-/// The response `content` for the `Bolt12Receive` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt12Receive` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -426,8 +415,7 @@ pub struct Bolt12SendRequest {
 	#[prost(message, optional, tag = "5")]
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
-/// The response `content` for the `Bolt12Send` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `Bolt12Send` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -454,8 +442,7 @@ pub struct SpontaneousSendRequest {
 	#[prost(message, optional, tag = "3")]
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
-/// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -492,8 +479,7 @@ pub struct OpenChannelRequest {
 	#[prost(bool, tag = "6")]
 	pub announce_channel: bool,
 }
-/// The response `content` for the `OpenChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -520,8 +506,7 @@ pub struct SpliceInRequest {
 	#[prost(uint64, tag = "3")]
 	pub splice_amount_sats: u64,
 }
-/// The response `content` for the `SpliceIn` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `SpliceIn` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -549,8 +534,7 @@ pub struct SpliceOutRequest {
 	#[prost(uint64, tag = "4")]
 	pub splice_amount_sats: u64,
 }
-/// The response `content` for the `SpliceOut` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `SpliceOut` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -577,8 +561,7 @@ pub struct UpdateChannelConfigRequest {
 	#[prost(message, optional, tag = "3")]
 	pub channel_config: ::core::option::Option<super::types::ChannelConfig>,
 }
-/// The response `content` for the `UpdateChannelConfig` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `UpdateChannelConfig` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -598,8 +581,7 @@ pub struct CloseChannelRequest {
 	#[prost(string, tag = "2")]
 	pub counterparty_node_id: ::prost::alloc::string::String,
 }
-/// The response `content` for the `CloseChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `CloseChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -622,8 +604,7 @@ pub struct ForceCloseChannelRequest {
 	#[prost(string, optional, tag = "3")]
 	pub force_close_reason: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// The response `content` for the `ForceCloseChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ForceCloseChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -636,8 +617,7 @@ pub struct ForceCloseChannelResponse {}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListChannelsRequest {}
-/// The response `content` for the `ListChannels` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ListChannels` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -658,8 +638,7 @@ pub struct GetPaymentDetailsRequest {
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
 }
-/// The response `content` for the `GetPaymentDetails` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GetPaymentDetails` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -686,8 +665,7 @@ pub struct ListPaymentsRequest {
 	#[prost(message, optional, tag = "1")]
 	pub page_token: ::core::option::Option<super::types::PageToken>,
 }
-/// The response `content` for the `ListPayments` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -728,8 +706,7 @@ pub struct ListForwardedPaymentsRequest {
 	#[prost(message, optional, tag = "1")]
 	pub page_token: ::core::option::Option<super::types::PageToken>,
 }
-/// The response `content` for the `ListForwardedPayments` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -765,8 +742,7 @@ pub struct SignMessageRequest {
 	#[prost(bytes = "bytes", tag = "1")]
 	pub message: ::prost::bytes::Bytes,
 }
-/// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `SignMessage` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -793,8 +769,7 @@ pub struct VerifySignatureRequest {
 	#[prost(string, tag = "3")]
 	pub public_key: ::prost::alloc::string::String,
 }
-/// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `VerifySignature` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -811,8 +786,7 @@ pub struct VerifySignatureResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportPathfindingScoresRequest {}
-/// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ExportPathfindingScores` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -829,8 +803,7 @@ pub struct ExportPathfindingScoresResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBalancesRequest {}
-/// The response `content` for the `GetBalances` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GetBalances` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -894,8 +867,7 @@ pub struct ConnectPeerRequest {
 	#[prost(bool, tag = "3")]
 	pub persist: bool,
 }
-/// The response `content` for the `ConnectPeer` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ConnectPeer` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -912,8 +884,7 @@ pub struct DisconnectPeerRequest {
 	#[prost(string, tag = "1")]
 	pub node_pubkey: ::prost::alloc::string::String,
 }
-/// The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `DisconnectPeer` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -926,8 +897,7 @@ pub struct DisconnectPeerResponse {}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPeersRequest {}
-/// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `ListPeers` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -944,8 +914,7 @@ pub struct ListPeersResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListChannelsRequest {}
-/// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GraphListChannels` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -966,8 +935,7 @@ pub struct GraphGetChannelRequest {
 	#[prost(uint64, tag = "1")]
 	pub short_channel_id: u64,
 }
-/// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GraphGetChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -984,8 +952,7 @@ pub struct GraphGetChannelResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListNodesRequest {}
-/// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GraphListNodes` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1016,8 +983,7 @@ pub struct UnifiedSendRequest {
 	#[prost(message, optional, tag = "3")]
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
-/// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `UnifiedSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1056,8 +1022,7 @@ pub struct GraphGetNodeRequest {
 	#[prost(string, tag = "1")]
 	pub node_id: ::prost::alloc::string::String,
 }
-/// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `GraphGetNode` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1078,8 +1043,7 @@ pub struct DecodeInvoiceRequest {
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
 }
-/// The response `content` for the `DecodeInvoice` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1142,8 +1106,7 @@ pub struct DecodeOfferRequest {
 	#[prost(string, tag = "1")]
 	pub offer: ::prost::alloc::string::String,
 }
-/// The response `content` for the `DecodeOffer` API, when HttpStatusCode is OK (200).
-/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+/// The response for the `DecodeOffer` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1186,3 +1149,9 @@ pub struct DecodeOfferResponse {
 	#[prost(bool, tag = "12")]
 	pub is_expired: bool,
 }
+/// Subscribe to a stream of server events.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeEventsRequest {}

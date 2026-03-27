@@ -12,7 +12,7 @@ use std::str::FromStr;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::ChannelConfig;
 use ldk_node::lightning::ln::msgs::SocketAddress;
-use ldk_server_protos::api::{OpenChannelRequest, OpenChannelResponse};
+use ldk_server_grpc::api::{OpenChannelRequest, OpenChannelResponse};
 
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;

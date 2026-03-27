@@ -20,13 +20,13 @@ use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_client::ldk_server_protos::api::{
+use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
 };
-use ldk_server_client::ldk_server_protos::types::{
+use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
 };
-use ldk_server_protos::events::event_envelope::Event;
+use ldk_server_grpc::events::event_envelope::Event;
 
 #[tokio::test]
 async fn test_cli_get_node_info() {

@@ -40,13 +40,13 @@ cargo clippy --all-features -- -D warnings -A clippy::drop_non_drop  # Lint (CI 
 ## Protocol Buffer Generation
 
 ```bash
-RUSTFLAGS="--cfg genproto" cargo build -p ldk-server-protos
+RUSTFLAGS="--cfg genproto" cargo build -p ldk-server-grpc
 cargo fmt --all
 ```
 
 ## Adding a New API Endpoint
 
-1. Define request/response messages in `ldk-server-protos/src/proto/api.proto`
+1. Define request/response messages in `ldk-server-grpc/src/proto/api.proto`
 2. Regenerate protos (see above)
 3. Create handler in `ldk-server/src/api/` (follow existing patterns)
 4. Add route in `ldk-server/src/service.rs`

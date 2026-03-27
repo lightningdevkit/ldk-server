@@ -10,7 +10,7 @@
 use std::str::FromStr;
 
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_protos::api::{Bolt11SendRequest, Bolt11SendResponse};
+use ldk_server_grpc::api::{Bolt11SendRequest, Bolt11SendResponse};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;

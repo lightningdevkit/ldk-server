@@ -11,8 +11,8 @@ use std::collections::HashMap;
 
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::routing::router::RouteParametersConfig;
-use ldk_server_protos::types::channel_config::MaxDustHtlcExposure;
-use ldk_server_protos::types::Bolt11Feature;
+use ldk_server_grpc::types::channel_config::MaxDustHtlcExposure;
+use ldk_server_grpc::types::Bolt11Feature;
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -54,7 +54,7 @@ pub(crate) mod update_channel_config;
 pub(crate) mod verify_signature;
 
 pub(crate) fn build_channel_config_from_proto(
-	default_config: ChannelConfig, proto_channel_config: ldk_server_protos::types::ChannelConfig,
+	default_config: ChannelConfig, proto_channel_config: ldk_server_grpc::types::ChannelConfig,
 ) -> Result<ChannelConfig, LdkServerError> {
 	let max_dust_htlc_exposure = proto_channel_config
 		.max_dust_htlc_exposure
@@ -98,7 +98,7 @@ pub(crate) fn build_channel_config_from_proto(
 }
 
 pub(crate) fn build_route_parameters_config_from_proto(
-	proto_route_params: Option<ldk_server_protos::types::RouteParametersConfig>,
+	proto_route_params: Option<ldk_server_grpc::types::RouteParametersConfig>,
 ) -> Result<Option<RouteParametersConfig>, LdkServerError> {
 	match proto_route_params {
 		Some(params) => {

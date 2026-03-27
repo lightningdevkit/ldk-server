@@ -16,8 +16,8 @@ use std::time::Duration;
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
-use ldk_server_client::ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
-use ldk_server_protos::api::{
+use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
+use ldk_server_grpc::api::{
 	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
 

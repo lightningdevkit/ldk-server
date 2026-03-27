@@ -8,7 +8,7 @@
 // licenses.
 
 use hex::DisplayHex;
-use ldk_server_protos::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
+use ldk_server_grpc::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;

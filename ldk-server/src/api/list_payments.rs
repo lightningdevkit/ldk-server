@@ -8,8 +8,8 @@
 // licenses.
 
 use bytes::Bytes;
-use ldk_server_protos::api::{ListPaymentsRequest, ListPaymentsResponse};
-use ldk_server_protos::types::{PageToken, Payment};
+use ldk_server_grpc::api::{ListPaymentsRequest, ListPaymentsResponse};
+use ldk_server_grpc::types::{PageToken, Payment};
 use prost::Message;
 
 use crate::api::error::LdkServerError;

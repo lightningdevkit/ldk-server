@@ -8,8 +8,8 @@
 // licenses.
 
 use ldk_node::payment::UnifiedPaymentResult;
-use ldk_server_protos::api::unified_send_response::PaymentResult;
-use ldk_server_protos::api::{UnifiedSendRequest, UnifiedSendResponse};
+use ldk_server_grpc::api::unified_send_response::PaymentResult;
+use ldk_server_grpc::api::{UnifiedSendRequest, UnifiedSendResponse};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;

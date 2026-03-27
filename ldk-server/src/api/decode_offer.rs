@@ -14,10 +14,10 @@ use ldk_node::lightning::bitcoin::blockdata::constants::ChainHash;
 use ldk_node::lightning::bitcoin::Network;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_types::features::OfferFeatures;
-use ldk_server_protos::api::{DecodeOfferRequest, DecodeOfferResponse};
-use ldk_server_protos::types::offer_amount::Amount;
-use ldk_server_protos::types::offer_quantity::Quantity;
-use ldk_server_protos::types::{BlindedPath, CurrencyAmount, OfferAmount, OfferQuantity};
+use ldk_server_grpc::api::{DecodeOfferRequest, DecodeOfferResponse};
+use ldk_server_grpc::types::offer_amount::Amount;
+use ldk_server_grpc::types::offer_quantity::Quantity;
+use ldk_server_grpc::types::{BlindedPath, CurrencyAmount, OfferAmount, OfferQuantity};
 
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;

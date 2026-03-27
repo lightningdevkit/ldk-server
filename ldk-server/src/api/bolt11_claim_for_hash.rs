@@ -10,7 +10,7 @@
 use hex::FromHex;
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning_types::payment::{PaymentHash, PaymentPreimage};
-use ldk_server_protos::api::{Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse};
+use ldk_server_grpc::api::{Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;

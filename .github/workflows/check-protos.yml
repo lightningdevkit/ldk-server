@@ -3,10 +3,10 @@ name: Check Generated Protos
 on:
   push:
     paths:
-      - 'ldk-server-protos/**'
+      - 'ldk-server-grpc/**'
   pull_request:
     paths:
-      - 'ldk-server-protos/**'
+      - 'ldk-server-grpc/**'
   workflow_dispatch:
 
 permissions:
@@ -28,12 +28,12 @@ jobs:
       - name: Install protoc
         run: sudo apt-get install -y protobuf-compiler
       - name: Generate protos
-        run: RUSTFLAGS="--cfg genproto" cargo build -p ldk-server-protos
+        run: RUSTFLAGS="--cfg genproto" cargo build -p ldk-server-grpc
       - name: Format generated code
         run: rustup component add rustfmt && cargo fmt --all
       - name: Check for differences
         run: |
           if ! git diff --exit-code; then
-            echo "error: Generated protobuf files are out of date. Run: RUSTFLAGS=\"--cfg genproto\" cargo build -p ldk-server-protos && cargo fmt --all"
+            echo "error: Generated protobuf files are out of date. Run: RUSTFLAGS=\"--cfg genproto\" cargo build -p ldk-server-grpc && cargo fmt --all"
             exit 1
           fi

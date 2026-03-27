@@ -9,7 +9,7 @@
 
 use hex::FromHex;
 use ldk_node::lightning_types::payment::PaymentHash;
-use ldk_server_protos::api::{Bolt11FailForHashRequest, Bolt11FailForHashResponse};
+use ldk_server_grpc::api::{Bolt11FailForHashRequest, Bolt11FailForHashResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;

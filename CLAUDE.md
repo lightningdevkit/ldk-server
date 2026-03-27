@@ -9,7 +9,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build commands, testing, code style, 
 - **ldk-server** - Main daemon server (entry point: `src/main.rs`)
 - **ldk-server-cli** - CLI client using clap
 - **ldk-server-client** - Reqwest-based client library
-- **ldk-server-protos** - Protocol buffer definitions and generated Rust code
+- **ldk-server-grpc** - Protocol buffer definitions, generated Rust code, and shared gRPC primitives
 
 ## Development Rules
 

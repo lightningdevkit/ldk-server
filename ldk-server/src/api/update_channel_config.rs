@@ -11,7 +11,7 @@ use std::str::FromStr;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
-use ldk_server_protos::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
+use ldk_server_grpc::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
 
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
