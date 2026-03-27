@@ -20,4 +20,4 @@ pub mod client;
 pub mod error;
 
 /// Request/Response structs required for interacting with the ldk-ldk-server-client.
-pub use ldk_server_protos;
+pub use ldk_server_grpc;

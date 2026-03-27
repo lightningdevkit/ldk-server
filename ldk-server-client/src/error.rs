@@ -41,16 +41,16 @@ impl fmt::Display for LdkServerError {
 /// Defines error codes for categorizing LDK server errors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LdkServerErrorCode {
-	/// Please refer to [`ldk_server_protos::error::ErrorCode::InvalidRequestError`].
+	/// Please refer to [`ldk_server_grpc::error::ErrorCode::InvalidRequestError`].
 	InvalidRequestError,
 
-	/// Please refer to [`ldk_server_protos::error::ErrorCode::AuthError`].
+	/// Please refer to [`ldk_server_grpc::error::ErrorCode::AuthError`].
 	AuthError,
 
-	/// Please refer to [`ldk_server_protos::error::ErrorCode::LightningError`].
+	/// Please refer to [`ldk_server_grpc::error::ErrorCode::LightningError`].
 	LightningError,
 
-	/// Please refer to [`ldk_server_protos::error::ErrorCode::InternalServerError`].
+	/// Please refer to [`ldk_server_grpc::error::ErrorCode::InternalServerError`].
 	InternalServerError,
 
 	/// There is an unknown error, it could be a client-side bug, unrecognized error-code, network error
