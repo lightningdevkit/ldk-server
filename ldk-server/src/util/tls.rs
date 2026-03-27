@@ -410,10 +410,12 @@ fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, Stri
 
 	let key = parse_pem_private_key(&key_pem)?;
 
-	ServerConfig::builder()
+	let mut config = ServerConfig::builder()
 		.with_no_client_auth()
 		.with_single_cert(certs, key)
-		.map_err(|e| format!("Failed to build TLS server config: {e}"))
+		.map_err(|e| format!("Failed to build TLS server config: {e}"))?;
+	config.alpn_protocols = vec![b"h2".to_vec()];
+	Ok(config)
 }
 
 #[cfg(test)]

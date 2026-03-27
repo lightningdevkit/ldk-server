@@ -9,7 +9,6 @@
 
 use bytes::Bytes;
 use hex::prelude::*;
-use hyper::StatusCode;
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
@@ -23,7 +22,6 @@ use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
 use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance, UserChannelId};
-use ldk_server_grpc::error::{ErrorCode, ErrorResponse};
 use ldk_server_grpc::types::confirmation_status::Status::{Confirmed, Unconfirmed};
 use ldk_server_grpc::types::lightning_balance::BalanceType::{
 	ClaimableAwaitingConfirmations, ClaimableOnChannelClose, ContentiousClaimable,
@@ -40,9 +38,7 @@ use ldk_server_grpc::types::{
 };
 
 use crate::api::error::LdkServerError;
-use crate::api::error::LdkServerErrorCode::{
-	AuthError, InternalServerError, InvalidRequestError, LightningError,
-};
+use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 
 pub(crate) fn peer_to_proto(peer: PeerDetails) -> Peer {
 	Peer {
@@ -513,24 +509,4 @@ pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_grpc::types::Gra
 		channels: node.channels,
 		announcement_info: node.announcement_info.map(graph_node_announcement_to_proto),
 	}
-}
-
-pub(crate) fn to_error_response(ldk_error: LdkServerError) -> (ErrorResponse, StatusCode) {
-	let error_code = match ldk_error.error_code {
-		InvalidRequestError => ErrorCode::InvalidRequestError,
-		AuthError => ErrorCode::AuthError,
-		LightningError => ErrorCode::LightningError,
-		InternalServerError => ErrorCode::InternalServerError,
-	} as i32;
-
-	let status = match ldk_error.error_code {
-		InvalidRequestError => StatusCode::BAD_REQUEST,
-		AuthError => StatusCode::UNAUTHORIZED,
-		LightningError => StatusCode::INTERNAL_SERVER_ERROR,
-		InternalServerError => StatusCode::INTERNAL_SERVER_ERROR,
-	};
-
-	let error_response = ErrorResponse { message: ldk_error.message, error_code };
-
-	(error_response, status)
 }
