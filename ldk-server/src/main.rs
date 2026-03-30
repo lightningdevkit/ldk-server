@@ -183,6 +183,14 @@ fn main() {
 		);
 	}
 
+	if let Some(tor_config) = config_file.tor_config {
+		let tor_config = ldk_node::config::TorConfig { proxy_address: tor_config.proxy_address };
+		if let Err(e) = builder.set_tor_config(tor_config) {
+			error!("Failed to configure Tor proxy: {e}");
+			std::process::exit(-1);
+		}
+	}
+
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
 	builder.set_liquidity_provider_lsps2(
