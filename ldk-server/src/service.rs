@@ -24,11 +24,12 @@ use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
 	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH,
 	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
-	GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH,
-	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
+	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
+	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use prost::Message;
 
@@ -72,6 +73,7 @@ use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::to_error_response;
 
 // Maximum request body size: 10 MB
@@ -83,13 +85,16 @@ pub struct NodeService {
 	node: Arc<Node>,
 	paginated_kv_store: Arc<dyn PaginatedKVStore>,
 	api_key: String,
+	metrics: Option<Arc<Metrics>>,
+	metrics_auth_header: Option<String>,
 }
 
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
+		metrics: Option<Arc<Metrics>>, metrics_auth_header: Option<String>,
 	) -> Self {
-		Self { node, paginated_kv_store, api_key }
+		Self { node, paginated_kv_store, api_key, metrics, metrics_auth_header }
 	}
 }
 
@@ -173,6 +178,42 @@ impl Service<Request<Incoming>> for NodeService {
 	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 	fn call(&self, req: Request<Incoming>) -> Self::Future {
+		// Handle metrics endpoint separately to bypass auth and return plain text
+		if req.method() == hyper::Method::GET
+			&& req.uri().path().len() > 1
+			&& &req.uri().path()[1..] == GET_METRICS_PATH
+		{
+			if let Some(expected_header) = &self.metrics_auth_header {
+				let auth_header = req.headers().get("Authorization").and_then(|h| h.to_str().ok());
+				if auth_header != Some(expected_header) {
+					return Box::pin(async move {
+						Ok(Response::builder()
+							.status(StatusCode::UNAUTHORIZED)
+							.header("WWW-Authenticate", "Basic realm=\"metrics\"")
+							.body(Full::new(Bytes::from("Unauthorized")))
+							.unwrap())
+					});
+				}
+			}
+
+			if let Some(metrics) = &self.metrics {
+				let metrics = Arc::clone(metrics);
+				return Box::pin(async move {
+					Ok(Response::builder()
+						.header("Content-Type", "text/plain")
+						.body(Full::new(Bytes::from(metrics.gather_metrics())))
+						.unwrap())
+				});
+			} else {
+				return Box::pin(async move {
+					Ok(Response::builder()
+						.status(StatusCode::NOT_FOUND)
+						.body(Full::new(Bytes::from("Not Found")))
+						.unwrap())
+				});
+			}
+		}
+
 		// Extract auth params from headers (validation happens after body is read)
 		let auth_params = match extract_auth_params(&req) {
 			Ok(params) => params,

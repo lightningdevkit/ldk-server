@@ -45,3 +45,4 @@ pub const GRAPH_LIST_NODES_PATH: &str = "GraphListNodes";
 pub const GRAPH_GET_NODE_PATH: &str = "GraphGetNode";
 pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
 pub const DECODE_OFFER_PATH: &str = "DecodeOffer";
+pub const GET_METRICS_PATH: &str = "metrics";

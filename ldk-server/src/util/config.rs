@@ -60,6 +60,10 @@ pub struct Config {
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
 	pub pathfinding_scores_source_url: Option<String>,
+	pub metrics_enabled: bool,
+	pub poll_metrics_interval: Option<u64>,
+	pub metrics_username: Option<String>,
+	pub metrics_password: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +109,10 @@ struct ConfigBuilder {
 	log_level: Option<String>,
 	log_file_path: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
+	metrics_enabled: Option<bool>,
+	poll_metrics_interval: Option<u64>,
+	metrics_username: Option<String>,
+	metrics_password: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -164,6 +172,14 @@ impl ConfigBuilder {
 				hosts: tls.hosts.unwrap_or_default(),
 			});
 		}
+
+		if let Some(metrics) = toml.metrics {
+			self.metrics_enabled = metrics.enabled.or(self.metrics_enabled);
+			self.poll_metrics_interval =
+				metrics.poll_metrics_interval.or(self.poll_metrics_interval);
+			self.metrics_username = metrics.username.or(self.metrics_username.clone());
+			self.metrics_password = metrics.password.or(self.metrics_password.clone());
+		}
 	}
 
 	fn merge_args(&mut self, args: &ArgsConfig) {
@@ -205,6 +221,22 @@ impl ConfigBuilder {
 
 		if let Some(pathfinding_scores_source_url) = &args.pathfinding_scores_source_url {
 			self.pathfinding_scores_source_url = Some(pathfinding_scores_source_url.clone());
+		}
+
+		if args.metrics_enabled {
+			self.metrics_enabled = Some(true);
+		}
+
+		if let Some(poll_metrics_interval) = &args.poll_metrics_interval {
+			self.poll_metrics_interval = Some(*poll_metrics_interval);
+		}
+
+		if let Some(metrics_username) = &args.metrics_username {
+			self.metrics_username = Some(metrics_username.clone());
+		}
+
+		if let Some(metrics_password) = &args.metrics_password {
+			self.metrics_password = Some(metrics_password.clone());
 		}
 	}
 
@@ -364,6 +396,20 @@ impl ConfigBuilder {
 
 		let pathfinding_scores_source_url = self.pathfinding_scores_source_url;
 
+		let metrics_enabled = self.metrics_enabled.unwrap_or(false);
+
+		let poll_metrics_interval = self.poll_metrics_interval;
+
+		let metrics_username = self.metrics_username;
+		let metrics_password = self.metrics_password;
+
+		if self.metrics_enabled.unwrap_or(false)
+			&& (metrics_username.is_some() != metrics_password.is_some())
+		{
+			return Err(io::Error::new(io::ErrorKind::InvalidInput,
+				"Both `metrics.username` and `metrics.password` must be set if authentication is used for metrics."));
+		}
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -381,6 +427,10 @@ impl ConfigBuilder {
 			log_level,
 			log_file_path: self.log_file_path,
 			pathfinding_scores_source_url,
+			metrics_enabled,
+			poll_metrics_interval,
+			metrics_username,
+			metrics_password,
 		})
 	}
 }
@@ -397,6 +447,7 @@ pub struct TomlConfig {
 	liquidity: Option<LiquidityConfig>,
 	log: Option<LogConfig>,
 	tls: Option<TomlTlsConfig>,
+	metrics: Option<MetricsTomlConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -454,6 +505,14 @@ struct TomlTlsConfig {
 	cert_path: Option<String>,
 	key_path: Option<String>,
 	hosts: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct MetricsTomlConfig {
+	enabled: Option<bool>,
+	poll_metrics_interval: Option<u64>,
+	username: Option<String>,
+	password: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -614,6 +673,35 @@ pub struct ArgsConfig {
 		help = "The external scores source that is merged into the local scoring system to improve routing."
 	)]
 	pathfinding_scores_source_url: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_METRICS_ENABLED",
+		help = "The option to enable the metrics endpoint. WARNING: This endpoint is unauthenticated."
+	)]
+	metrics_enabled: bool,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_POLL_METRICS_INTERVAL",
+		help = "The polling interval for metrics in seconds. Required when
+		metrics is enabled, but defaults to 60secs if unset."
+	)]
+	poll_metrics_interval: Option<u64>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_METRICS_USERNAME",
+		help = "The username required to access the metrics endpoint (Basic Auth)."
+	)]
+	metrics_username: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_METRICS_PASSWORD",
+		help = "The password required to access the metrics endpoint (Basic Auth)."
+	)]
+	metrics_password: Option<String>,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
@@ -747,6 +835,10 @@ mod tests {
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
+			metrics_enabled: false,
+			poll_metrics_interval: None,
+			metrics_username: None,
+			metrics_password: None,
 		}
 	}
 
@@ -763,6 +855,10 @@ mod tests {
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
 			pathfinding_scores_source_url: None,
+			metrics_enabled: false,
+			poll_metrics_interval: None,
+			metrics_username: None,
+			metrics_password: None,
 		}
 	}
 
@@ -839,6 +935,10 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: None,
+			metrics_enabled: false,
+			poll_metrics_interval: None,
+			metrics_username: None,
+			metrics_password: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -857,6 +957,7 @@ mod tests {
 		assert_eq!(config.log_level, expected.log_level);
 		assert_eq!(config.log_file_path, expected.log_file_path);
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 
 		// Test case where only electrum is set
 
@@ -1162,6 +1263,10 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
+			metrics_enabled: false,
+			poll_metrics_interval: None,
+			metrics_username: None,
+			metrics_password: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1175,6 +1280,7 @@ mod tests {
 		assert_eq!(config.rabbitmq_exchange_name, expected.rabbitmq_exchange_name);
 		assert!(config.lsps2_service_config.is_none());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 	}
 
 	#[test]
@@ -1273,6 +1379,10 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
+			metrics_enabled: false,
+			poll_metrics_interval: None,
+			metrics_username: None,
+			metrics_password: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1288,6 +1398,7 @@ mod tests {
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 	}
 
 	#[test]
@@ -1339,5 +1450,98 @@ mod tests {
 			config.rest_service_addr,
 			SocketAddr::from_str(DEFAULT_REST_SERVICE_ADDRESS).unwrap()
 		);
+	}
+
+	#[test]
+	fn test_metrics_enabled_config() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_metrics_enabled.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			rest_service_address = "127.0.0.1:3002"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "user"
+			rpc_password = "password"
+
+			[metrics]
+			enabled = true
+			username = "admin"
+			password = "password123"
+
+			[rabbitmq]
+			connection_string = "rabbitmq_connection_string"
+			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_service]
+			advertise_service = false
+			channel_opening_fee_ppm = 1000            # 0.1% fee
+			channel_over_provisioning_ppm = 500000    # 50% extra capacity
+			min_channel_opening_fee_msat = 10000000   # 10,000 satoshis
+			min_channel_lifetime = 4320               # ~30 days
+			max_client_to_self_delay = 1440           # ~10 days
+			min_payment_size_msat = 10000000          # 10,000 satoshis
+			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = true
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert!(config.metrics_enabled);
+		assert!(config.metrics_username.is_some());
+		assert!(config.metrics_password.is_some());
+	}
+
+	#[test]
+	fn test_metrics_enabled_fails_with_invalid_auth() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_metrics_enabled_with_auth.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			rest_service_address = "127.0.0.1:3002"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "user"
+			rpc_password = "password"
+
+			[metrics]
+			enabled = true
+			username = "admin"
+
+			[rabbitmq]
+			connection_string = "rabbitmq_connection_string"
+			exchange_name = "rabbitmq_exchange_name"
+
+			[liquidity.lsps2_service]
+			advertise_service = false
+			channel_opening_fee_ppm = 1000            # 0.1% fee
+			channel_over_provisioning_ppm = 500000    # 50% extra capacity
+			min_channel_opening_fee_msat = 10000000   # 10,000 satoshis
+			min_channel_lifetime = 4320               # ~30 days
+			max_client_to_self_delay = 1440           # ~10 days
+			min_payment_size_msat = 10000000          # 10,000 satoshis
+			max_payment_size_msat = 25000000000       # 0.25 BTC
+			client_trusts_lsp = true
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let result = load_config(&args_config);
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 	}
 }

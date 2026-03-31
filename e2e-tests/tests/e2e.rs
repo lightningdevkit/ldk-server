@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, LdkServerHandle, RabbitMqEventConsumer, TestBitcoind,
+	wait_for_onchain_balance, LdkServerConfig, LdkServerHandle, RabbitMqEventConsumer,
+	TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -994,4 +995,133 @@ async fn test_hodl_invoice_fail() {
 		"Expected PaymentFailed on sender after hodl rejection, got events: {:?}",
 		events_a.iter().map(|e| &e.event).collect::<Vec<_>>()
 	);
+}
+
+#[tokio::test]
+async fn test_metrics_endpoint() {
+	let bitcoind = TestBitcoind::new();
+
+	// Test with metrics enabled
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let client = server_a.client();
+	let metrics_result = client.get_metrics().await;
+
+	assert!(metrics_result.is_ok(), "Expected metrics to succeed when enabled");
+	let metrics = metrics_result.unwrap();
+
+	// Verify initial state
+	assert!(metrics.contains("ldk_server_total_peers_count 0"));
+	assert!(metrics.contains("ldk_server_total_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_successful_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_pending_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_failed_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_public_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_private_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_onchain_balance_sats 0"));
+	assert!(metrics.contains("ldk_server_spendable_onchain_balance_sats 0"));
+	assert!(metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
+	assert!(metrics.contains("ldk_server_total_lightning_balance_sats 0"));
+
+	// Set up channel and make a payment to trigger metrics update
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Poll for channel, peer and balance metrics.
+	let timeout = Duration::from_secs(10);
+	let start = std::time::Instant::now();
+	loop {
+		let metrics = client.get_metrics().await.unwrap();
+		if metrics.contains("ldk_server_total_peers_count 1")
+			&& metrics.contains("ldk_server_total_channels_count 1")
+			&& metrics.contains("ldk_server_total_public_channels_count 1")
+			&& metrics.contains("ldk_server_total_payments_count 2")
+			&& !metrics.contains("ldk_server_total_lightning_balance_sats 0")
+			&& !metrics.contains("ldk_server_total_onchain_balance_sats 0")
+			&& !metrics.contains("ldk_server_spendable_onchain_balance_sats 0")
+			&& !metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0")
+		{
+			break;
+		}
+
+		if start.elapsed() > timeout {
+			let current_metrics = client.get_metrics().await.unwrap();
+			panic!(
+				"Timed out waiting for channel, peer and balance metrics to update. Current metrics:\n{}",
+				current_metrics
+			);
+		}
+		tokio::time::sleep(Duration::from_secs(1)).await;
+	}
+
+	let invoice_resp = server_b
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(10_000_000),
+			description: Some(Bolt11InvoiceDescription {
+				kind: Some(bolt11_invoice_description::Kind::Direct("metrics test".to_string())),
+			}),
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+
+	run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
+
+	// Wait to receive the PaymentSuccessful event and update metrics
+	let timeout = Duration::from_secs(30);
+	let start = std::time::Instant::now();
+	loop {
+		let metrics = client.get_metrics().await.unwrap();
+		if metrics.contains("ldk_server_total_successful_payments_count 1")
+			&& !metrics.contains("ldk_server_total_lightning_balance_sats 0")
+			&& !metrics.contains("ldk_server_total_onchain_balance_sats 0")
+			&& !metrics.contains("ldk_server_spendable_onchain_balance_sats 0")
+			&& !metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0")
+		{
+			break;
+		}
+		if start.elapsed() > timeout {
+			panic!("Timed out waiting for payment metrics to update");
+		}
+		tokio::time::sleep(Duration::from_millis(500)).await;
+	}
+}
+
+#[tokio::test]
+async fn test_metrics_endpoint_with_auth() {
+	let bitcoind = TestBitcoind::new();
+
+	let username = "admin";
+	let password = "password123";
+
+	let config =
+		LdkServerConfig { metrics_auth: Some((username.to_string(), password.to_string())) };
+
+	let server = LdkServerHandle::start_with_config(&bitcoind, config).await;
+	let client = server.client();
+
+	// Should fail because auth is provided in the config
+	let result = client.get_metrics().await;
+	assert!(result.is_err(), "Expected failure without credentials");
+
+	// Request has the correct auth, so it should succeed
+	let result = client.get_metrics_with_auth(Some(username), Some(password)).await;
+
+	assert!(result.is_ok(), "Expected success with correct credentials");
+	let metrics = result.unwrap();
+
+	assert!(metrics.contains("ldk_server_total_peers_count 0"));
+	assert!(metrics.contains("ldk_server_total_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_successful_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_pending_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_failed_payments_count 0"));
+	assert!(metrics.contains("ldk_server_total_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_public_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_private_channels_count 0"));
+	assert!(metrics.contains("ldk_server_total_onchain_balance_sats 0"));
+	assert!(metrics.contains("ldk_server_spendable_onchain_balance_sats 0"));
+	assert!(metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
+	assert!(metrics.contains("ldk_server_total_lightning_balance_sats 0"));
 }

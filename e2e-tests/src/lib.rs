@@ -97,10 +97,24 @@ pub struct LdkServerHandle {
 	client: LdkServerClient,
 }
 
+pub struct LdkServerConfig {
+	pub metrics_auth: Option<(String, String)>,
+}
+
+impl Default for LdkServerConfig {
+	fn default() -> Self {
+		Self { metrics_auth: None }
+	}
+}
+
 impl LdkServerHandle {
 	/// Starts a new ldk-server instance against the given bitcoind.
 	/// Waits until the server is ready to accept requests.
 	pub async fn start(bitcoind: &TestBitcoind) -> Self {
+		Self::start_with_config(bitcoind, LdkServerConfig::default()).await
+	}
+
+	pub async fn start_with_config(bitcoind: &TestBitcoind, config: LdkServerConfig) -> Self {
 		#[allow(deprecated)]
 		let storage_dir = tempfile::tempdir().unwrap().into_path();
 		let rest_port = find_available_port();
@@ -110,6 +124,12 @@ impl LdkServerHandle {
 		let rpc_address = format!("{rpc_host}:{rpc_port_num}");
 
 		let exchange_name = format!("e2e_test_exchange_{rest_port}");
+
+		let metrics_auth_config = if let Some((user, pass)) = config.metrics_auth {
+			format!("username = \"{}\"\npassword = \"{}\"", user, pass)
+		} else {
+			String::new()
+		};
 
 		let config_content = format!(
 			r#"[node]
@@ -140,6 +160,11 @@ max_client_to_self_delay = 1024
 min_payment_size_msat = 0
 max_payment_size_msat = 1000000000
 client_trusts_lsp = true
+
+[metrics]
+enabled = true
+poll_metrics_interval = 1
+{metrics_auth_config}
 "#,
 			storage_dir = storage_dir.display(),
 		);

@@ -16,8 +16,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use clap::Parser;
 use hex::DisplayHex;
 use hyper::server::conn::http1;
@@ -50,6 +52,7 @@ use crate::io::persist::{
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
+use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
@@ -273,6 +276,37 @@ fn main() {
 			}
 		};
 		let event_node = Arc::clone(&node);
+
+		let metrics: Option<Arc<Metrics>> = if config_file.metrics_enabled {
+			let poll_metrics_interval = Duration::from_secs(config_file.poll_metrics_interval.unwrap_or(60));
+			let metrics_node = Arc::clone(&node);
+			let mut interval = tokio::time::interval(poll_metrics_interval);
+			let metrics = Arc::new(Metrics::new());
+			let metrics_bg = Arc::clone(&metrics);
+
+			// Initialize metrics that are event-driven to ensure they start with correct values from persistence
+			metrics.initialize_payment_metrics(&metrics_node);
+
+			runtime.spawn(async move {
+				loop {
+					interval.tick().await;
+					metrics_bg.update_all_pollable_metrics(&metrics_node);
+				}
+			});
+			Some(metrics)
+		} else {
+			None
+		};
+
+		let metrics_auth_header = if let (Some(username), Some(password)) =
+			(config_file.metrics_username.as_ref(), config_file.metrics_password.as_ref())
+		{
+			let auth = format!("{}:{}", username, password);
+			Some(format!("Basic {}", BASE64_STANDARD.encode(auth)))
+		} else {
+			None
+		};
+
 		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
 			.await
 			.expect("Failed to bind listening port");
@@ -313,7 +347,24 @@ fn main() {
 							if let Err(e) = event_node.event_handled() {
 								error!("Failed to mark event as handled: {e}");
 							}
+
+							if let Some(metrics) = &metrics {
+								metrics.update_channels_count(false);
+							}
 						},
+						Event::ChannelClosed { channel_id, counterparty_node_id, .. } => {
+							info!(
+								"CHANNEL_CLOSED: {} from counterparty {:?}",
+								channel_id, counterparty_node_id
+							);
+							if let Err(e) = event_node.event_handled() {
+								error!("Failed to mark event as handled: {e}");
+							}
+
+							if let Some(metrics) = &metrics {
+								metrics.update_channels_count(true);
+							}
+						}
 						Event::PaymentReceived { payment_id, payment_hash, amount_msat, .. } => {
 							info!(
 								"PAYMENT_RECEIVED: with id {:?}, hash {}, amount_msat {}",
@@ -328,6 +379,10 @@ fn main() {
 								&event_node,
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
+
+							if let Some(metrics) = &metrics {
+								metrics.update_all_balances(&event_node);
+							}
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -339,6 +394,11 @@ fn main() {
 								&event_node,
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
+
+							if let Some(metrics) = &metrics {
+								metrics.update_payments_count(true);
+								metrics.update_all_balances(&event_node);
+							}
 						},
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
@@ -350,6 +410,10 @@ fn main() {
 								&event_node,
 								Arc::clone(&event_publisher),
 								Arc::clone(&paginated_store)).await;
+
+							if let Some(metrics) = &metrics {
+								metrics.update_payments_count(false);
+							}
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
 							publish_event_and_upsert_payment(&payment_id,
@@ -435,7 +499,13 @@ fn main() {
 				res = rest_svc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
-							let node_service = NodeService::new(Arc::clone(&node), Arc::clone(&paginated_store), api_key.clone());
+							let node_service = NodeService::new(
+								Arc::clone(&node),
+								Arc::clone(&paginated_store),
+								api_key.clone(),
+								metrics.clone(),
+								metrics_auth_header.clone(),
+							);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
