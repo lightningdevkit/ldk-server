@@ -143,7 +143,7 @@ async fn test_cli_bolt11_receive() {
 
 	let invoice: Bolt11Invoice = invoice_str.parse().unwrap();
 	let payment_hash = sha256::Hash::from_str(output["payment_hash"].as_str().unwrap()).unwrap();
-	assert_eq!(*invoice.payment_hash(), payment_hash);
+	assert_eq!(invoice.payment_hash().0, payment_hash.to_byte_array());
 	let payment_secret = <[u8; 32]>::from_hex(output["payment_secret"].as_str().unwrap()).unwrap();
 	assert_eq!(invoice.payment_secret().0, payment_secret);
 }
