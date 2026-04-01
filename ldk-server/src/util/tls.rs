@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::net::IpAddr;
+use std::os::unix::fs::PermissionsExt;
 
 use base64::Engine;
 use ring::rand::SystemRandom;
@@ -134,6 +135,8 @@ fn generate_self_signed_cert(
 
 	fs::write(key_path, &key_pem)
 		.map_err(|e| format!("Failed to write TLS key to '{key_path}': {e}"))?;
+	fs::set_permissions(key_path, fs::Permissions::from_mode(0o400))
+		.map_err(|e| format!("Failed to set TLS key permissions for '{key_path}': {e}"))?;
 	fs::write(cert_path, &cert_pem)
 		.map_err(|e| format!("Failed to write TLS certificate to '{cert_path}': {e}"))?;
 
