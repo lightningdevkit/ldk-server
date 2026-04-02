@@ -96,3 +96,8 @@ poll_metrics_interval = 60       # The polling interval for metrics in seconds. 
 # The auth details below are optional, but uncommenting the fields means enabling basic auth, so valid fields must be supplied.
 #username = ""               # The username required to access the metrics endpoint (Basic Auth).
 #password = ""               # The password required to access the metrics endpoint (Basic Auth).
+
+# Tor Config
+[tor]
+# Only connections to OnionV3 peers will be made via this proxy; other connections (IPv4 peers, Electrum server) will not be routed over Tor.
+#proxy_address = ""      # Tor daemon SOCKS proxy address.

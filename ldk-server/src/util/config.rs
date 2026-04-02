@@ -64,6 +64,7 @@ pub struct Config {
 	pub poll_metrics_interval: Option<u64>,
 	pub metrics_username: Option<String>,
 	pub metrics_password: Option<String>,
+	pub tor_config: Option<TorConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +86,11 @@ pub enum ChainSource {
 	Rpc { rpc_host: String, rpc_port: u16, rpc_user: String, rpc_password: String },
 	Electrum { server_url: String },
 	Esplora { server_url: String },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct TorConfig {
+	pub proxy_address: SocketAddress,
 }
 
 /// A builder for `Config`.
@@ -113,6 +119,7 @@ struct ConfigBuilder {
 	poll_metrics_interval: Option<u64>,
 	metrics_username: Option<String>,
 	metrics_password: Option<String>,
+	tor_proxy_address: Option<String>,
 }
 
 impl ConfigBuilder {
@@ -180,6 +187,10 @@ impl ConfigBuilder {
 			self.metrics_username = metrics.username.or(self.metrics_username.clone());
 			self.metrics_password = metrics.password.or(self.metrics_password.clone());
 		}
+
+		if let Some(tor) = toml.tor {
+			self.tor_proxy_address = Some(tor.proxy_address)
+		}
 	}
 
 	fn merge_args(&mut self, args: &ArgsConfig) {
@@ -237,6 +248,10 @@ impl ConfigBuilder {
 
 		if let Some(metrics_password) = &args.metrics_password {
 			self.metrics_password = Some(metrics_password.clone());
+		}
+
+		if let Some(tor_proxy_address) = &args.tor_proxy_address {
+			self.tor_proxy_address = Some(tor_proxy_address.clone());
 		}
 	}
 
@@ -410,6 +425,18 @@ impl ConfigBuilder {
 				"Both `metrics.username` and `metrics.password` must be set if authentication is used for metrics."));
 		}
 
+		let tor_proxy_address: Option<SocketAddress> = self
+			.tor_proxy_address
+			.map(|addrs| {
+				SocketAddress::from_str(&addrs).map_err(|e| {
+					io::Error::new(
+						io::ErrorKind::InvalidInput,
+						format!("Invalid proxy address configured: {}", e),
+					)
+				})
+			})
+			.transpose()?;
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -431,6 +458,7 @@ impl ConfigBuilder {
 			poll_metrics_interval,
 			metrics_username,
 			metrics_password,
+			tor_config: tor_proxy_address.map(|proxy_address| TorConfig { proxy_address }),
 		})
 	}
 }
@@ -448,6 +476,7 @@ pub struct TomlConfig {
 	log: Option<LogConfig>,
 	tls: Option<TomlTlsConfig>,
 	metrics: Option<MetricsTomlConfig>,
+	tor: Option<TomlTorConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -513,6 +542,11 @@ struct MetricsTomlConfig {
 	poll_metrics_interval: Option<u64>,
 	username: Option<String>,
 	password: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct TomlTorConfig {
+	proxy_address: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -702,6 +736,13 @@ pub struct ArgsConfig {
 		help = "The password required to access the metrics endpoint (Basic Auth)."
 	)]
 	metrics_password: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_TOR_PROXY_ADDRESS",
+		help = "Tor daemon SOCKS proxy address. Only connections to OnionV3 peers will be made via this proxy; other connections (IPv4 peers, Electrum server) will not be routed over Tor."
+	)]
+	tor_proxy_address: Option<String>,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
@@ -820,6 +861,9 @@ mod tests {
 				min_payment_size_msat = 10000000          # 10,000 satoshis
 				max_payment_size_msat = 25000000000       # 0.25 BTC
 				client_trusts_lsp = true
+
+				[tor]
+				proxy_address = "127.0.0.1:9050"
 				"#;
 
 	fn default_args_config() -> ArgsConfig {
@@ -839,6 +883,7 @@ mod tests {
 			poll_metrics_interval: None,
 			metrics_username: None,
 			metrics_password: None,
+			tor_proxy_address: None,
 		}
 	}
 
@@ -859,6 +904,7 @@ mod tests {
 			poll_metrics_interval: None,
 			metrics_username: None,
 			metrics_password: None,
+			tor_proxy_address: None,
 		}
 	}
 
@@ -939,6 +985,9 @@ mod tests {
 			poll_metrics_interval: None,
 			metrics_username: None,
 			metrics_password: None,
+			tor_config: Some(TorConfig {
+				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
+			}),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -958,6 +1007,7 @@ mod tests {
 		assert_eq!(config.log_file_path, expected.log_file_path);
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
+		assert_eq!(config.tor_config, expected.tor_config);
 
 		// Test case where only electrum is set
 
@@ -1267,6 +1317,7 @@ mod tests {
 			poll_metrics_interval: None,
 			metrics_username: None,
 			metrics_password: None,
+			tor_config: None,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1281,6 +1332,7 @@ mod tests {
 		assert!(config.lsps2_service_config.is_none());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
+		assert_eq!(config.tor_config, expected.tor_config);
 	}
 
 	#[test]
@@ -1383,6 +1435,9 @@ mod tests {
 			poll_metrics_interval: None,
 			metrics_username: None,
 			metrics_password: None,
+			tor_config: Some(TorConfig {
+				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
+			}),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1399,6 +1454,7 @@ mod tests {
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
+		assert_eq!(config.tor_config, expected.tor_config);
 	}
 
 	#[test]
