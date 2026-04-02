@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "9e0a8124cbe2c00a06fc5c880113213d4b36d8aa" }
+ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "3aef2b39265ae60b29f4d60de8291895f12eb880" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
 http-body-util = { version = "0.1", default-features = false }
