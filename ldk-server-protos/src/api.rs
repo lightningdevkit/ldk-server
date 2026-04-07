@@ -11,14 +11,14 @@
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.node_id>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.status>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetNodeInfoRequest {}
 /// The response `content` for the `GetNodeInfo` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -83,14 +83,14 @@ pub struct GetNodeInfoResponse {
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainReceiveRequest {}
 /// The response `content` for the `OnchainReceive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`..
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -100,7 +100,7 @@ pub struct OnchainReceiveResponse {
 	pub address: ::prost::alloc::string::String,
 }
 /// Send an on-chain payment to the given address.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -130,7 +130,7 @@ pub struct OnchainSendRequest {
 }
 /// The response `content` for the `OnchainSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -145,7 +145,7 @@ pub struct OnchainSendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -163,7 +163,7 @@ pub struct Bolt11ReceiveRequest {
 }
 /// The response `content` for the `Bolt11Receive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -187,7 +187,7 @@ pub struct Bolt11ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -208,7 +208,7 @@ pub struct Bolt11ReceiveForHashRequest {
 }
 /// The response `content` for the `Bolt11ReceiveForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -222,7 +222,7 @@ pub struct Bolt11ReceiveForHashResponse {
 /// Manually claim a payment for a given payment hash with the corresponding preimage.
 /// This should be used to claim payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -241,7 +241,7 @@ pub struct Bolt11ClaimForHashRequest {
 }
 /// The response `content` for the `Bolt11ClaimForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -249,7 +249,7 @@ pub struct Bolt11ClaimForHashResponse {}
 /// Manually fail a payment for a given payment hash.
 /// This should be used to reject payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -260,7 +260,7 @@ pub struct Bolt11FailForHashRequest {
 }
 /// The response `content` for the `Bolt11FailForHash` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -268,7 +268,7 @@ pub struct Bolt11FailForHashResponse {}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 /// LSPS2 just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -289,7 +289,7 @@ pub struct Bolt11ReceiveViaJitChannelRequest {
 }
 /// The response `content` for the `Bolt11ReceiveViaJitChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -301,7 +301,7 @@ pub struct Bolt11ReceiveViaJitChannelResponse {
 /// Return a variable-amount BOLT11 invoice that can be used to receive a payment via an LSPS2
 /// just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -320,7 +320,7 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 }
 /// The response `content` for the `Bolt11ReceiveVariableAmountViaJitChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -331,7 +331,7 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
 }
 /// Send a payment for a BOLT11 invoice.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -350,7 +350,7 @@ pub struct Bolt11SendRequest {
 }
 /// The response `content` for the `Bolt11Send` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -364,7 +364,7 @@ pub struct Bolt11SendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive_variable_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -385,7 +385,7 @@ pub struct Bolt12ReceiveRequest {
 }
 /// The response `content` for the `Bolt12Receive` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -403,7 +403,7 @@ pub struct Bolt12ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send_using_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -428,7 +428,7 @@ pub struct Bolt12SendRequest {
 }
 /// The response `content` for the `Bolt12Send` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -439,7 +439,7 @@ pub struct Bolt12SendResponse {
 }
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -456,7 +456,7 @@ pub struct SpontaneousSendRequest {
 }
 /// The response `content` for the `SpontaneousSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -467,7 +467,7 @@ pub struct SpontaneousSendResponse {
 }
 /// Creates a new outbound channel to the given remote node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect_open_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -494,7 +494,7 @@ pub struct OpenChannelRequest {
 }
 /// The response `content` for the `OpenChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -505,7 +505,7 @@ pub struct OpenChannelResponse {
 }
 /// Increases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_in>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -522,14 +522,14 @@ pub struct SpliceInRequest {
 }
 /// The response `content` for the `SpliceIn` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpliceInResponse {}
 /// Decreases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_out>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -551,7 +551,7 @@ pub struct SpliceOutRequest {
 }
 /// The response `content` for the `SpliceOut` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -562,7 +562,7 @@ pub struct SpliceOutResponse {
 }
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -579,14 +579,14 @@ pub struct UpdateChannelConfigRequest {
 }
 /// The response `content` for the `UpdateChannelConfig` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateChannelConfigResponse {}
 /// Closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.close_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -600,14 +600,14 @@ pub struct CloseChannelRequest {
 }
 /// The response `content` for the `CloseChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CloseChannelResponse {}
 /// Force closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.force_close_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -624,21 +624,21 @@ pub struct ForceCloseChannelRequest {
 }
 /// The response `content` for the `ForceCloseChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForceCloseChannelResponse {}
 /// Returns a list of known channels.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_channels>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListChannelsRequest {}
 /// The response `content` for the `ListChannels` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -649,7 +649,7 @@ pub struct ListChannelsResponse {
 }
 /// Returns payment details for a given payment_id.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.payment>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -660,7 +660,7 @@ pub struct GetPaymentDetailsRequest {
 }
 /// The response `content` for the `GetPaymentDetails` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -672,7 +672,7 @@ pub struct GetPaymentDetailsResponse {
 }
 /// Retrieves list of all payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_payments>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -688,7 +688,7 @@ pub struct ListPaymentsRequest {
 }
 /// The response `content` for the `ListPayments` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -714,7 +714,7 @@ pub struct ListPaymentsResponse {
 }
 /// Retrieves list of all forwarded payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -730,7 +730,7 @@ pub struct ListForwardedPaymentsRequest {
 }
 /// The response `content` for the `ListForwardedPayments` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -756,7 +756,7 @@ pub struct ListForwardedPaymentsResponse {
 }
 /// Sign a message with the node's secret key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -767,7 +767,7 @@ pub struct SignMessageRequest {
 }
 /// The response `content` for the `SignMessage` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -778,7 +778,7 @@ pub struct SignMessageResponse {
 }
 /// Verify a signature against a message and public key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -795,7 +795,7 @@ pub struct VerifySignatureRequest {
 }
 /// The response `content` for the `VerifySignature` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -806,14 +806,14 @@ pub struct VerifySignatureResponse {
 }
 /// Export the pathfinding scores used by the router.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportPathfindingScoresRequest {}
 /// The response `content` for the `ExportPathfindingScores` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -824,14 +824,14 @@ pub struct ExportPathfindingScoresResponse {
 }
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBalancesRequest {}
 /// The response `content` for the `GetBalances` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -877,7 +877,7 @@ pub struct GetBalancesResponse {
 }
 /// Connect to a peer on the Lightning Network.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -896,14 +896,14 @@ pub struct ConnectPeerRequest {
 }
 /// The response `content` for the `ConnectPeer` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectPeerResponse {}
 /// Disconnect from a peer and remove it from the peer store.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.disconnect>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -914,21 +914,21 @@ pub struct DisconnectPeerRequest {
 }
 /// The response `content` for the `DisconnectPeer` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisconnectPeerResponse {}
 /// Returns a list of peers.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPeersRequest {}
 /// The response `content` for the `ListPeers` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -939,14 +939,14 @@ pub struct ListPeersResponse {
 }
 /// Returns a list of all known short channel IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListChannelsRequest {}
 /// The response `content` for the `GraphListChannels` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -957,7 +957,7 @@ pub struct GraphListChannelsResponse {
 }
 /// Returns information on a channel with the given short channel ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -968,7 +968,7 @@ pub struct GraphGetChannelRequest {
 }
 /// The response `content` for the `GraphGetChannel` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -979,14 +979,14 @@ pub struct GraphGetChannelResponse {
 }
 /// Returns a list of all known node IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListNodesRequest {}
 /// The response `content` for the `GraphListNodes` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1001,7 +1001,7 @@ pub struct GraphListNodesResponse {
 /// has an offer and/or invoice, it will try to pay the offer first followed by the invoice.
 /// If they both fail, the on-chain payment will be paid.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.UnifiedPayment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1018,7 +1018,7 @@ pub struct UnifiedSendRequest {
 }
 /// The response `content` for the `UnifiedSend` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1029,7 +1029,7 @@ pub struct UnifiedSendResponse {
 }
 /// Nested message and enum types in `UnifiedSendResponse`.
 pub mod unified_send_response {
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 	#[allow(clippy::derive_partial_eq_without_eq)]
 	#[derive(Clone, PartialEq, ::prost::Oneof)]
@@ -1047,7 +1047,7 @@ pub mod unified_send_response {
 }
 /// Returns information on a node with the given ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node>
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1058,7 +1058,7 @@ pub struct GraphGetNodeRequest {
 }
 /// The response `content` for the `GraphGetNode` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1069,7 +1069,7 @@ pub struct GraphGetNodeResponse {
 }
 /// Decode a BOLT11 invoice and return its parsed fields.
 /// This does not require a running node — it only parses the invoice string.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1080,7 +1080,7 @@ pub struct DecodeInvoiceRequest {
 }
 /// The response `content` for the `DecodeInvoice` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1133,7 +1133,7 @@ pub struct DecodeInvoiceResponse {
 }
 /// Decode a BOLT12 offer and return its parsed fields.
 /// This does not require a running node — it only parses the offer string.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1144,7 +1144,7 @@ pub struct DecodeOfferRequest {
 }
 /// The response `content` for the `DecodeOffer` API, when HttpStatusCode is OK (200).
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
