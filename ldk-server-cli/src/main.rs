@@ -779,6 +779,11 @@ async fn main() {
 			);
 		},
 		Commands::Bolt12Receive { description, amount, expiry_secs, quantity } => {
+			if quantity.is_some() && amount.is_none() {
+				handle_error_msg(
+					"quantity can only be set for fixed-amount offers (amount must be provided)",
+				);
+			}
 			let amount_msat = amount.map(|a| a.to_msat());
 			handle_response_result::<_, Bolt12ReceiveResponse>(
 				client
