@@ -38,7 +38,7 @@ fn generate_protos() {
 		.bytes(&["."])
 		.type_attribute(
 			".",
-			"#[cfg_attr(feature = \"serde\", derive(serde::Serialize, serde::Deserialize))]",
+			"#[cfg_attr(feature = \"serde\", derive(serde::Serialize))]",
 		)
 		.type_attribute(".", "#[cfg_attr(feature = \"serde\", serde(rename_all = \"snake_case\"))]")
 		.field_attribute(
