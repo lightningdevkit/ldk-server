@@ -7,6 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+/// gRPC path prefix for the LightningNode service.
+pub const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
+
 pub const GET_NODE_INFO_PATH: &str = "GetNodeInfo";
 pub const GET_BALANCES_PATH: &str = "GetBalances";
 pub const ONCHAIN_RECEIVE_PATH: &str = "OnchainReceive";
@@ -46,3 +49,4 @@ pub const GRAPH_GET_NODE_PATH: &str = "GraphGetNode";
 pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
 pub const DECODE_OFFER_PATH: &str = "DecodeOffer";
 pub const GET_METRICS_PATH: &str = "metrics";
+pub const SUBSCRIBE_EVENTS_PATH: &str = "SubscribeEvents";

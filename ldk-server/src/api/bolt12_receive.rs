@@ -8,13 +8,14 @@
 // licenses.
 
 use hex::DisplayHex;
-use ldk_server_protos::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
+use ldk_server_grpc::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_bolt12_receive_request(
-	context: Context, request: Bolt12ReceiveRequest,
+pub(crate) async fn handle_bolt12_receive_request(
+	context: Arc<Context>, request: Bolt12ReceiveRequest,
 ) -> Result<Bolt12ReceiveResponse, LdkServerError> {
 	let offer = match request.amount_msat {
 		Some(amount_msat) => context.node.bolt12_payment().receive(

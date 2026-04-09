@@ -11,15 +11,16 @@ use std::str::FromStr;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
-use ldk_server_protos::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
+use ldk_server_grpc::api::{UpdateChannelConfigRequest, UpdateChannelConfigResponse};
 
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_update_channel_config_request(
-	context: Context, request: UpdateChannelConfigRequest,
+pub(crate) async fn handle_update_channel_config_request(
+	context: Arc<Context>, request: UpdateChannelConfigRequest,
 ) -> Result<UpdateChannelConfigResponse, LdkServerError> {
 	let user_channel_id: u128 = request
 		.user_channel_id

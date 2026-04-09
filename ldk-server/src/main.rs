@@ -22,26 +22,23 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use clap::Parser;
 use hex::DisplayHex;
-use hyper::server::conn::http1;
-use hyper_util::rt::TokioIo;
+use hyper::server::conn::http2;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
 use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
-use ldk_server_protos::events;
-use ldk_server_protos::events::{event_envelope, EventEnvelope};
-use ldk_server_protos::types::Payment;
+use ldk_server_grpc::events;
+use ldk_server_grpc::events::{event_envelope, EventEnvelope};
+use ldk_server_grpc::types::Payment;
 use log::{debug, error, info};
 use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
+use tokio::sync::broadcast;
 
-use crate::io::events::event_publisher::EventPublisher;
-use crate::io::events::get_event_name;
-#[cfg(feature = "events-rabbitmq")]
-use crate::io::events::rabbitmq::{RabbitMqConfig, RabbitMqEventPublisher};
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
@@ -233,18 +230,8 @@ fn main() {
 			},
 		});
 
-	#[cfg(not(feature = "events-rabbitmq"))]
-	let event_publisher: Arc<dyn EventPublisher> =
-		Arc::new(crate::io::events::event_publisher::NoopEventPublisher);
-
-	#[cfg(feature = "events-rabbitmq")]
-	let event_publisher: Arc<dyn EventPublisher> = {
-		let rabbitmq_config = RabbitMqConfig {
-			connection_string: config_file.rabbitmq_connection_string,
-			exchange_name: config_file.rabbitmq_exchange_name,
-		};
-		Arc::new(RabbitMqEventPublisher::new(rabbitmq_config))
-	};
+	let (event_sender, _) = broadcast::channel::<EventEnvelope>(1024);
+	let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
 	info!("Starting up...");
 	match node.start() {
@@ -315,7 +302,7 @@ fn main() {
 			None
 		};
 
-		let rest_svc_listener = TcpListener::bind(config_file.rest_service_addr)
+		let grpc_listener = TcpListener::bind(config_file.grpc_service_addr)
 			.await
 			.expect("Failed to bind listening port");
 
@@ -330,7 +317,7 @@ fn main() {
 			}
 		};
 		let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
-		info!("TLS enabled for REST service on {}", config_file.rest_service_addr);
+		info!("gRPC service listening on {}", config_file.grpc_service_addr);
 
 		systemd::notify_ready();
 
@@ -380,13 +367,13 @@ fn main() {
 							);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
-							publish_event_and_upsert_payment(&payment_id,
+							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentReceived(events::PaymentReceived {
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 
 							if let Some(metrics) = &metrics {
 								metrics.update_all_balances(&event_node);
@@ -395,13 +382,13 @@ fn main() {
 						Event::PaymentSuccessful {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
-							publish_event_and_upsert_payment(&payment_id,
+							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 
 							if let Some(metrics) = &metrics {
 								metrics.update_payments_count(true);
@@ -411,26 +398,26 @@ fn main() {
 						Event::PaymentFailed {payment_id, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
-							publish_event_and_upsert_payment(&payment_id,
+							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 
 							if let Some(metrics) = &metrics {
 								metrics.update_payments_count(false);
 							}
 						},
 						Event::PaymentClaimable {payment_id, ..} => {
-							publish_event_and_upsert_payment(&payment_id,
+							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentClaimable(events::PaymentClaimable {
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
-								Arc::clone(&event_publisher),
-								Arc::clone(&paginated_store)).await;
+								&event_sender,
+								Arc::clone(&paginated_store));
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
@@ -462,25 +449,18 @@ fn main() {
 								outbound_amount_forwarded_msat
 							);
 
-							// We don't expose this payment-id to the user, it is a temporary measure to generate
-							// some unique identifiers until we have forwarded-payment-id available in ldk.
-							// Currently, this is the expected user handling behaviour for forwarded payments.
 							let mut forwarded_payment_id = [0u8; 32];
 							getrandom::getrandom(&mut forwarded_payment_id).expect("Failed to generate random bytes");
 
 							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
 
-							match event_publisher.publish(EventEnvelope {
-									event: Some(event_envelope::Event::PaymentForwarded(events::PaymentForwarded {
-											forwarded_payment: Some(forwarded_payment.clone()),
-									})),
-							}).await {
-								Ok(_) => {},
-								Err(e) => {
-									error!("Failed to publish 'PaymentForwarded' event: {}", e);
-									continue;
-								}
-							};
+							if let Err(e) = event_sender.send(EventEnvelope {
+								event: Some(event_envelope::Event::PaymentForwarded(events::PaymentForwarded {
+									forwarded_payment: Some(forwarded_payment.clone()),
+								})),
+							}) {
+								debug!("No event subscribers connected, skipping event: {e}");
+							}
 
 							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 								&forwarded_payment_id.to_lower_hex_string(),
@@ -504,7 +484,7 @@ fn main() {
 						},
 					}
 				},
-				res = rest_svc_listener.accept() => {
+				res = grpc_listener.accept() => {
 					match res {
 						Ok((stream, _)) => {
 							let node_service = NodeService::new(
@@ -513,13 +493,15 @@ fn main() {
 								api_key.clone(),
 								metrics.clone(),
 								metrics_auth_header.clone(),
+								event_sender.clone(),
+								shutdown_rx.clone(),
 							);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
 								match acceptor.accept(stream).await {
 									Ok(tls_stream) => {
 										let io_stream = TokioIo::new(tls_stream);
-										if let Err(err) = http1::Builder::new().serve_connection(io_stream, node_service).await {
+										if let Err(err) = http2::Builder::new(TokioExecutor::new()).serve_connection(io_stream, node_service).await {
 											error!("Failed to serve TLS connection: {err}");
 										}
 									},
@@ -532,6 +514,7 @@ fn main() {
 				}
 				_ = tokio::signal::ctrl_c() => {
 					info!("Received CTRL-C, shutting down..");
+					let _ = shutdown_tx.send(true);
 					break;
 				}
 				_ = sighup_stream.recv() => {
@@ -541,6 +524,7 @@ fn main() {
 				}
 				_ = sigterm_stream.recv() => {
 					info!("Received SIGTERM, shutting down..");
+					let _ = shutdown_tx.send(true);
 					break;
 				}
 			}
@@ -552,23 +536,18 @@ fn main() {
 	info!("Shutdown complete..");
 }
 
-async fn publish_event_and_upsert_payment(
+fn send_event_and_upsert_payment(
 	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> event_envelope::Event,
-	event_node: &Node, event_publisher: Arc<dyn EventPublisher>,
+	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
 	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	if let Some(payment_details) = event_node.payment(payment_id) {
 		let payment = payment_to_proto(payment_details);
 
 		let event = payment_to_event(&payment);
-		let event_name = get_event_name(&event);
-		match event_publisher.publish(EventEnvelope { event: Some(event) }).await {
-			Ok(_) => {},
-			Err(e) => {
-				error!("Failed to publish '{event_name}' event, : {e}");
-				return;
-			},
-		};
+		if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
+			debug!("No event subscribers connected, skipping event: {e}");
+		}
 
 		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
 	} else {

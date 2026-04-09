@@ -7,11 +7,16 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
-use ldk_server_protos::api::{
+use hyper::body::HttpBody as _;
+use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use ldk_server_grpc::api::SubscribeEventsRequest;
+use ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
@@ -34,7 +39,7 @@ use ldk_server_protos::api::{
 	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
-use ldk_server_protos::endpoints::{
+use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
@@ -42,25 +47,26 @@ use ldk_server_protos::endpoints::{
 	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
 	GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
-	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
-	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH,
+	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH,
+	SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH,
+	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
-use ldk_server_protos::error::{ErrorCode, ErrorResponse};
-use prost::bytes::Bytes;
+use ldk_server_grpc::events::EventEnvelope;
+use ldk_server_grpc::grpc::{decode_grpc_body, encode_grpc_frame, percent_decode};
 use prost::Message;
-use reqwest::header::CONTENT_TYPE;
-use reqwest::{Certificate, Client};
+use reqwest::{header::HeaderMap, Certificate, Client};
+use rustls::{ClientConfig, RootCertStore};
+use rustls_pemfile::certs;
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
 
-const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
+type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
 
-/// Client to access a hosted instance of LDK Server.
+/// Client to access a hosted instance of LDK Server via gRPC.
 ///
 /// The client requires the server's TLS certificate to be provided for verification.
 /// This certificate can be found at `<server_storage_dir>/tls.crt` after the
@@ -69,12 +75,8 @@ const APPLICATION_OCTET_STREAM: &str = "application/octet-stream";
 pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
+	streaming_client: StreamingClient,
 	api_key: String,
-}
-
-enum RequestType {
-	Get,
-	Post,
 }
 
 impl LdkServerClient {
@@ -87,39 +89,38 @@ impl LdkServerClient {
 	pub fn new(base_url: String, api_key: String, server_cert_pem: &[u8]) -> Result<Self, String> {
 		let cert = Certificate::from_pem(server_cert_pem)
 			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
+		let streaming_client = build_streaming_client(server_cert_pem)?;
 
 		let client = Client::builder()
 			.add_root_certificate(cert)
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, api_key })
+		Ok(Self { base_url, client, streaming_client, api_key })
 	}
 
 	/// Computes the HMAC-SHA256 authentication header value.
 	/// Format: "HMAC <timestamp>:<hmac_hex>"
-	fn compute_auth_header(&self, body: &[u8]) -> String {
+	/// Uses timestamp-only HMAC (no body) since TLS guarantees integrity.
+	fn compute_auth_header(&self) -> String {
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("System time should be after Unix epoch")
 			.as_secs();
 
-		// Compute HMAC-SHA256(api_key, timestamp_bytes || body)
+		// HMAC-SHA256(api_key, timestamp_bytes) — no body
 		let mut hmac_engine: HmacEngine<sha256::Hash> = HmacEngine::new(self.api_key.as_bytes());
 		hmac_engine.input(&timestamp.to_be_bytes());
-		hmac_engine.input(body);
 		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
 
 		format!("HMAC {}:{}", timestamp, hmac_result)
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
-	/// For API contract/usage, refer to docs for [`GetNodeInfoRequest`] and [`GetNodeInfoResponse`].
 	pub async fn get_node_info(
 		&self, request: GetNodeInfoRequest,
 	) -> Result<GetNodeInfoResponse, LdkServerError> {
-		let url = format!("https://{}/{GET_NODE_INFO_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GET_NODE_INFO_PATH).await
 	}
 
 	/// Retrieve the node metrics in Prometheus format.
@@ -132,9 +133,22 @@ impl LdkServerClient {
 		&self, username: Option<&str>, password: Option<&str>,
 	) -> Result<String, LdkServerError> {
 		let url = format!("https://{}/{GET_METRICS_PATH}", self.base_url);
-		let payload =
-			self.make_request(&url, RequestType::Get, None, false, username, password).await?;
-
+		let mut builder = self.client.get(&url);
+		if let (Some(u), Some(p)) = (username, password) {
+			builder = builder.basic_auth(u, Some(p));
+		}
+		let response = builder.send().await.map_err(|e| {
+			LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
+		})?;
+		if !response.status().is_success() {
+			return Err(LdkServerError::new(
+				InternalError,
+				format!("Metrics request failed with status {}", response.status()),
+			));
+		}
+		let payload = response.bytes().await.map_err(|e| {
+			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
+		})?;
 		String::from_utf8(payload.to_vec()).map_err(|e| {
 			LdkServerError::new(
 				InternalError,
@@ -144,411 +158,573 @@ impl LdkServerClient {
 	}
 
 	/// Retrieves an overview of all known balances.
-	/// For API contract/usage, refer to docs for [`GetBalancesRequest`] and [`GetBalancesResponse`].
 	pub async fn get_balances(
 		&self, request: GetBalancesRequest,
 	) -> Result<GetBalancesResponse, LdkServerError> {
-		let url = format!("https://{}/{GET_BALANCES_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GET_BALANCES_PATH).await
 	}
 
 	/// Retrieve a new on-chain funding address.
-	/// For API contract/usage, refer to docs for [`OnchainReceiveRequest`] and [`OnchainReceiveResponse`].
 	pub async fn onchain_receive(
 		&self, request: OnchainReceiveRequest,
 	) -> Result<OnchainReceiveResponse, LdkServerError> {
-		let url = format!("https://{}/{ONCHAIN_RECEIVE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, ONCHAIN_RECEIVE_PATH).await
 	}
 
 	/// Send an on-chain payment to the given address.
-	/// For API contract/usage, refer to docs for [`OnchainSendRequest`] and [`OnchainSendResponse`].
 	pub async fn onchain_send(
 		&self, request: OnchainSendRequest,
 	) -> Result<OnchainSendResponse, LdkServerError> {
-		let url = format!("https://{}/{ONCHAIN_SEND_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, ONCHAIN_SEND_PATH).await
 	}
 
 	/// Retrieve a new BOLT11 payable invoice.
-	/// For API contract/usage, refer to docs for [`Bolt11ReceiveRequest`] and [`Bolt11ReceiveResponse`].
 	pub async fn bolt11_receive(
 		&self, request: Bolt11ReceiveRequest,
 	) -> Result<Bolt11ReceiveResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_RECEIVE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_RECEIVE_PATH).await
 	}
 
 	/// Retrieve a new BOLT11 payable invoice for a given payment hash.
-	/// The inbound payment will NOT be automatically claimed upon arrival.
-	/// For API contract/usage, refer to docs for [`Bolt11ReceiveForHashRequest`] and [`Bolt11ReceiveForHashResponse`].
 	pub async fn bolt11_receive_for_hash(
 		&self, request: Bolt11ReceiveForHashRequest,
 	) -> Result<Bolt11ReceiveForHashResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_RECEIVE_FOR_HASH_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_RECEIVE_FOR_HASH_PATH).await
 	}
 
-	/// Manually claim a payment for a given payment hash with the corresponding preimage.
-	/// For API contract/usage, refer to docs for [`Bolt11ClaimForHashRequest`] and [`Bolt11ClaimForHashResponse`].
+	/// Manually claim a payment for a given payment hash.
 	pub async fn bolt11_claim_for_hash(
 		&self, request: Bolt11ClaimForHashRequest,
 	) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_CLAIM_FOR_HASH_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_CLAIM_FOR_HASH_PATH).await
 	}
 
 	/// Manually fail a payment for a given payment hash.
-	/// For API contract/usage, refer to docs for [`Bolt11FailForHashRequest`] and [`Bolt11FailForHashResponse`].
 	pub async fn bolt11_fail_for_hash(
 		&self, request: Bolt11FailForHashRequest,
 	) -> Result<Bolt11FailForHashResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_FAIL_FOR_HASH_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_FAIL_FOR_HASH_PATH).await
 	}
 
 	/// Retrieve a new fixed-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.
-	/// For API contract/usage, refer to docs for [`Bolt11ReceiveViaJitChannelRequest`] and
-	/// [`Bolt11ReceiveViaJitChannelResponse`].
 	pub async fn bolt11_receive_via_jit_channel(
 		&self, request: Bolt11ReceiveViaJitChannelRequest,
 	) -> Result<Bolt11ReceiveViaJitChannelResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH).await
 	}
 
 	/// Retrieve a new variable-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.
-	/// For API contract/usage, refer to docs for
-	/// [`Bolt11ReceiveVariableAmountViaJitChannelRequest`] and
-	/// [`Bolt11ReceiveVariableAmountViaJitChannelResponse`].
 	pub async fn bolt11_receive_variable_amount_via_jit_channel(
 		&self, request: Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	) -> Result<Bolt11ReceiveVariableAmountViaJitChannelResponse, LdkServerError> {
-		let url = format!(
-			"https://{}/{BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH}",
-			self.base_url,
-		);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH).await
 	}
 
 	/// Send a payment for a BOLT11 invoice.
-	/// For API contract/usage, refer to docs for [`Bolt11SendRequest`] and [`Bolt11SendResponse`].
 	pub async fn bolt11_send(
 		&self, request: Bolt11SendRequest,
 	) -> Result<Bolt11SendResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT11_SEND_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT11_SEND_PATH).await
 	}
 
-	/// Retrieve a new BOLT11 payable offer.
-	/// For API contract/usage, refer to docs for [`Bolt12ReceiveRequest`] and [`Bolt12ReceiveResponse`].
+	/// Retrieve a new BOLT12 offer.
 	pub async fn bolt12_receive(
 		&self, request: Bolt12ReceiveRequest,
 	) -> Result<Bolt12ReceiveResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT12_RECEIVE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT12_RECEIVE_PATH).await
 	}
 
 	/// Send a payment for a BOLT12 offer.
-	/// For API contract/usage, refer to docs for [`Bolt12SendRequest`] and [`Bolt12SendResponse`].
 	pub async fn bolt12_send(
 		&self, request: Bolt12SendRequest,
 	) -> Result<Bolt12SendResponse, LdkServerError> {
-		let url = format!("https://{}/{BOLT12_SEND_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, BOLT12_SEND_PATH).await
 	}
 
 	/// Creates a new outbound channel.
-	/// For API contract/usage, refer to docs for [`OpenChannelRequest`] and [`OpenChannelResponse`].
 	pub async fn open_channel(
 		&self, request: OpenChannelRequest,
 	) -> Result<OpenChannelResponse, LdkServerError> {
-		let url = format!("https://{}/{OPEN_CHANNEL_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, OPEN_CHANNEL_PATH).await
 	}
 
 	/// Splices funds into the channel specified by given request.
-	/// For API contract/usage, refer to docs for [`SpliceInRequest`] and [`SpliceInResponse`].
 	pub async fn splice_in(
 		&self, request: SpliceInRequest,
 	) -> Result<SpliceInResponse, LdkServerError> {
-		let url = format!("https://{}/{SPLICE_IN_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, SPLICE_IN_PATH).await
 	}
 
 	/// Splices funds out of the channel specified by given request.
-	/// For API contract/usage, refer to docs for [`SpliceOutRequest`] and [`SpliceOutResponse`].
 	pub async fn splice_out(
 		&self, request: SpliceOutRequest,
 	) -> Result<SpliceOutResponse, LdkServerError> {
-		let url = format!("https://{}/{SPLICE_OUT_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, SPLICE_OUT_PATH).await
 	}
 
 	/// Closes the channel specified by given request.
-	/// For API contract/usage, refer to docs for [`CloseChannelRequest`] and [`CloseChannelResponse`].
 	pub async fn close_channel(
 		&self, request: CloseChannelRequest,
 	) -> Result<CloseChannelResponse, LdkServerError> {
-		let url = format!("https://{}/{CLOSE_CHANNEL_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, CLOSE_CHANNEL_PATH).await
 	}
 
 	/// Force closes the channel specified by given request.
-	/// For API contract/usage, refer to docs for [`ForceCloseChannelRequest`] and [`ForceCloseChannelResponse`].
 	pub async fn force_close_channel(
 		&self, request: ForceCloseChannelRequest,
 	) -> Result<ForceCloseChannelResponse, LdkServerError> {
-		let url = format!("https://{}/{FORCE_CLOSE_CHANNEL_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, FORCE_CLOSE_CHANNEL_PATH).await
 	}
 
 	/// Retrieves list of known channels.
-	/// For API contract/usage, refer to docs for [`ListChannelsRequest`] and [`ListChannelsResponse`].
 	pub async fn list_channels(
 		&self, request: ListChannelsRequest,
 	) -> Result<ListChannelsResponse, LdkServerError> {
-		let url = format!("https://{}/{LIST_CHANNELS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, LIST_CHANNELS_PATH).await
 	}
 
 	/// Retrieves list of all payments sent or received by us.
-	/// For API contract/usage, refer to docs for [`ListPaymentsRequest`] and [`ListPaymentsResponse`].
 	pub async fn list_payments(
 		&self, request: ListPaymentsRequest,
 	) -> Result<ListPaymentsResponse, LdkServerError> {
-		let url = format!("https://{}/{LIST_PAYMENTS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, LIST_PAYMENTS_PATH).await
 	}
 
 	/// Updates the config for a previously opened channel.
-	/// For API contract/usage, refer to docs for [`UpdateChannelConfigRequest`] and [`UpdateChannelConfigResponse`].
 	pub async fn update_channel_config(
 		&self, request: UpdateChannelConfigRequest,
 	) -> Result<UpdateChannelConfigResponse, LdkServerError> {
-		let url = format!("https://{}/{UPDATE_CHANNEL_CONFIG_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, UPDATE_CHANNEL_CONFIG_PATH).await
 	}
 
 	/// Retrieves payment details for a given payment id.
-	/// For API contract/usage, refer to docs for [`GetPaymentDetailsRequest`] and [`GetPaymentDetailsResponse`].
 	pub async fn get_payment_details(
 		&self, request: GetPaymentDetailsRequest,
 	) -> Result<GetPaymentDetailsResponse, LdkServerError> {
-		let url = format!("https://{}/{GET_PAYMENT_DETAILS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GET_PAYMENT_DETAILS_PATH).await
 	}
 
 	/// Retrieves list of all forwarded payments.
-	/// For API contract/usage, refer to docs for [`ListForwardedPaymentsRequest`] and [`ListForwardedPaymentsResponse`].
 	pub async fn list_forwarded_payments(
 		&self, request: ListForwardedPaymentsRequest,
 	) -> Result<ListForwardedPaymentsResponse, LdkServerError> {
-		let url = format!("https://{}/{LIST_FORWARDED_PAYMENTS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, LIST_FORWARDED_PAYMENTS_PATH).await
 	}
 
 	/// Connect to a peer on the Lightning Network.
-	/// For API contract/usage, refer to docs for [`ConnectPeerRequest`] and [`ConnectPeerResponse`].
 	pub async fn connect_peer(
 		&self, request: ConnectPeerRequest,
 	) -> Result<ConnectPeerResponse, LdkServerError> {
-		let url = format!("https://{}/{CONNECT_PEER_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, CONNECT_PEER_PATH).await
 	}
 
 	/// Disconnect from a peer and remove it from the peer store.
-	/// For API contract/usage, refer to docs for [`DisconnectPeerRequest`] and [`DisconnectPeerResponse`].
 	pub async fn disconnect_peer(
 		&self, request: DisconnectPeerRequest,
 	) -> Result<DisconnectPeerResponse, LdkServerError> {
-		let url = format!("https://{}/{DISCONNECT_PEER_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, DISCONNECT_PEER_PATH).await
 	}
 
 	/// Retrieves list of peers.
-	/// For API contract/usage, refer to docs for [`ListPeersRequest`] and [`ListPeersResponse`].
 	pub async fn list_peers(
 		&self, request: ListPeersRequest,
 	) -> Result<ListPeersResponse, LdkServerError> {
-		let url = format!("https://{}/{LIST_PEERS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, LIST_PEERS_PATH).await
 	}
 
 	/// Send a spontaneous payment (keysend) to a node.
-	/// For API contract/usage, refer to docs for [`SpontaneousSendRequest`] and [`SpontaneousSendResponse`].
 	pub async fn spontaneous_send(
 		&self, request: SpontaneousSendRequest,
 	) -> Result<SpontaneousSendResponse, LdkServerError> {
-		let url = format!("https://{}/{SPONTANEOUS_SEND_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, SPONTANEOUS_SEND_PATH).await
 	}
 
 	/// Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.
-	/// For API contract/usage, refer to docs for [`UnifiedSendRequest`] and [`UnifiedSendResponse`].
 	pub async fn unified_send(
 		&self, request: UnifiedSendRequest,
 	) -> Result<UnifiedSendResponse, LdkServerError> {
-		let url = format!("https://{}/{UNIFIED_SEND_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, UNIFIED_SEND_PATH).await
 	}
 
 	/// Decode a BOLT11 invoice and return its parsed fields.
-	/// For API contract/usage, refer to docs for [`DecodeInvoiceRequest`] and [`DecodeInvoiceResponse`].
 	pub async fn decode_invoice(
 		&self, request: DecodeInvoiceRequest,
 	) -> Result<DecodeInvoiceResponse, LdkServerError> {
-		let url = format!("https://{}/{DECODE_INVOICE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, DECODE_INVOICE_PATH).await
 	}
 
 	/// Decode a BOLT12 offer and return its parsed fields.
-	/// For API contract/usage, refer to docs for [`DecodeOfferRequest`] and [`DecodeOfferResponse`].
 	pub async fn decode_offer(
 		&self, request: DecodeOfferRequest,
 	) -> Result<DecodeOfferResponse, LdkServerError> {
-		let url = format!("https://{}/{DECODE_OFFER_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, DECODE_OFFER_PATH).await
 	}
 
 	/// Sign a message with the node's secret key.
-	/// For API contract/usage, refer to docs for [`SignMessageRequest`] and [`SignMessageResponse`].
 	pub async fn sign_message(
 		&self, request: SignMessageRequest,
 	) -> Result<SignMessageResponse, LdkServerError> {
-		let url = format!("https://{}/{SIGN_MESSAGE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, SIGN_MESSAGE_PATH).await
 	}
 
 	/// Verify a signature against a message and public key.
-	/// For API contract/usage, refer to docs for [`VerifySignatureRequest`] and [`VerifySignatureResponse`].
 	pub async fn verify_signature(
 		&self, request: VerifySignatureRequest,
 	) -> Result<VerifySignatureResponse, LdkServerError> {
-		let url = format!("https://{}/{VERIFY_SIGNATURE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, VERIFY_SIGNATURE_PATH).await
 	}
 
 	/// Export the pathfinding scores used by the router.
-	/// For API contract/usage, refer to docs for [`ExportPathfindingScoresRequest`] and [`ExportPathfindingScoresResponse`].
 	pub async fn export_pathfinding_scores(
 		&self, request: ExportPathfindingScoresRequest,
 	) -> Result<ExportPathfindingScoresResponse, LdkServerError> {
-		let url = format!("https://{}/{EXPORT_PATHFINDING_SCORES_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, EXPORT_PATHFINDING_SCORES_PATH).await
 	}
 
 	/// Returns a list of all known short channel IDs in the network graph.
-	/// For API contract/usage, refer to docs for [`GraphListChannelsRequest`] and [`GraphListChannelsResponse`].
 	pub async fn graph_list_channels(
 		&self, request: GraphListChannelsRequest,
 	) -> Result<GraphListChannelsResponse, LdkServerError> {
-		let url = format!("https://{}/{GRAPH_LIST_CHANNELS_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GRAPH_LIST_CHANNELS_PATH).await
 	}
 
 	/// Returns information on a channel with the given short channel ID from the network graph.
-	/// For API contract/usage, refer to docs for [`GraphGetChannelRequest`] and [`GraphGetChannelResponse`].
 	pub async fn graph_get_channel(
 		&self, request: GraphGetChannelRequest,
 	) -> Result<GraphGetChannelResponse, LdkServerError> {
-		let url = format!("https://{}/{GRAPH_GET_CHANNEL_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GRAPH_GET_CHANNEL_PATH).await
 	}
 
 	/// Returns a list of all known node IDs in the network graph.
-	/// For API contract/usage, refer to docs for [`GraphListNodesRequest`] and [`GraphListNodesResponse`].
 	pub async fn graph_list_nodes(
 		&self, request: GraphListNodesRequest,
 	) -> Result<GraphListNodesResponse, LdkServerError> {
-		let url = format!("https://{}/{GRAPH_LIST_NODES_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GRAPH_LIST_NODES_PATH).await
 	}
 
 	/// Returns information on a node with the given ID from the network graph.
-	/// For API contract/usage, refer to docs for [`GraphGetNodeRequest`] and [`GraphGetNodeResponse`].
 	pub async fn graph_get_node(
 		&self, request: GraphGetNodeRequest,
 	) -> Result<GraphGetNodeResponse, LdkServerError> {
-		let url = format!("https://{}/{GRAPH_GET_NODE_PATH}", self.base_url);
-		self.post_request(&request, &url).await
+		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
 	}
 
-	async fn post_request<Rq: Message, Rs: Message + Default>(
-		&self, request: &Rq, url: &str,
+	/// Subscribe to a stream of server events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
+	pub async fn subscribe_events(&self) -> Result<EventStream, LdkServerError> {
+		self.grpc_server_streaming(&SubscribeEventsRequest {}, SUBSCRIBE_EVENTS_PATH).await
+	}
+
+	/// Send a unary gRPC request and decode the response.
+	async fn grpc_unary<Rq: Message, Rs: Message + Default>(
+		&self, request: &Rq, method: &str,
 	) -> Result<Rs, LdkServerError> {
-		let request_body = request.encode_to_vec();
-		let payload =
-			self.make_request(url, RequestType::Post, Some(request_body), true, None, None).await?;
-		Rs::decode(&payload[..]).map_err(|e| {
-			LdkServerError::new(InternalError, format!("Failed to decode success response: {}", e))
-		})
-	}
+		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
 
-	async fn make_request(
-		&self, url: &str, request_type: RequestType, body: Option<Vec<u8>>,
-		hmac_authenticated: bool, metrics_username: Option<&str>, metrics_password: Option<&str>,
-	) -> Result<Bytes, LdkServerError> {
-		let builder = match request_type {
-			RequestType::Get => self.client.get(url),
-			RequestType::Post => self.client.post(url),
-		};
+		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
+		let auth_header = self.compute_auth_header();
 
-		let builder = if hmac_authenticated {
-			let body_for_auth = body.as_deref().unwrap_or(&[]);
-			let auth_header = self.compute_auth_header(body_for_auth);
-			builder.header("X-Auth", auth_header)
-		} else {
-			builder
-		};
+		let response = self
+			.client
+			.post(&url)
+			.header("content-type", "application/grpc+proto")
+			.header("te", "trailers")
+			.header("x-auth", auth_header)
+			.body(grpc_body)
+			.send()
+			.await
+			.map_err(|e| {
+				LdkServerError::new(InternalError, format!("gRPC request failed: {}", e))
+			})?;
 
-		let builder = if let Some(body_content) = body {
-			builder.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM).body(body_content)
-		} else {
-			builder
-		};
+		// Check for Trailers-Only error responses (grpc-status in response headers).
+		// In gRPC, when there is no response body (error case), the server sends
+		// grpc-status as part of the initial HEADERS frame, readable as a regular header.
+		if let Some(error) = grpc_error_from_headers(response.headers()) {
+			return Err(error);
+		}
 
-		let builder = if let (Some(username), Some(password)) = (metrics_username, metrics_password)
-		{
-			builder.basic_auth(username, Some(password))
-		} else {
-			builder
-		};
-
-		let response_raw = builder.send().await.map_err(|e| {
-			LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
-		})?;
-
-		self.handle_response(response_raw).await
-	}
-
-	async fn handle_response(
-		&self, response_raw: reqwest::Response,
-	) -> Result<Bytes, LdkServerError> {
-		let status = response_raw.status();
-		let payload = response_raw.bytes().await.map_err(|e| {
+		// Read the response body
+		let payload = response.bytes().await.map_err(|e| {
 			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
 		})?;
 
-		if status.is_success() {
-			Ok(payload)
-		} else {
-			let error_response = ErrorResponse::decode(&payload[..]).map_err(|e| {
-				LdkServerError::new(
-					InternalError,
-					format!("Failed to decode error response (status {}): {}", status, e),
-				)
+		let proto_bytes = decode_grpc_body(&payload)
+			.map_err(|e| LdkServerError::new(InternalError, e.message))?;
+
+		Rs::decode(proto_bytes).map_err(|e| {
+			LdkServerError::new(InternalError, format!("Failed to decode gRPC response: {}", e))
+		})
+	}
+
+	/// Open a server-streaming gRPC call and return a [`GrpcStream`] that
+	/// yields decoded messages of type `Rs` as they arrive.
+	async fn grpc_server_streaming<Rq: Message, Rs: Message + Default>(
+		&self, request: &Rq, method: &str,
+	) -> Result<GrpcStream<Rs>, LdkServerError> {
+		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
+
+		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
+		let auth_header = self.compute_auth_header();
+
+		let response = self
+			.streaming_client
+			.request(
+				HyperRequest::post(&url)
+					.version(Version::HTTP_2)
+					.header("content-type", "application/grpc+proto")
+					.header("te", "trailers")
+					.header("x-auth", auth_header)
+					.body(HyperBody::from(grpc_body))
+					.map_err(|e| {
+						LdkServerError::new(
+							InternalError,
+							format!("Failed to build gRPC request: {e}"),
+						)
+					})?,
+			)
+			.await
+			.map_err(|e| {
+				LdkServerError::new(InternalError, format!("gRPC request failed: {}", e))
 			})?;
 
-			let error_code = match ErrorCode::from_i32(error_response.error_code) {
-				Some(ErrorCode::InvalidRequestError) => InvalidRequestError,
-				Some(ErrorCode::AuthError) => AuthError,
-				Some(ErrorCode::LightningError) => LightningError,
-				Some(ErrorCode::InternalServerError) => InternalServerError,
-				Some(ErrorCode::UnknownError) | None => InternalError,
-			};
-
-			Err(LdkServerError::new(error_code, error_response.message))
+		let (parts, body) = response.into_parts();
+		if let Some(error) = grpc_error_from_headers(&parts.headers) {
+			return Err(error);
 		}
+
+		Ok(GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		})
+	}
+}
+
+/// Map a gRPC status code to an LdkServerError.
+fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
+	match code {
+		3 => LdkServerError::new(InvalidRequestError, message), // INVALID_ARGUMENT
+		9 => LdkServerError::new(LightningError, message),      // FAILED_PRECONDITION
+		13 => LdkServerError::new(InternalServerError, message), // INTERNAL
+		14 => LdkServerError::new(
+			InternalError,
+			if message.is_empty() {
+				"gRPC stream became unavailable".to_string()
+			} else {
+				format!("gRPC stream became unavailable: {message}")
+			},
+		),
+		16 => LdkServerError::new(AuthError, message), // UNAUTHENTICATED
+		_ => LdkServerError::new(
+			InternalError,
+			if message.is_empty() {
+				format!("gRPC status {code}")
+			} else {
+				format!("gRPC status {code}: {message}")
+			},
+		),
+	}
+}
+
+fn grpc_error_from_headers(headers: &HeaderMap) -> Option<LdkServerError> {
+	let code = headers.get("grpc-status")?.to_str().ok()?.parse::<u32>().ok()?;
+	if code == 0 {
+		return None;
+	}
+
+	let message = headers
+		.get("grpc-message")
+		.and_then(|v| v.to_str().ok())
+		.map(percent_decode)
+		.unwrap_or_default();
+	Some(grpc_code_to_error(code, message))
+}
+
+/// A server-streaming gRPC response that yields decoded protobuf messages of type `M`.
+///
+/// Call [`next_message`](GrpcStream::next_message) to receive the next message from the server.
+pub struct GrpcStream<M: Message + Default> {
+	body: hyper::Body,
+	buf: Vec<u8>,
+	trailers_checked: bool,
+	_marker: std::marker::PhantomData<M>,
+}
+
+/// Type alias for a streaming response that yields [`EventEnvelope`] messages.
+pub type EventStream = GrpcStream<EventEnvelope>;
+
+impl<M: Message + Default> GrpcStream<M> {
+	/// Wait for the next message from the server.
+	///
+	/// Returns `None` if the stream has ended.
+	pub async fn next_message(&mut self) -> Option<Result<M, LdkServerError>> {
+		loop {
+			// Try to decode a complete gRPC frame from the buffer
+			if self.buf.len() >= 5 {
+				let msg_len =
+					u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]])
+						as usize;
+				if self.buf.len() >= 5 + msg_len {
+					let proto_bytes = &self.buf[5..5 + msg_len];
+					let result = M::decode(proto_bytes).map_err(|e| {
+						LdkServerError::new(
+							InternalError,
+							format!("Failed to decode gRPC stream message: {}", e),
+						)
+					});
+					self.buf.drain(..5 + msg_len);
+					return Some(result);
+				}
+			}
+
+			// Need more data — read the next chunk from the response body
+			match self.body.data().await {
+				Some(Ok(chunk)) => self.buf.extend_from_slice(&chunk),
+				Some(Err(e)) => {
+					return Some(Err(LdkServerError::new(
+						InternalError,
+						format!("Failed to read gRPC stream: {}", e),
+					)));
+				},
+				None => {
+					if self.trailers_checked {
+						return None;
+					}
+					self.trailers_checked = true;
+					return self.finish_stream().await;
+				},
+			}
+		}
+	}
+
+	async fn finish_stream(&mut self) -> Option<Result<M, LdkServerError>> {
+		match self.body.trailers().await {
+			Ok(Some(trailers)) => {
+				if let Some(error) = grpc_error_from_headers(&trailers) {
+					return Some(Err(error));
+				}
+			},
+			Ok(None) => {},
+			Err(e) => {
+				return Some(Err(LdkServerError::new(
+					InternalError,
+					format!("Failed to read gRPC stream trailers: {}", e),
+				)));
+			},
+		}
+
+		if self.buf.is_empty() {
+			None
+		} else {
+			Some(Err(LdkServerError::new(
+				InternalError,
+				"gRPC stream ended with an incomplete frame",
+			)))
+		}
+	}
+}
+
+fn build_streaming_client(server_cert_pem: &[u8]) -> Result<StreamingClient, String> {
+	let mut pem_reader = Cursor::new(server_cert_pem);
+	let certs =
+		certs(&mut pem_reader).map_err(|e| format!("Failed to parse server certificate: {e}"))?;
+	if certs.is_empty() {
+		return Err("Failed to parse server certificate: no certificates found in PEM".to_string());
+	}
+
+	let mut roots = RootCertStore::empty();
+	let (added, _ignored) = roots.add_parsable_certificates(&certs);
+	if added == 0 {
+		return Err("Failed to build streaming client: certificate was not accepted".to_string());
+	}
+
+	let tls_config = ClientConfig::builder()
+		.with_safe_defaults()
+		.with_root_certificates(roots)
+		.with_no_client_auth();
+	let connector = HttpsConnectorBuilder::new()
+		.with_tls_config(tls_config)
+		.https_only()
+		.enable_http2()
+		.build();
+
+	Ok(HyperClient::builder().http2_only(true).build(connector))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use hyper::Body;
+	use reqwest::header::HeaderValue;
+
+	#[test]
+	fn test_grpc_error_from_headers_ignores_ok_status() {
+		let mut headers = HeaderMap::new();
+		headers.insert("grpc-status", HeaderValue::from_static("0"));
+		assert!(grpc_error_from_headers(&headers).is_none());
+	}
+
+	#[test]
+	fn test_grpc_error_from_headers_decodes_message() {
+		let mut headers = HeaderMap::new();
+		headers.insert("grpc-status", HeaderValue::from_static("3"));
+		headers.insert("grpc-message", HeaderValue::from_static("bad%20request"));
+
+		let err = grpc_error_from_headers(&headers).unwrap();
+		assert_eq!(err.error_code, InvalidRequestError);
+		assert_eq!(err.message, "bad request");
+	}
+
+	#[test]
+	fn test_grpc_code_to_error_marks_unavailable_streams() {
+		let err = grpc_code_to_error(14, "server shutting down".to_string());
+		assert_eq!(err.error_code, InternalError);
+		assert_eq!(err.message, "gRPC stream became unavailable: server shutting down");
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_surfaces_terminal_grpc_status() {
+		let (mut sender, body) = Body::channel();
+		let mut trailers = HeaderMap::new();
+		trailers.insert("grpc-status", HeaderValue::from_static("14"));
+		trailers.insert("grpc-message", HeaderValue::from_static("server%20restarting"));
+		sender.send_trailers(trailers).await.unwrap();
+		drop(sender);
+
+		let mut stream: EventStream = GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		};
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert_eq!(result.message, "gRPC stream became unavailable: server restarting");
+		assert!(stream.next_message().await.is_none());
+	}
+
+	#[test]
+	fn test_grpc_code_to_error_all_known_codes() {
+		let cases = [
+			(3u32, InvalidRequestError, "msg"),
+			(16, AuthError, "msg"),
+			(9, LightningError, "msg"),
+			(13, InternalServerError, "msg"),
+		];
+		for (code, expected_error_code, msg) in cases {
+			let err = grpc_code_to_error(code, msg.to_string());
+			assert_eq!(err.error_code, expected_error_code, "wrong mapping for gRPC code {code}");
+			assert_eq!(err.message, msg);
+		}
+	}
+
+	#[test]
+	fn test_grpc_code_to_error_unknown_code() {
+		let err = grpc_code_to_error(99, "unknown".to_string());
+		assert_eq!(err.error_code, InternalError);
 	}
 }

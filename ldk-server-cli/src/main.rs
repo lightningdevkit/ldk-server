@@ -15,7 +15,7 @@ use clap_complete::{generate, Shell};
 use config::{
 	api_key_path_for_storage_dir, cert_path_for_storage_dir, get_default_api_key_path,
 	get_default_cert_path, get_default_config_path, load_config, resolve_base_url,
-	DEFAULT_REST_SERVICE_ADDRESS,
+	DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
@@ -23,7 +23,7 @@ use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
-use ldk_server_client::ldk_server_protos::api::{
+use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
@@ -45,7 +45,7 @@ use ldk_server_client::ldk_server_protos::api::{
 	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
-use ldk_server_client::ldk_server_protos::types::{
+use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
 	RouteParametersConfig,
 };
@@ -86,7 +86,7 @@ struct Cli {
 		short,
 		long,
 		help = format!(
-			"Base URL of the server. Defaults to config file or {DEFAULT_REST_SERVICE_ADDRESS}"
+			"Base URL of the server. Defaults to config file or {DEFAULT_GRPC_SERVICE_ADDRESS}"
 		)
 	)]
 	base_url: Option<String>,

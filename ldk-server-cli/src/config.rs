@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
-pub const DEFAULT_REST_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
+pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -67,8 +67,8 @@ pub struct TlsConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct NodeConfig {
-	#[serde(default = "default_rest_service_address")]
-	pub rest_service_address: String,
+	#[serde(default = "default_grpc_service_address")]
+	pub grpc_service_address: String,
 	network: String,
 }
 
@@ -104,20 +104,20 @@ pub fn load_config(path: &PathBuf) -> Result<Config, String> {
 
 pub fn resolve_base_url(cli_base_url: Option<String>, config: Option<&Config>) -> String {
 	cli_base_url
-		.or_else(|| config.map(|config| config.node.rest_service_address.clone()))
-		.unwrap_or_else(default_rest_service_address)
+		.or_else(|| config.map(|config| config.node.grpc_service_address.clone()))
+		.unwrap_or_else(default_grpc_service_address)
 }
 
-fn default_rest_service_address() -> String {
-	DEFAULT_REST_SERVICE_ADDRESS.to_string()
+fn default_grpc_service_address() -> String {
+	DEFAULT_GRPC_SERVICE_ADDRESS.to_string()
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{resolve_base_url, Config, DEFAULT_REST_SERVICE_ADDRESS};
+	use super::{resolve_base_url, Config, DEFAULT_GRPC_SERVICE_ADDRESS};
 
 	#[test]
-	fn config_defaults_rest_service_address() {
+	fn config_defaults_grpc_service_address() {
 		let config: Config = toml::from_str(
 			r#"
 				[node]
@@ -126,7 +126,7 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(config.node.rest_service_address, DEFAULT_REST_SERVICE_ADDRESS);
+		assert_eq!(config.node.grpc_service_address, DEFAULT_GRPC_SERVICE_ADDRESS);
 	}
 
 	#[test]
@@ -135,7 +135,7 @@ mod tests {
 			r#"
 				[node]
 				network = "regtest"
-				rest_service_address = "127.0.0.1:3002"
+				grpc_service_address = "127.0.0.1:3002"
 			"#,
 		)
 		.unwrap();
@@ -148,6 +148,6 @@ mod tests {
 
 	#[test]
 	fn resolve_base_url_falls_back_to_default() {
-		assert_eq!(resolve_base_url(None, None), DEFAULT_REST_SERVICE_ADDRESS);
+		assert_eq!(resolve_base_url(None, None), DEFAULT_GRPC_SERVICE_ADDRESS);
 	}
 }

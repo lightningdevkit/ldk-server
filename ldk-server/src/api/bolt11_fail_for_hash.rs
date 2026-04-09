@@ -9,14 +9,15 @@
 
 use hex::FromHex;
 use ldk_node::lightning_types::payment::PaymentHash;
-use ldk_server_protos::api::{Bolt11FailForHashRequest, Bolt11FailForHashResponse};
+use ldk_server_grpc::api::{Bolt11FailForHashRequest, Bolt11FailForHashResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_bolt11_fail_for_hash_request(
-	context: Context, request: Bolt11FailForHashRequest,
+pub(crate) async fn handle_bolt11_fail_for_hash_request(
+	context: Arc<Context>, request: Bolt11FailForHashRequest,
 ) -> Result<Bolt11FailForHashResponse, LdkServerError> {
 	let hash_bytes = <[u8; 32]>::from_hex(&request.payment_hash).map_err(|_| {
 		LdkServerError::new(

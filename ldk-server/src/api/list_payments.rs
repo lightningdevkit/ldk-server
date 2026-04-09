@@ -8,8 +8,8 @@
 // licenses.
 
 use bytes::Bytes;
-use ldk_server_protos::api::{ListPaymentsRequest, ListPaymentsResponse};
-use ldk_server_protos::types::{PageToken, Payment};
+use ldk_server_grpc::api::{ListPaymentsRequest, ListPaymentsResponse};
+use ldk_server_grpc::types::{PageToken, Payment};
 use prost::Message;
 
 use crate::api::error::LdkServerError;
@@ -18,9 +18,10 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_list_payments_request(
-	context: Context, request: ListPaymentsRequest,
+pub(crate) async fn handle_list_payments_request(
+	context: Arc<Context>, request: ListPaymentsRequest,
 ) -> Result<ListPaymentsResponse, LdkServerError> {
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context

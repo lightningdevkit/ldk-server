@@ -7,13 +7,14 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{ExportPathfindingScoresRequest, ExportPathfindingScoresResponse};
+use ldk_server_grpc::api::{ExportPathfindingScoresRequest, ExportPathfindingScoresResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_export_pathfinding_scores_request(
-	context: Context, _request: ExportPathfindingScoresRequest,
+pub(crate) async fn handle_export_pathfinding_scores_request(
+	context: Arc<Context>, _request: ExportPathfindingScoresRequest,
 ) -> Result<ExportPathfindingScoresResponse, LdkServerError> {
 	let scores = context.node.export_pathfinding_scores()?;
 

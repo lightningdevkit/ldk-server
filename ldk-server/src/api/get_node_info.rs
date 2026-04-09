@@ -7,14 +7,15 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use ldk_server_protos::api::{GetNodeInfoRequest, GetNodeInfoResponse};
-use ldk_server_protos::types::BestBlock;
+use ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
+use ldk_server_grpc::types::BestBlock;
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_get_node_info_request(
-	context: Context, _request: GetNodeInfoRequest,
+pub(crate) async fn handle_get_node_info_request(
+	context: Arc<Context>, _request: GetNodeInfoRequest,
 ) -> Result<GetNodeInfoResponse, LdkServerError> {
 	let node_status = context.node.status();
 

@@ -10,15 +10,16 @@
 use std::str::FromStr;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
-use ldk_server_protos::api::{SpontaneousSendRequest, SpontaneousSendResponse};
+use ldk_server_grpc::api::{SpontaneousSendRequest, SpontaneousSendResponse};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_spontaneous_send_request(
-	context: Context, request: SpontaneousSendRequest,
+pub(crate) async fn handle_spontaneous_send_request(
+	context: Arc<Context>, request: SpontaneousSendRequest,
 ) -> Result<SpontaneousSendResponse, LdkServerError> {
 	let node_id = PublicKey::from_str(&request.node_id).map_err(|_| {
 		LdkServerError::new(InvalidRequestError, "Invalid node_id provided.".to_string())

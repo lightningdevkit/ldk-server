@@ -3,7 +3,7 @@
 network = "regtest"                           # Bitcoin network to use
 listening_addresses = ["localhost:3001"]      # Lightning node listening addresses
 announcement_addresses = ["54.3.7.81:3001"]   # Lightning node announcement addresses
-#rest_service_address = "127.0.0.1:3536"       # LDK Server REST address (optional, defaults to 127.0.0.1:3536)
+#grpc_service_address = "127.0.0.1:3536"       # LDK Server gRPC address (optional, defaults to 127.0.0.1:3536)
 alias = "ldk_server"                          # Lightning node alias
 #pathfinding_scores_source_url = ""           # External Pathfinding Scores Source
 #rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"  # Optional: RGS URL for rapid gossip sync
@@ -37,11 +37,6 @@ server_url = "ssl://electrum.blockstream.info:50002"  # Electrum endpoint
 # Esplora settings
 [esplora]
 server_url = "https://mempool.space/api"      # Esplora endpoint
-
-# RabbitMQ settings (only required if using events-rabbitmq feature)
-[rabbitmq]
-connection_string = ""                        # RabbitMQ connection string
-exchange_name = ""
 
 # LSPS2 Client Support
 [liquidity.lsps2_client]

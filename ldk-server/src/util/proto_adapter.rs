@@ -9,7 +9,6 @@
 
 use bytes::Bytes;
 use hex::prelude::*;
-use hyper::StatusCode;
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
@@ -23,26 +22,23 @@ use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
 use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance, UserChannelId};
-use ldk_server_protos::error::{ErrorCode, ErrorResponse};
-use ldk_server_protos::types::confirmation_status::Status::{Confirmed, Unconfirmed};
-use ldk_server_protos::types::lightning_balance::BalanceType::{
+use ldk_server_grpc::types::confirmation_status::Status::{Confirmed, Unconfirmed};
+use ldk_server_grpc::types::lightning_balance::BalanceType::{
 	ClaimableAwaitingConfirmations, ClaimableOnChannelClose, ContentiousClaimable,
 	CounterpartyRevokedOutputClaimable, MaybePreimageClaimableHtlc, MaybeTimeoutClaimableHtlc,
 };
-use ldk_server_protos::types::payment_kind::Kind::{
+use ldk_server_grpc::types::payment_kind::Kind::{
 	Bolt11, Bolt11Jit, Bolt12Offer, Bolt12Refund, Onchain, Spontaneous,
 };
-use ldk_server_protos::types::pending_sweep_balance::BalanceType::{
+use ldk_server_grpc::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
-use ldk_server_protos::types::{
+use ldk_server_grpc::types::{
 	bolt11_invoice_description, Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment, Peer,
 };
 
 use crate::api::error::LdkServerError;
-use crate::api::error::LdkServerErrorCode::{
-	AuthError, InternalServerError, InvalidRequestError, LightningError,
-};
+use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 
 pub(crate) fn peer_to_proto(peer: PeerDetails) -> Peer {
 	Peer {
@@ -92,8 +88,8 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 
 pub(crate) fn channel_config_to_proto(
 	channel_config: ChannelConfig,
-) -> ldk_server_protos::types::ChannelConfig {
-	ldk_server_protos::types::ChannelConfig {
+) -> ldk_server_grpc::types::ChannelConfig {
+	ldk_server_grpc::types::ChannelConfig {
 		forwarding_fee_proportional_millionths: Some(
 			channel_config.forwarding_fee_proportional_millionths,
 		),
@@ -105,12 +101,12 @@ pub(crate) fn channel_config_to_proto(
 		accept_underpaying_htlcs: Some(channel_config.accept_underpaying_htlcs),
 		max_dust_htlc_exposure: match channel_config.max_dust_htlc_exposure {
 			MaxDustHTLCExposure::FixedLimit { limit_msat } => {
-				Some(ldk_server_protos::types::channel_config::MaxDustHtlcExposure::FixedLimitMsat(
+				Some(ldk_server_grpc::types::channel_config::MaxDustHtlcExposure::FixedLimitMsat(
 					limit_msat,
 				))
 			},
 			MaxDustHTLCExposure::FeeRateMultiplier { multiplier } => Some(
-				ldk_server_protos::types::channel_config::MaxDustHtlcExposure::FeeRateMultiplier(
+				ldk_server_grpc::types::channel_config::MaxDustHtlcExposure::FeeRateMultiplier(
 					multiplier,
 				),
 			),
@@ -135,15 +131,13 @@ pub(crate) fn payment_to_proto(payment: PaymentDetails) -> Payment {
 		amount_msat,
 		fee_paid_msat,
 		direction: match direction {
-			PaymentDirection::Inbound => ldk_server_protos::types::PaymentDirection::Inbound.into(),
-			PaymentDirection::Outbound => {
-				ldk_server_protos::types::PaymentDirection::Outbound.into()
-			},
+			PaymentDirection::Inbound => ldk_server_grpc::types::PaymentDirection::Inbound.into(),
+			PaymentDirection::Outbound => ldk_server_grpc::types::PaymentDirection::Outbound.into(),
 		},
 		status: match status {
-			PaymentStatus::Pending => ldk_server_protos::types::PaymentStatus::Pending.into(),
-			PaymentStatus::Succeeded => ldk_server_protos::types::PaymentStatus::Succeeded.into(),
-			PaymentStatus::Failed => ldk_server_protos::types::PaymentStatus::Failed.into(),
+			PaymentStatus::Pending => ldk_server_grpc::types::PaymentStatus::Pending.into(),
+			PaymentStatus::Succeeded => ldk_server_grpc::types::PaymentStatus::Succeeded.into(),
+			PaymentStatus::Failed => ldk_server_grpc::types::PaymentStatus::Failed.into(),
 		},
 		latest_update_timestamp,
 	}
@@ -151,16 +145,16 @@ pub(crate) fn payment_to_proto(payment: PaymentDetails) -> Payment {
 
 pub(crate) fn payment_kind_to_proto(
 	payment_kind: PaymentKind,
-) -> ldk_server_protos::types::PaymentKind {
+) -> ldk_server_grpc::types::PaymentKind {
 	match payment_kind {
-		PaymentKind::Onchain { txid, status } => ldk_server_protos::types::PaymentKind {
-			kind: Some(Onchain(ldk_server_protos::types::Onchain {
+		PaymentKind::Onchain { txid, status } => ldk_server_grpc::types::PaymentKind {
+			kind: Some(Onchain(ldk_server_grpc::types::Onchain {
 				txid: txid.to_string(),
 				status: Some(confirmation_status_to_proto(status)),
 			})),
 		},
-		PaymentKind::Bolt11 { hash, preimage, secret } => ldk_server_protos::types::PaymentKind {
-			kind: Some(Bolt11(ldk_server_protos::types::Bolt11 {
+		PaymentKind::Bolt11 { hash, preimage, secret } => ldk_server_grpc::types::PaymentKind {
+			kind: Some(Bolt11(ldk_server_grpc::types::Bolt11 {
 				hash: hash.to_string(),
 				preimage: preimage.map(|p| p.to_string()),
 				secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
@@ -172,8 +166,8 @@ pub(crate) fn payment_kind_to_proto(
 			secret,
 			lsp_fee_limits,
 			counterparty_skimmed_fee_msat,
-		} => ldk_server_protos::types::PaymentKind {
-			kind: Some(Bolt11Jit(ldk_server_protos::types::Bolt11Jit {
+		} => ldk_server_grpc::types::PaymentKind {
+			kind: Some(Bolt11Jit(ldk_server_grpc::types::Bolt11Jit {
 				hash: hash.to_string(),
 				preimage: preimage.map(|p| p.to_string()),
 				secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
@@ -186,8 +180,8 @@ pub(crate) fn payment_kind_to_proto(
 			})),
 		},
 		PaymentKind::Bolt12Offer { hash, preimage, secret, offer_id, payer_note, quantity } => {
-			ldk_server_protos::types::PaymentKind {
-				kind: Some(Bolt12Offer(ldk_server_protos::types::Bolt12Offer {
+			ldk_server_grpc::types::PaymentKind {
+				kind: Some(Bolt12Offer(ldk_server_grpc::types::Bolt12Offer {
 					hash: hash.map(|h| h.to_string()),
 					preimage: preimage.map(|p| p.to_string()),
 					secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
@@ -198,8 +192,8 @@ pub(crate) fn payment_kind_to_proto(
 			}
 		},
 		PaymentKind::Bolt12Refund { hash, preimage, secret, payer_note, quantity } => {
-			ldk_server_protos::types::PaymentKind {
-				kind: Some(Bolt12Refund(ldk_server_protos::types::Bolt12Refund {
+			ldk_server_grpc::types::PaymentKind {
+				kind: Some(Bolt12Refund(ldk_server_grpc::types::Bolt12Refund {
 					hash: hash.map(|h| h.to_string()),
 					preimage: preimage.map(|p| p.to_string()),
 					secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
@@ -208,8 +202,8 @@ pub(crate) fn payment_kind_to_proto(
 				})),
 			}
 		},
-		PaymentKind::Spontaneous { hash, preimage } => ldk_server_protos::types::PaymentKind {
-			kind: Some(Spontaneous(ldk_server_protos::types::Spontaneous {
+		PaymentKind::Spontaneous { hash, preimage } => ldk_server_grpc::types::PaymentKind {
+			kind: Some(Spontaneous(ldk_server_grpc::types::Spontaneous {
 				hash: hash.to_string(),
 				preimage: preimage.map(|p| p.to_string()),
 			})),
@@ -219,26 +213,26 @@ pub(crate) fn payment_kind_to_proto(
 
 pub(crate) fn confirmation_status_to_proto(
 	confirmation_status: ConfirmationStatus,
-) -> ldk_server_protos::types::ConfirmationStatus {
+) -> ldk_server_grpc::types::ConfirmationStatus {
 	match confirmation_status {
 		ConfirmationStatus::Confirmed { block_hash, height, timestamp } => {
-			ldk_server_protos::types::ConfirmationStatus {
-				status: Some(Confirmed(ldk_server_protos::types::Confirmed {
+			ldk_server_grpc::types::ConfirmationStatus {
+				status: Some(Confirmed(ldk_server_grpc::types::Confirmed {
 					block_hash: block_hash.to_string(),
 					height,
 					timestamp,
 				})),
 			}
 		},
-		ConfirmationStatus::Unconfirmed => ldk_server_protos::types::ConfirmationStatus {
-			status: Some(Unconfirmed(ldk_server_protos::types::Unconfirmed {})),
+		ConfirmationStatus::Unconfirmed => ldk_server_grpc::types::ConfirmationStatus {
+			status: Some(Unconfirmed(ldk_server_grpc::types::Unconfirmed {})),
 		},
 	}
 }
 
 pub(crate) fn lightning_balance_to_proto(
 	lightning_balance: LightningBalance,
-) -> ldk_server_protos::types::LightningBalance {
+) -> ldk_server_grpc::types::LightningBalance {
 	match lightning_balance {
 		LightningBalance::ClaimableOnChannelClose {
 			channel_id,
@@ -249,9 +243,9 @@ pub(crate) fn lightning_balance_to_proto(
 			outbound_forwarded_htlc_rounded_msat,
 			inbound_claiming_htlc_rounded_msat,
 			inbound_htlc_rounded_msat,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(ClaimableOnChannelClose(
-				ldk_server_protos::types::ClaimableOnChannelClose {
+				ldk_server_grpc::types::ClaimableOnChannelClose {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
@@ -269,24 +263,24 @@ pub(crate) fn lightning_balance_to_proto(
 			amount_satoshis,
 			confirmation_height,
 			source,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(ClaimableAwaitingConfirmations(
-				ldk_server_protos::types::ClaimableAwaitingConfirmations {
+				ldk_server_grpc::types::ClaimableAwaitingConfirmations {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
 					confirmation_height,
 					source: match source {
 						BalanceSource::HolderForceClosed => {
-							ldk_server_protos::types::BalanceSource::HolderForceClosed.into()
+							ldk_server_grpc::types::BalanceSource::HolderForceClosed.into()
 						},
 						BalanceSource::CounterpartyForceClosed => {
-							ldk_server_protos::types::BalanceSource::CounterpartyForceClosed.into()
+							ldk_server_grpc::types::BalanceSource::CounterpartyForceClosed.into()
 						},
 						BalanceSource::CoopClose => {
-							ldk_server_protos::types::BalanceSource::CoopClose.into()
+							ldk_server_grpc::types::BalanceSource::CoopClose.into()
 						},
-						BalanceSource::Htlc => ldk_server_protos::types::BalanceSource::Htlc.into(),
+						BalanceSource::Htlc => ldk_server_grpc::types::BalanceSource::Htlc.into(),
 					},
 				},
 			)),
@@ -298,9 +292,9 @@ pub(crate) fn lightning_balance_to_proto(
 			timeout_height,
 			payment_hash,
 			payment_preimage,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(ContentiousClaimable(
-				ldk_server_protos::types::ContentiousClaimable {
+				ldk_server_grpc::types::ContentiousClaimable {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
@@ -317,9 +311,9 @@ pub(crate) fn lightning_balance_to_proto(
 			claimable_height,
 			payment_hash,
 			outbound_payment,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(MaybeTimeoutClaimableHtlc(
-				ldk_server_protos::types::MaybeTimeoutClaimableHtlc {
+				ldk_server_grpc::types::MaybeTimeoutClaimableHtlc {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
@@ -335,9 +329,9 @@ pub(crate) fn lightning_balance_to_proto(
 			amount_satoshis,
 			expiry_height,
 			payment_hash,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(MaybePreimageClaimableHtlc(
-				ldk_server_protos::types::MaybePreimageClaimableHtlc {
+				ldk_server_grpc::types::MaybePreimageClaimableHtlc {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
@@ -350,9 +344,9 @@ pub(crate) fn lightning_balance_to_proto(
 			channel_id,
 			counterparty_node_id,
 			amount_satoshis,
-		} => ldk_server_protos::types::LightningBalance {
+		} => ldk_server_grpc::types::LightningBalance {
 			balance_type: Some(CounterpartyRevokedOutputClaimable(
-				ldk_server_protos::types::CounterpartyRevokedOutputClaimable {
+				ldk_server_grpc::types::CounterpartyRevokedOutputClaimable {
 					channel_id: channel_id.0.to_lower_hex_string(),
 					counterparty_node_id: counterparty_node_id.to_string(),
 					amount_satoshis,
@@ -364,11 +358,11 @@ pub(crate) fn lightning_balance_to_proto(
 
 pub(crate) fn pending_sweep_balance_to_proto(
 	pending_sweep_balance: PendingSweepBalance,
-) -> ldk_server_protos::types::PendingSweepBalance {
+) -> ldk_server_grpc::types::PendingSweepBalance {
 	match pending_sweep_balance {
 		PendingSweepBalance::PendingBroadcast { channel_id, amount_satoshis } => {
-			ldk_server_protos::types::PendingSweepBalance {
-				balance_type: Some(PendingBroadcast(ldk_server_protos::types::PendingBroadcast {
+			ldk_server_grpc::types::PendingSweepBalance {
+				balance_type: Some(PendingBroadcast(ldk_server_grpc::types::PendingBroadcast {
 					channel_id: channel_id.map(|c| c.0.to_lower_hex_string()),
 					amount_satoshis,
 				})),
@@ -379,9 +373,9 @@ pub(crate) fn pending_sweep_balance_to_proto(
 			latest_broadcast_height,
 			latest_spending_txid,
 			amount_satoshis,
-		} => ldk_server_protos::types::PendingSweepBalance {
+		} => ldk_server_grpc::types::PendingSweepBalance {
 			balance_type: Some(BroadcastAwaitingConfirmation(
-				ldk_server_protos::types::BroadcastAwaitingConfirmation {
+				ldk_server_grpc::types::BroadcastAwaitingConfirmation {
 					channel_id: channel_id.map(|c| c.0.to_lower_hex_string()),
 					latest_broadcast_height,
 					latest_spending_txid: latest_spending_txid.to_string(),
@@ -395,9 +389,9 @@ pub(crate) fn pending_sweep_balance_to_proto(
 			confirmation_hash,
 			confirmation_height,
 			amount_satoshis,
-		} => ldk_server_protos::types::PendingSweepBalance {
+		} => ldk_server_grpc::types::PendingSweepBalance {
 			balance_type: Some(AwaitingThresholdConfirmations(
-				ldk_server_protos::types::AwaitingThresholdConfirmations {
+				ldk_server_grpc::types::AwaitingThresholdConfirmations {
 					channel_id: channel_id.map(|c| c.0.to_lower_hex_string()),
 					latest_spending_txid: latest_spending_txid.to_string(),
 					confirmation_hash: confirmation_hash.to_string(),
@@ -435,7 +429,7 @@ pub(crate) fn forwarded_payment_to_proto(
 }
 
 pub(crate) fn proto_to_bolt11_description(
-	description: Option<ldk_server_protos::types::Bolt11InvoiceDescription>,
+	description: Option<ldk_server_grpc::types::Bolt11InvoiceDescription>,
 ) -> Result<Bolt11InvoiceDescription, LdkServerError> {
 	Ok(match description.and_then(|d| d.kind) {
 		Some(bolt11_invoice_description::Kind::Direct(s)) => {
@@ -468,8 +462,8 @@ pub(crate) fn proto_to_bolt11_description(
 
 pub(crate) fn graph_routing_fees_to_proto(
 	fees: RoutingFees,
-) -> ldk_server_protos::types::GraphRoutingFees {
-	ldk_server_protos::types::GraphRoutingFees {
+) -> ldk_server_grpc::types::GraphRoutingFees {
+	ldk_server_grpc::types::GraphRoutingFees {
 		base_msat: fees.base_msat,
 		proportional_millionths: fees.proportional_millionths,
 	}
@@ -477,8 +471,8 @@ pub(crate) fn graph_routing_fees_to_proto(
 
 pub(crate) fn graph_channel_update_to_proto(
 	update: ChannelUpdateInfo,
-) -> ldk_server_protos::types::GraphChannelUpdate {
-	ldk_server_protos::types::GraphChannelUpdate {
+) -> ldk_server_grpc::types::GraphChannelUpdate {
+	ldk_server_grpc::types::GraphChannelUpdate {
 		last_update: update.last_update,
 		enabled: update.enabled,
 		cltv_expiry_delta: update.cltv_expiry_delta as u32,
@@ -488,10 +482,8 @@ pub(crate) fn graph_channel_update_to_proto(
 	}
 }
 
-pub(crate) fn graph_channel_to_proto(
-	channel: ChannelInfo,
-) -> ldk_server_protos::types::GraphChannel {
-	ldk_server_protos::types::GraphChannel {
+pub(crate) fn graph_channel_to_proto(channel: ChannelInfo) -> ldk_server_grpc::types::GraphChannel {
+	ldk_server_grpc::types::GraphChannel {
 		node_one: channel.node_one.to_string(),
 		node_two: channel.node_two.to_string(),
 		capacity_sats: channel.capacity_sats,
@@ -502,9 +494,9 @@ pub(crate) fn graph_channel_to_proto(
 
 pub(crate) fn graph_node_announcement_to_proto(
 	announcement: NodeAnnouncementInfo,
-) -> ldk_server_protos::types::GraphNodeAnnouncement {
+) -> ldk_server_grpc::types::GraphNodeAnnouncement {
 	let rgb = announcement.rgb();
-	ldk_server_protos::types::GraphNodeAnnouncement {
+	ldk_server_grpc::types::GraphNodeAnnouncement {
 		last_update: announcement.last_update(),
 		alias: announcement.alias().to_string(),
 		rgb: format!("{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]),
@@ -512,29 +504,9 @@ pub(crate) fn graph_node_announcement_to_proto(
 	}
 }
 
-pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_protos::types::GraphNode {
-	ldk_server_protos::types::GraphNode {
+pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_grpc::types::GraphNode {
+	ldk_server_grpc::types::GraphNode {
 		channels: node.channels,
 		announcement_info: node.announcement_info.map(graph_node_announcement_to_proto),
 	}
-}
-
-pub(crate) fn to_error_response(ldk_error: LdkServerError) -> (ErrorResponse, StatusCode) {
-	let error_code = match ldk_error.error_code {
-		InvalidRequestError => ErrorCode::InvalidRequestError,
-		AuthError => ErrorCode::AuthError,
-		LightningError => ErrorCode::LightningError,
-		InternalServerError => ErrorCode::InternalServerError,
-	} as i32;
-
-	let status = match ldk_error.error_code {
-		InvalidRequestError => StatusCode::BAD_REQUEST,
-		AuthError => StatusCode::UNAUTHORIZED,
-		LightningError => StatusCode::INTERNAL_SERVER_ERROR,
-		InternalServerError => StatusCode::INTERNAL_SERVER_ERROR,
-	};
-
-	let error_response = ErrorResponse { message: ldk_error.message, error_code };
-
-	(error_response, status)
 }

@@ -11,6 +11,7 @@ pub mod api;
 pub mod endpoints;
 pub mod error;
 pub mod events;
+pub mod grpc;
 #[cfg(feature = "serde")]
 pub mod serde_utils;
 pub mod types;

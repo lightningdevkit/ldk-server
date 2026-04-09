@@ -8,8 +8,8 @@
 // licenses.
 
 use bytes::Bytes;
-use ldk_server_protos::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
-use ldk_server_protos::types::{ForwardedPayment, PageToken};
+use ldk_server_grpc::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
+use ldk_server_grpc::types::{ForwardedPayment, PageToken};
 use prost::Message;
 
 use crate::api::error::LdkServerError;
@@ -19,9 +19,10 @@ use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
+use std::sync::Arc;
 
-pub(crate) fn handle_list_forwarded_payments_request(
-	context: Context, request: ListForwardedPaymentsRequest,
+pub(crate) async fn handle_list_forwarded_payments_request(
+	context: Arc<Context>, request: ListForwardedPaymentsRequest,
 ) -> Result<ListForwardedPaymentsResponse, LdkServerError> {
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context

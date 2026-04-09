@@ -7,6 +7,5 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-pub(crate) mod events;
 pub(crate) mod persist;
 pub(crate) mod utils;
