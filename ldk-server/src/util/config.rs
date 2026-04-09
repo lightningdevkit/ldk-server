@@ -529,6 +529,7 @@ struct LSPS2ServiceTomlConfig {
 	min_payment_size_msat: u64,
 	max_payment_size_msat: u64,
 	client_trusts_lsp: bool,
+	allow_client_0reserve: bool,
 	require_token: Option<String>,
 }
 
@@ -544,6 +545,7 @@ impl From<LSPS2ServiceTomlConfig> for LSPS2ServiceConfig {
 			min_payment_size_msat,
 			max_payment_size_msat,
 			client_trusts_lsp,
+			allow_client_0reserve,
 			require_token,
 		} = val;
 
@@ -557,6 +559,7 @@ impl From<LSPS2ServiceTomlConfig> for LSPS2ServiceConfig {
 			max_client_to_self_delay,
 			max_payment_size_msat,
 			client_trusts_lsp,
+			allow_client_0reserve,
 			require_token,
 		}
 	}
@@ -813,6 +816,7 @@ mod tests {
 				min_payment_size_msat = 10000000          # 10,000 satoshis
 				max_payment_size_msat = 25000000000       # 0.25 BTC
 				client_trusts_lsp = true
+				allow_client_0reserve = false
 
 				[tor]
 				proxy_address = "127.0.0.1:9050"
@@ -920,6 +924,7 @@ mod tests {
 				min_payment_size_msat: 10000000,
 				max_payment_size_msat: 25000000000,
 				client_trusts_lsp: true,
+				allow_client_0reserve: false,
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
@@ -990,6 +995,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1043,6 +1049,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1103,6 +1110,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1140,6 +1148,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1329,6 +1338,7 @@ mod tests {
 				min_payment_size_msat: 10000000,
 				max_payment_size_msat: 25000000000,
 				client_trusts_lsp: true,
+				allow_client_0reserve: false,
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
@@ -1431,6 +1441,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
@@ -1477,6 +1488,7 @@ mod tests {
 			min_payment_size_msat = 10000000          # 10,000 satoshis
 			max_payment_size_msat = 25000000000       # 0.25 BTC
 			client_trusts_lsp = true
+			allow_client_0reserve = false
 			"#;
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
