@@ -148,6 +148,7 @@ max_client_to_self_delay = 1024
 min_payment_size_msat = 0
 max_payment_size_msat = 1000000000
 client_trusts_lsp = true
+allow_client_0reserve = false
 
 [metrics]
 enabled = true
