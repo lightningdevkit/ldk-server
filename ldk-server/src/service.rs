@@ -369,6 +369,16 @@ impl Service<Request<Incoming>> for NodeService {
 					tokio::spawn(async move {
 						loop {
 							tokio::select! {
+								biased;
+								_ = shutdown_rx.changed() => {
+									let _ = tx
+										.send(Err(GrpcStatus::new(
+											GRPC_STATUS_UNAVAILABLE,
+											"server shutting down",
+										)))
+										.await;
+									break;
+								},
 								result = rx.recv() => {
 									match result {
 										Ok(event) => {
@@ -390,15 +400,6 @@ impl Service<Request<Incoming>> for NodeService {
 											break;
 										},
 									}
-								},
-								_ = shutdown_rx.changed() => {
-									let _ = tx
-										.send(Err(GrpcStatus::new(
-											GRPC_STATUS_UNAVAILABLE,
-											"server shutting down",
-										)))
-										.await;
-									break;
 								},
 							}
 						}

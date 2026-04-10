@@ -53,7 +53,11 @@ use ldk_server_grpc::endpoints::{
 	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
-use ldk_server_grpc::grpc::{decode_grpc_body, encode_grpc_frame, percent_decode};
+use ldk_server_grpc::grpc::{
+	decode_grpc_body, encode_grpc_frame, percent_decode, GRPC_STATUS_FAILED_PRECONDITION,
+	GRPC_STATUS_INTERNAL, GRPC_STATUS_INVALID_ARGUMENT, GRPC_STATUS_OK,
+	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
+};
 use prost::Message;
 use reqwest::{header::HeaderMap, Certificate, Client};
 use rustls::{ClientConfig, RootCertStore};
@@ -506,10 +510,10 @@ impl LdkServerClient {
 /// Map a gRPC status code to an LdkServerError.
 fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
 	match code {
-		3 => LdkServerError::new(InvalidRequestError, message), // INVALID_ARGUMENT
-		9 => LdkServerError::new(LightningError, message),      // FAILED_PRECONDITION
-		13 => LdkServerError::new(InternalServerError, message), // INTERNAL
-		14 => LdkServerError::new(
+		GRPC_STATUS_INVALID_ARGUMENT => LdkServerError::new(InvalidRequestError, message),
+		GRPC_STATUS_FAILED_PRECONDITION => LdkServerError::new(LightningError, message),
+		GRPC_STATUS_INTERNAL => LdkServerError::new(InternalServerError, message),
+		GRPC_STATUS_UNAVAILABLE => LdkServerError::new(
 			InternalError,
 			if message.is_empty() {
 				"gRPC stream became unavailable".to_string()
@@ -517,7 +521,7 @@ fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
 				format!("gRPC stream became unavailable: {message}")
 			},
 		),
-		16 => LdkServerError::new(AuthError, message), // UNAUTHENTICATED
+		GRPC_STATUS_UNAUTHENTICATED => LdkServerError::new(AuthError, message),
 		_ => LdkServerError::new(
 			InternalError,
 			if message.is_empty() {
@@ -531,7 +535,7 @@ fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
 
 fn grpc_error_from_headers(headers: &HeaderMap) -> Option<LdkServerError> {
 	let code = headers.get("grpc-status")?.to_str().ok()?.parse::<u32>().ok()?;
-	if code == 0 {
+	if code == GRPC_STATUS_OK {
 		return None;
 	}
 
@@ -680,7 +684,7 @@ mod tests {
 
 	#[test]
 	fn test_grpc_code_to_error_marks_unavailable_streams() {
-		let err = grpc_code_to_error(14, "server shutting down".to_string());
+		let err = grpc_code_to_error(GRPC_STATUS_UNAVAILABLE, "server shutting down".to_string());
 		assert_eq!(err.error_code, InternalError);
 		assert_eq!(err.message, "gRPC stream became unavailable: server shutting down");
 	}
@@ -710,10 +714,10 @@ mod tests {
 	#[test]
 	fn test_grpc_code_to_error_all_known_codes() {
 		let cases = [
-			(3u32, InvalidRequestError, "msg"),
-			(16, AuthError, "msg"),
-			(9, LightningError, "msg"),
-			(13, InternalServerError, "msg"),
+			(GRPC_STATUS_INVALID_ARGUMENT, InvalidRequestError, "msg"),
+			(GRPC_STATUS_UNAUTHENTICATED, AuthError, "msg"),
+			(GRPC_STATUS_FAILED_PRECONDITION, LightningError, "msg"),
+			(GRPC_STATUS_INTERNAL, InternalServerError, "msg"),
 		];
 		for (code, expected_error_code, msg) in cases {
 			let err = grpc_code_to_error(code, msg.to_string());

@@ -15,6 +15,7 @@
 use bytes::{BufMut, Bytes, BytesMut};
 
 // gRPC status codes (a subset — only those we use).
+pub const GRPC_STATUS_OK: u32 = 0;
 pub const GRPC_STATUS_INVALID_ARGUMENT: u32 = 3;
 pub const GRPC_STATUS_DEADLINE_EXCEEDED: u32 = 4;
 pub const GRPC_STATUS_FAILED_PRECONDITION: u32 = 9;
@@ -160,7 +161,8 @@ impl http_body::Body for GrpcBody {
 /// Build trailers for a successful gRPC response.
 fn ok_trailers() -> http::HeaderMap {
 	let mut trailers = http::HeaderMap::with_capacity(1);
-	trailers.insert("grpc-status", http::HeaderValue::from_static("0"));
+	trailers
+		.insert("grpc-status", http::HeaderValue::from_str(&GRPC_STATUS_OK.to_string()).unwrap());
 	trailers
 }
 
