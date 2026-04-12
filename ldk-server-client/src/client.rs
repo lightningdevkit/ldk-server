@@ -15,7 +15,6 @@ use bitcoin_hashes::{sha256, Hash, HashEngine};
 use hyper::body::HttpBody as _;
 use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use ldk_server_grpc::api::SubscribeEventsRequest;
 use ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
@@ -36,8 +35,9 @@ use ldk_server_grpc::api::{
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -59,7 +59,8 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
 };
 use prost::Message;
-use reqwest::{header::HeaderMap, Certificate, Client};
+use reqwest::header::HeaderMap;
+use reqwest::{Certificate, Client};
 use rustls::{ClientConfig, RootCertStore};
 use rustls_pemfile::certs;
 
@@ -660,9 +661,10 @@ fn build_streaming_client(server_cert_pem: &[u8]) -> Result<StreamingClient, Str
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use hyper::Body;
 	use reqwest::header::HeaderValue;
+
+	use super::*;
 
 	#[test]
 	fn test_grpc_error_from_headers_ignores_ok_status() {

@@ -8,6 +8,7 @@
 // licenses.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::lightning::ln::msgs::SocketAddress;
@@ -15,7 +16,6 @@ use ldk_server_grpc::api::{ConnectPeerRequest, ConnectPeerResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_connect_peer(
 	context: Arc<Context>, request: ConnectPeerRequest,

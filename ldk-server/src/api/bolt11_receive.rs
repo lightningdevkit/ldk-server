@@ -7,13 +7,14 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use hex::DisplayHex;
 use ldk_server_grpc::api::{Bolt11ReceiveRequest, Bolt11ReceiveResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 use crate::util::proto_adapter::proto_to_bolt11_description;
-use std::sync::Arc;
 
 pub(crate) async fn handle_bolt11_receive_request(
 	context: Arc<Context>, request: Bolt11ReceiveRequest,

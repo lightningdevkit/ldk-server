@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use bytes::Bytes;
 use ldk_server_grpc::api::{ListPaymentsRequest, ListPaymentsResponse};
 use ldk_server_grpc::types::{PageToken, Payment};
@@ -18,7 +20,6 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_list_payments_request(
 	context: Arc<Context>, request: ListPaymentsRequest,

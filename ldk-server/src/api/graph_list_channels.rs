@@ -7,11 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use ldk_server_grpc::api::{GraphListChannelsRequest, GraphListChannelsResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_graph_list_channels_request(
 	context: Arc<Context>, _request: GraphListChannelsRequest,

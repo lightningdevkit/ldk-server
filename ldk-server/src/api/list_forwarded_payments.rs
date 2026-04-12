@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use bytes::Bytes;
 use ldk_server_grpc::api::{ListForwardedPaymentsRequest, ListForwardedPaymentsResponse};
 use ldk_server_grpc::types::{ForwardedPayment, PageToken};
@@ -19,7 +21,6 @@ use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_list_forwarded_payments_request(
 	context: Arc<Context>, request: ListForwardedPaymentsRequest,

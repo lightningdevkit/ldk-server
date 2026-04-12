@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use hex::FromHex;
 use ldk_node::lightning_types::payment::PaymentHash;
 use ldk_server_grpc::api::{Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse};
@@ -15,7 +17,6 @@ use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
 use crate::util::proto_adapter::proto_to_bolt11_description;
-use std::sync::Arc;
 
 pub(crate) async fn handle_bolt11_receive_for_hash_request(
 	context: Arc<Context>, request: Bolt11ReceiveForHashRequest,
