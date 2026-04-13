@@ -7,12 +7,13 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use hex::DisplayHex;
 use ldk_server_grpc::api::{Bolt12ReceiveRequest, Bolt12ReceiveResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_bolt12_receive_request(
 	context: Arc<Context>, request: Bolt12ReceiveRequest,

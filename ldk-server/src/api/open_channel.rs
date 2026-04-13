@@ -8,6 +8,7 @@
 // licenses.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::config::ChannelConfig;
@@ -17,7 +18,6 @@ use ldk_server_grpc::api::{OpenChannelRequest, OpenChannelResponse};
 use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_open_channel(
 	context: Arc<Context>, request: OpenChannelRequest,

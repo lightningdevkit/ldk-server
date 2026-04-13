@@ -8,6 +8,7 @@
 // licenses.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use hex::prelude::*;
 use ldk_node::lightning_invoice::Bolt11Invoice;
@@ -18,7 +19,6 @@ use ldk_server_grpc::types::{Bolt11HopHint, Bolt11RouteHint};
 use crate::api::decode_features;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_decode_invoice_request(
 	_context: Arc<Context>, request: DecodeInvoiceRequest,

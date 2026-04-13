@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use ldk_node::payment::UnifiedPaymentResult;
 use ldk_server_grpc::api::unified_send_response::PaymentResult;
 use ldk_server_grpc::api::{UnifiedSendRequest, UnifiedSendResponse};
@@ -14,7 +16,6 @@ use ldk_server_grpc::api::{UnifiedSendRequest, UnifiedSendResponse};
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_unified_send_request(
 	context: Arc<Context>, request: UnifiedSendRequest,

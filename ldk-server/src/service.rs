@@ -39,8 +39,7 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE, GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
 use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;

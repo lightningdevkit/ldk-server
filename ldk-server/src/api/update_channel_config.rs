@@ -8,6 +8,7 @@
 // licenses.
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::UserChannelId;
@@ -17,7 +18,6 @@ use crate::api::build_channel_config_from_proto;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use crate::service::Context;
-use std::sync::Arc;
 
 pub(crate) async fn handle_update_channel_config_request(
 	context: Arc<Context>, request: UpdateChannelConfigRequest,

@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use ldk_server_grpc::api::{
 	Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
@@ -16,7 +18,6 @@ use ldk_server_grpc::api::{
 use crate::api::error::LdkServerError;
 use crate::service::Context;
 use crate::util::proto_adapter::proto_to_bolt11_description;
-use std::sync::Arc;
 
 pub(crate) async fn handle_bolt11_receive_via_jit_channel_request(
 	context: Arc<Context>, request: Bolt11ReceiveViaJitChannelRequest,
