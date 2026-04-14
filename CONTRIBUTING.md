@@ -13,7 +13,7 @@ cargo build --release          # Production build (LTO enabled)
 ## Running
 
 ```bash
-cargo run --bin ldk-server ./ldk-server/ldk-server-config.toml
+cargo run --bin ldk-server ./contrib/ldk-server-config.toml
 ```
 
 ## Testing
@@ -54,7 +54,7 @@ cargo fmt --all
 
 ## Configuration
 
-- Config template with all options: `ldk-server/ldk-server-config.toml`
+- Config template with all options: `contrib/ldk-server-config.toml`
 - When updating config options, also update the tests in `ldk-server/src/util/config.rs`
 
 ## Before Submitting

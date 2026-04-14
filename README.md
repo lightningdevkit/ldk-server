@@ -15,7 +15,7 @@ a Lightning node while exposing a robust, language-agnostic API via [Protocol Bu
     - Deploy a Lightning Network node with minimal configuration, no coding required.
 
 - **API-First Design**:
-    - Exposes a well-defined API using Protobuf, allowing seamless integration with HTTP-clients or applications.
+    - Exposes a well-defined gRPC API using Protobuf, allowing seamless integration with any language.
 
 - **Powered by LDK**:
     - Built on top of LDK-Node, leveraging the modular, reliable, and high-performance architecture of LDK.
@@ -26,67 +26,38 @@ a Lightning node while exposing a robust, language-agnostic API via [Protocol Bu
 
 ### Project Status
 
-🚧 **Work in Progress**:
-- **APIs Under Development**: Expect breaking changes as the project evolves.
-- **Potential Bugs and Inconsistencies**: While progress is being made toward stability, unexpected behavior may occur.
-- **Improved Logging and Error Handling Coming Soon**: Current error handling is rudimentary (specially for CLI), and usability improvements are actively being worked on.
-- **Pending Testing**: Not tested, hence don't use it for production!
+**Work in Progress**:
+- APIs are under development. Expect breaking changes as the project evolves.
+- Not tested for production use.
+- We welcome your feedback and contributions to help shape the future of LDK Server!
 
-We welcome your feedback and contributions to help shape the future of LDK Server!
+### Quick Start
 
-
-### Configuration
-Refer `./ldk-server/ldk-server-config.toml` to see available configuration options.
-
-You can configure the node via a TOML file, environment variables, or CLI arguments. All options are optional — values provided via CLI override environment variables, which override the values in the TOML file.
-
-### Building
-```
-git clone https://github.com/lightningdevkit/ldk-server.git
-cargo build
-```
-
-### Running
-- Using a config file:
-```
-cargo run --bin ldk-server ./ldk-server/ldk-server-config.toml
-```
-
-- Using environment variables (all optional):
-```
-export LDK_SERVER_NODE_NETWORK=regtest
-export LDK_SERVER_NODE_LISTENING_ADDRESS=localhost:3001
-export LDK_SERVER_NODE_REST_SERVICE_ADDRESS=127.0.0.1:3002
-export LDK_SERVER_NODE_ALIAS=LDK-Server
-export LDK_SERVER_BITCOIND_RPC_ADDRESS=127.0.0.1:18443
-export LDK_SERVER_BITCOIND_RPC_USER=your-rpc-user
-export LDK_SERVER_BITCOIND_RPC_PASSWORD=your-rpc-password
-export LDK_SERVER_STORAGE_DIR_PATH=/path/to/storage
-cargo run --bin ldk-server
-```
-
-Interact with the node using CLI:
-```
-ldk-server-cli -b localhost:3002 --api-key your-secret-api-key --tls-cert /path/to/tls_cert.pem onchain-receive # To generate onchain-receive address.
-ldk-server-cli -b localhost:3002 --api-key your-secret-api-key --tls-cert /path/to/tls_cert.pem help # To print help/available commands.
-```
-
-### Shell Completions
-
-The CLI supports generating shell completions for Bash, Zsh, Fish, Elvish, and PowerShell.
-
-Add completions to your shell config:
 ```bash
-# Bash (add to ~/.bashrc)
-eval "$(ldk-server-cli completions bash)"
-
-# Zsh (add to ~/.zshrc)
-eval "$(ldk-server-cli completions zsh)"
-
-# Fish (add to ~/.config/fish/config.fish)
-ldk-server-cli completions fish | source
+git clone https://github.com/lightningdevkit/ldk-server.git
+cd ldk-server
+cargo build --release
+cp contrib/ldk-server-config.toml my-config.toml  # edit with your settings
+./target/release/ldk-server my-config.toml
 ```
 
-## Contributing
+See [Getting Started](docs/getting-started.md) for a full walkthrough.
+
+### Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting-started.md) | Install, configure, and run your first node |
+| [Configuration](docs/configuration.md) | All config options, environment variables, and Bitcoin backend tradeoffs |
+| [API Guide](docs/api-guide.md) | gRPC transport, authentication, and endpoint reference |
+| [Tor](docs/tor.md) | Connecting to and receiving connections over Tor |
+| [Operations](docs/operations.md) | Production deployment, backups, and monitoring |
+
+### API
+
+The canonical API definitions are in [`ldk-server-grpc/src/proto/`](ldk-server-grpc/src/proto/). A ready-made
+Rust client library is provided in [`ldk-server-client/`](ldk-server-client/).
+
+### Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on building, testing, code style, and development workflow.

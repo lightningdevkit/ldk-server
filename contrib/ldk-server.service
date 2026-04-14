@@ -1,0 +1,22 @@
+[Unit]
+Description=LDK Server Lightning Node
+After=network-online.target bitcoind.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/ldk-server /etc/ldk-server/config.toml
+Restart=always
+RestartSec=10
+
+# Security hardening
+User=ldk-server
+ProtectSystem=strict
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/ldk-server
+
+[Install]
+WantedBy=multi-user.target

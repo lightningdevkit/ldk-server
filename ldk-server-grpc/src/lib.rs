@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+#![doc = include_str!("../README.md")]
+
 pub mod api;
 pub mod endpoints;
 pub mod error;

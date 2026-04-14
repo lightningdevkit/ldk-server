@@ -7,17 +7,16 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-//! Client-side library to interact with LDK Server.
-
+#![doc = include_str!("../README.md")]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 #![deny(missing_docs)]
 
-/// Implements a ldk-ldk-server-client ([`client::LdkServerClient`]) to access a hosted instance of LDK Server.
+/// Implements a [`LdkServerClient`](client::LdkServerClient) to access a hosted instance of LDK Server.
 pub mod client;
 
-/// Implements the error type ([`error::LdkServerError`]) returned on interacting with [`client::LdkServerClient`]
+/// Implements the error type ([`LdkServerError`](error::LdkServerError)) returned on interacting with [`LdkServerClient`](client::LdkServerClient).
 pub mod error;
 
-/// Request/Response structs required for interacting with the ldk-ldk-server-client.
+/// Request/Response structs required for interacting with the client.
 pub use ldk_server_grpc;
