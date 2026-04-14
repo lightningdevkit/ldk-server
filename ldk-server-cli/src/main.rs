@@ -389,6 +389,11 @@ enum Commands {
 		push_to_counterparty: Option<Amount>,
 		#[arg(long, help = "Whether the channel should be public")]
 		announce_channel: bool,
+		#[arg(
+			long,
+			help = "Allow the counterparty to spend all its channel balance. This cannot be set together with `announce_channel`."
+		)]
+		disable_counterparty_reserve: bool,
 		// Channel config options
 		#[arg(
 			long,
@@ -914,6 +919,7 @@ async fn main() {
 			channel_amount,
 			push_to_counterparty,
 			announce_channel,
+			disable_counterparty_reserve,
 			forwarding_fee_proportional_millionths,
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
@@ -926,6 +932,12 @@ async fn main() {
 				forwarding_fee_base_msat,
 				cltv_expiry_delta,
 			);
+			if announce_channel && disable_counterparty_reserve {
+				handle_error(LdkServerError::new(
+					InvalidRequestError,
+					"Cannot set both `announce_channel` and `disable_counterparty_reserve`",
+				));
+			}
 
 			handle_response_result::<_, OpenChannelResponse>(
 				client
@@ -936,6 +948,7 @@ async fn main() {
 						push_to_counterparty_msat,
 						channel_config,
 						announce_channel,
+						disable_counterparty_reserve,
 					})
 					.await,
 			);

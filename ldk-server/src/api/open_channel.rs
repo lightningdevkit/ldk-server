@@ -16,7 +16,7 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_server_grpc::api::{OpenChannelRequest, OpenChannelResponse};
 
 use crate::api::build_channel_config_from_proto;
-use crate::api::error::LdkServerError;
+use crate::api::error::{LdkServerError, LdkServerErrorCode};
 use crate::service::Context;
 
 pub(crate) async fn handle_open_channel(
@@ -26,6 +26,12 @@ pub(crate) async fn handle_open_channel(
 		.map_err(|_| ldk_node::NodeError::InvalidPublicKey)?;
 	let address = SocketAddress::from_str(&request.address)
 		.map_err(|_| ldk_node::NodeError::InvalidSocketAddress)?;
+	if request.announce_channel && request.disable_counterparty_reserve {
+		return Err(LdkServerError::new(
+			LdkServerErrorCode::InvalidRequestError,
+			"Cannot set both `announce_channel` and `disable_counterparty_reserve`",
+		));
+	}
 
 	let channel_config = request
 		.channel_config
@@ -34,6 +40,14 @@ pub(crate) async fn handle_open_channel(
 
 	let user_channel_id = if request.announce_channel {
 		context.node.open_announced_channel(
+			node_id,
+			address,
+			request.channel_amount_sats,
+			request.push_to_counterparty_msat,
+			channel_config,
+		)?
+	} else if request.disable_counterparty_reserve {
+		context.node.open_0reserve_channel(
 			node_id,
 			address,
 			request.channel_amount_sats,

@@ -395,6 +395,9 @@ message OpenChannelRequest {
 
   // Whether the channel should be public.
   bool announce_channel = 6;
+
+  // Allow the counterparty to spend all its channel balance. This cannot be set together with `announce_channel`.
+  bool disable_counterparty_reserve = 7;
 }
 
 // The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
