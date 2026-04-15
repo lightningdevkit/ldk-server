@@ -48,7 +48,7 @@ use crate::io::persist::{
 };
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
-use crate::util::logger::ServerLogger;
+use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
@@ -110,18 +110,29 @@ fn main() {
 		Network::Regtest => storage_dir.join("regtest"),
 	};
 
-	let log_file_path = config_file.log_file_path.map(PathBuf::from).unwrap_or_else(|| {
-		let mut default_log_path = network_dir.clone();
-		default_log_path.push("ldk-server.log");
-		default_log_path
-	});
+	let log_file_path = if config_file.log_to_file {
+		let path = config_file.log_file_path.map(PathBuf::from).unwrap_or_else(|| {
+			let mut default_log_path = network_dir.clone();
+			default_log_path.push("ldk-server.log");
+			default_log_path
+		});
 
-	if log_file_path == storage_dir || log_file_path == network_dir {
-		eprintln!("Log file path cannot be the same as storage directory path.");
-		std::process::exit(-1);
-	}
+		if path == storage_dir || path == network_dir {
+			eprintln!("Log file path cannot be the same as storage directory path.");
+			std::process::exit(-1);
+		}
+		Some(path)
+	} else {
+		None
+	};
 
-	let logger = match ServerLogger::init(config_file.log_level, &log_file_path) {
+	let log_config = LogConfig {
+		log_max_files: config_file.log_max_files,
+		log_max_size_bytes: config_file.log_max_size_bytes,
+		log_rotation_interval_secs: config_file.log_rotation_interval_secs,
+	};
+
+	let logger = match ServerLogger::init(config_file.log_level, log_file_path, log_config) {
 		Ok(logger) => logger,
 		Err(e) => {
 			eprintln!("Failed to initialize logger: {e}");
@@ -519,6 +530,7 @@ fn main() {
 					break;
 				}
 				_ = sighup_stream.recv() => {
+					info!("Received SIGHUP, reopening log file..");
 					if let Err(e) = logger.reopen() {
 						error!("Failed to reopen log file on SIGHUP: {e}");
 					}
@@ -535,6 +547,7 @@ fn main() {
 	systemd::notify_stopping();
 	node.stop().expect("Shutdown should always succeed.");
 	info!("Shutdown complete..");
+	log::logger().flush();
 }
 
 fn send_event_and_upsert_payment(
