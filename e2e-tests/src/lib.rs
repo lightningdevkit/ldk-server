@@ -428,6 +428,7 @@ pub async fn setup_funded_channel(
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
+			disable_counterparty_reserve: false,
 		})
 		.await
 		.unwrap();

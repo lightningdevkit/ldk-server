@@ -478,6 +478,9 @@ pub struct OpenChannelRequest {
 	/// Whether the channel should be public.
 	#[prost(bool, tag = "6")]
 	pub announce_channel: bool,
+	/// Allow the counterparty to spend all its channel balance. This cannot be set together with `announce_channel`.
+	#[prost(bool, tag = "7")]
+	pub disable_counterparty_reserve: bool,
 }
 /// The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]

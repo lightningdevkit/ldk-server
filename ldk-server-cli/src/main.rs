@@ -389,6 +389,11 @@ enum Commands {
 		push_to_counterparty: Option<Amount>,
 		#[arg(long, help = "Whether the channel should be public")]
 		announce_channel: bool,
+		#[arg(
+			long,
+			help = "Allow the counterparty to spend all its channel balance. This cannot be set together with `announce_channel`."
+		)]
+		disable_counterparty_reserve: bool,
 		// Channel config options
 		#[arg(
 			long,
@@ -676,7 +681,7 @@ async fn main() {
 				}),
 				(Some(_), Some(_)) => {
 					handle_error(LdkServerError::new(
-						InternalError,
+						InvalidRequestError,
 						"Only one of description or description_hash can be set.".to_string(),
 					));
 				},
@@ -914,6 +919,7 @@ async fn main() {
 			channel_amount,
 			push_to_counterparty,
 			announce_channel,
+			disable_counterparty_reserve,
 			forwarding_fee_proportional_millionths,
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
@@ -926,6 +932,12 @@ async fn main() {
 				forwarding_fee_base_msat,
 				cltv_expiry_delta,
 			);
+			if announce_channel && disable_counterparty_reserve {
+				handle_error(LdkServerError::new(
+					InvalidRequestError,
+					"Cannot set both `announce_channel` and `disable_counterparty_reserve`",
+				));
+			}
 
 			handle_response_result::<_, OpenChannelResponse>(
 				client
@@ -936,6 +948,7 @@ async fn main() {
 						push_to_counterparty_msat,
 						channel_config,
 						announce_channel,
+						disable_counterparty_reserve,
 					})
 					.await,
 			);
@@ -1237,7 +1250,7 @@ fn parse_bolt11_invoice_description(
 		}),
 		(Some(_), Some(_)) => {
 			handle_error(LdkServerError::new(
-				InternalError,
+				InvalidRequestError,
 				"Only one of description or description_hash can be set.".to_string(),
 			));
 		},
@@ -1249,13 +1262,13 @@ fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
 	let parts: Vec<&str> = token_str.split(':').collect();
 	if parts.len() != 2 {
 		return Err(LdkServerError::new(
-			InternalError,
+			InvalidRequestError,
 			"Page token must be in format 'token:index'".to_string(),
 		));
 	}
-	let index = parts[1]
-		.parse::<i64>()
-		.map_err(|_| LdkServerError::new(InternalError, "Invalid page token index".to_string()))?;
+	let index = parts[1].parse::<i64>().map_err(|_| {
+		LdkServerError::new(InvalidRequestError, "Invalid page token index".to_string())
+	})?;
 	Ok(PageToken { token: parts[0].to_string(), index })
 }
 
