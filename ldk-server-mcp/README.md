@@ -2,10 +2,12 @@
 
 An [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes [LDK Server](https://github.com/lightningdevkit/ldk-server) operations as tools for AI agents. It communicates over JSON-RPC 2.0 via stdio and connects to an LDK Server instance over TLS using the [`ldk-server-client`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-client) library.
 
+This crate lives inside the `ldk-server` workspace.
+
 ## Building
 
 ```bash
-cargo build --release
+cargo build -p ldk-server-mcp --release
 ```
 
 ## Configuration
@@ -35,14 +37,17 @@ cert_path = "/path/to/tls.crt"
 export LDK_BASE_URL="localhost:3000"
 export LDK_API_KEY="your_hex_encoded_api_key"
 export LDK_TLS_CERT_PATH="/path/to/tls.crt"
-./target/release/ldk-server-mcp
+cargo run -p ldk-server-mcp --release
 ```
 
 Or using a config file:
 
 ```bash
-./target/release/ldk-server-mcp --config /path/to/config.toml
+cargo run -p ldk-server-mcp -- --config /path/to/config.toml
 ```
+
+If `--config` is omitted, `ldk-server-mcp` falls back to the same default config path as
+`ldk-server` and `ldk-server-cli`: `~/.ldk-server/config.toml`.
 
 ### With Claude Desktop
 
@@ -84,70 +89,9 @@ Add to your Claude Code MCP settings (`.claude/settings.json`):
 
 ## Available Tools
 
-The server exposes 37 unary LDK Server RPCs as MCP tools.
+All unary LDK Server RPCs are exposed as MCP tools. Use `tools/list` to discover the current set.
 
 Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `metrics` are not exposed as tools.
-
-### Node
-| Tool | Description |
-|------|-------------|
-| `get_node_info` | Retrieve node info including node_id, sync status, and best block |
-| `get_balances` | Retrieve an overview of all known balances (on-chain and Lightning) |
-
-### On-chain
-| Tool | Description |
-|------|-------------|
-| `onchain_receive` | Generate a new on-chain Bitcoin funding address |
-| `onchain_send` | Send an on-chain Bitcoin payment to an address |
-
-### Payments
-| Tool | Description |
-|------|-------------|
-| `bolt11_receive` | Create a BOLT11 Lightning invoice to receive a payment |
-| `bolt11_receive_for_hash` | Create a BOLT11 Lightning invoice for a specific payment hash |
-| `bolt11_claim_for_hash` | Manually claim a BOLT11 payment for a specific payment hash |
-| `bolt11_fail_for_hash` | Manually fail a BOLT11 payment for a specific payment hash |
-| `bolt11_receive_via_jit_channel` | Create a BOLT11 Lightning invoice to receive via an LSPS2 JIT channel |
-| `bolt11_receive_variable_amount_via_jit_channel` | Create a variable-amount BOLT11 Lightning invoice to receive via an LSPS2 JIT channel |
-| `bolt11_send` | Pay a BOLT11 Lightning invoice |
-| `bolt12_receive` | Create a BOLT12 offer for receiving Lightning payments |
-| `bolt12_send` | Pay a BOLT12 Lightning offer |
-| `spontaneous_send` | Send a spontaneous (keysend) payment to a Lightning node |
-| `unified_send` | Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name |
-
-### Channels
-| Tool | Description |
-|------|-------------|
-| `open_channel` | Open a new Lightning channel with a remote node |
-| `close_channel` | Cooperatively close a Lightning channel |
-| `force_close_channel` | Force close a Lightning channel unilaterally |
-| `list_channels` | List all known Lightning channels |
-| `update_channel_config` | Update forwarding fees and CLTV delta for a channel |
-| `splice_in` | Increase a channel's balance by splicing in on-chain funds |
-| `splice_out` | Decrease a channel's balance by splicing out to on-chain |
-
-### Payment History
-| Tool | Description |
-|------|-------------|
-| `list_payments` | List all payments (supports pagination via page_token) |
-| `get_payment_details` | Get details of a specific payment by its ID |
-| `list_forwarded_payments` | List all forwarded payments (supports pagination via page_token) |
-
-### Peers
-| Tool | Description |
-|------|-------------|
-| `connect_peer` | Connect to a Lightning peer without opening a channel |
-| `disconnect_peer` | Disconnect from a Lightning peer |
-| `list_peers` | List all known Lightning peers |
-
-### Utilities
-| Tool | Description |
-|------|-------------|
-| `decode_invoice` | Decode a BOLT11 invoice and return its parsed fields |
-| `decode_offer` | Decode a BOLT12 offer and return its parsed fields |
-| `sign_message` | Sign a message with the node's secret key |
-| `verify_signature` | Verify a signature against a message and public key |
-| `export_pathfinding_scores` | Export the pathfinding scores used by the Lightning router |
 
 ## MCP Protocol
 
@@ -158,7 +102,10 @@ Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `me
 ## Testing
 
 ```bash
-cargo test
+cargo test -p ldk-server-mcp
+
+# MCP end-to-end sanity checks against a live ldk-server
+cargo test --manifest-path e2e-tests/Cargo.toml mcp -- --nocapture
 ```
 
 ## License
