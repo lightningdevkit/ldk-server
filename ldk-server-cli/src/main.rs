@@ -681,7 +681,7 @@ async fn main() {
 				}),
 				(Some(_), Some(_)) => {
 					handle_error(LdkServerError::new(
-						InternalError,
+						InvalidRequestError,
 						"Only one of description or description_hash can be set.".to_string(),
 					));
 				},
@@ -1250,7 +1250,7 @@ fn parse_bolt11_invoice_description(
 		}),
 		(Some(_), Some(_)) => {
 			handle_error(LdkServerError::new(
-				InternalError,
+				InvalidRequestError,
 				"Only one of description or description_hash can be set.".to_string(),
 			));
 		},
@@ -1262,13 +1262,13 @@ fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
 	let parts: Vec<&str> = token_str.split(':').collect();
 	if parts.len() != 2 {
 		return Err(LdkServerError::new(
-			InternalError,
+			InvalidRequestError,
 			"Page token must be in format 'token:index'".to_string(),
 		));
 	}
-	let index = parts[1]
-		.parse::<i64>()
-		.map_err(|_| LdkServerError::new(InternalError, "Invalid page token index".to_string()))?;
+	let index = parts[1].parse::<i64>().map_err(|_| {
+		LdkServerError::new(InvalidRequestError, "Invalid page token index".to_string())
+	})?;
 	Ok(PageToken { token: parts[0].to_string(), index })
 }
 
