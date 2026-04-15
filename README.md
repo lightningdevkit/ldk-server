@@ -9,6 +9,14 @@ The primary goal of LDK Server is to provide an efficient, stable, and API-first
 a Lightning Network node. With its streamlined setup, LDK Server enables users to easily set up, configure, and run
 a Lightning node while exposing a robust, language-agnostic API via [Protocol Buffers (Protobuf)](https://protobuf.dev/).
 
+## Workspace Crates
+
+- `ldk-server`: daemon that runs the Lightning node and exposes the API
+- `ldk-server-cli`: CLI client for the server API
+- `ldk-server-client`: Rust client library for authenticated TLS gRPC calls
+- `ldk-server-grpc`: generated protobuf and shared gRPC types
+- `ldk-server-mcp`: stdio MCP bridge exposing unary `ldk-server` RPCs as MCP tools
+
 ### Features
 
 - **Out-of-the-Box Lightning Node**:
@@ -57,6 +65,18 @@ See [Getting Started](docs/getting-started.md) for a full walkthrough.
 
 The canonical API definitions are in [`ldk-server-grpc/src/proto/`](ldk-server-grpc/src/proto/). A ready-made
 Rust client library is provided in [`ldk-server-client/`](ldk-server-client/).
+
+### MCP Bridge
+
+The workspace also includes `ldk-server-mcp`, a stdio [Model Context Protocol](https://spec.modelcontextprotocol.io/) server
+that lets MCP-compatible clients call the unary `ldk-server` RPC surface as tools.
+
+Run it directly from the workspace:
+```bash
+cargo run -p ldk-server-mcp -- --config /path/to/config.toml
+```
+
+It is covered by both crate-local tests and an `e2e-tests` sanity suite against a live `ldk-server` instance.
 
 ### Contributing
 
