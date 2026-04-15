@@ -1288,6 +1288,7 @@ name = "ldk-server-client"
 version = "0.1.0"
 dependencies = [
  "bitcoin_hashes 0.14.0",
+ "hex-conservative 0.2.1",
  "hyper 0.14.32",
  "hyper-rustls 0.24.2",
  "ldk-server-grpc",
@@ -1295,7 +1296,9 @@ dependencies = [
  "reqwest 0.11.27",
  "rustls 0.21.12",
  "rustls-pemfile",
+ "serde",
  "tokio",
+ "toml",
 ]
 
 [[package]]
@@ -1314,6 +1317,17 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
+]
+
+[[package]]
+name = "ldk-server-mcp"
+version = "0.1.0"
+dependencies = [
+ "hex-conservative 0.2.1",
+ "ldk-server-client",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
