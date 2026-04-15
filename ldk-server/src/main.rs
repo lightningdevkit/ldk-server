@@ -121,13 +121,10 @@ fn main() {
 		std::process::exit(-1);
 	}
 
-	let logger = match ServerLogger::init(config_file.log_level, &log_file_path) {
-		Ok(logger) => logger,
-		Err(e) => {
-			eprintln!("Failed to initialize logger: {e}");
-			std::process::exit(-1);
-		},
-	};
+	if let Err(e) = ServerLogger::init(config_file.log_level, &log_file_path) {
+		eprintln!("Failed to initialize logger: {e}");
+		std::process::exit(-1);
+	}
 
 	let api_key = match load_or_generate_api_key(&network_dir) {
 		Ok(key) => key,
@@ -255,14 +252,6 @@ fn main() {
 	}
 
 	runtime.block_on(async {
-		// Register SIGHUP handler for log rotation
-		let mut sighup_stream = match tokio::signal::unix::signal(SignalKind::hangup()) {
-			Ok(stream) => stream,
-			Err(e) => {
-				error!("Failed to register SIGHUP handler: {e}");
-				std::process::exit(-1);
-			}
-		};
 
 		let mut sigterm_stream = match tokio::signal::unix::signal(SignalKind::terminate()) {
 			Ok(stream) => stream,
@@ -517,11 +506,6 @@ fn main() {
 					info!("Received CTRL-C, shutting down..");
 					let _ = shutdown_tx.send(true);
 					break;
-				}
-				_ = sighup_stream.recv() => {
-					if let Err(e) = logger.reopen() {
-						error!("Failed to reopen log file on SIGHUP: {e}");
-					}
 				}
 				_ = sigterm_stream.recv() => {
 					info!("Received SIGTERM, shutting down..");

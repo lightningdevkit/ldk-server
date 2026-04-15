@@ -8,11 +8,25 @@
 // licenses.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::SystemTime;
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
+
+/// Maximum size of the log file before it gets rotated (50 MB)
+const MAX_LOG_SIZE_BYTES: usize = 50 * 1024 * 1024;
+/// Maximum age of the log file before it gets rotated (24 hours)
+const ROTATION_INTERVAL_SECS: u64 = 24 * 60 * 60;
+
+struct LoggerState {
+	file: BufWriter<File>,
+	bytes_written: usize,
+	created_at: SystemTime,
+}
 
 /// A logger implementation that writes logs to both stderr and a file.
 ///
@@ -25,12 +39,12 @@ use log::{Level, LevelFilter, Log, Metadata, Record};
 ///
 /// Example: `[2025-12-04T10:30:45Z INFO ldk_server:42] Starting up...`
 ///
-/// The logger handles SIGHUP for log rotation by reopening the file handle when signaled.
+/// The logger does a native size/time-based rotation and zero-dependency background gzip compression.
 pub struct ServerLogger {
 	/// The maximum log level to display
 	level: LevelFilter,
-	/// The file to write logs to, protected by a mutex for thread-safe access
-	file: Mutex<File>,
+	/// Groups the file and state in a single Mutex
+	state: Mutex<LoggerState>,
 	/// Path to the log file for reopening on SIGHUP
 	log_file_path: PathBuf,
 }
@@ -52,30 +66,60 @@ impl ServerLogger {
 
 		let file = open_log_file(log_file_path)?;
 
+		// Check existing file metadata to persist size and age across node restarts
+		let metadata = fs::metadata(log_file_path);
+		let initial_size = metadata.as_ref().map(|m| m.len() as usize).unwrap_or(0);
+		let created_at = metadata
+			.and_then(|m| m.created().or_else(|_| m.modified()))
+			.unwrap_or_else(|_| SystemTime::now());
+
 		let logger = Arc::new(ServerLogger {
 			level,
-			file: Mutex::new(file),
 			log_file_path: log_file_path.to_path_buf(),
+			state: Mutex::new(LoggerState {
+				file: BufWriter::new(file),
+				bytes_written: initial_size,
+				created_at,
+			}),
 		});
 
 		log::set_boxed_logger(Box::new(LoggerWrapper(Arc::clone(&logger))))
 			.map_err(io::Error::other)?;
 		log::set_max_level(level);
+
 		Ok(logger)
 	}
 
-	/// Reopens the log file. Called on SIGHUP for log rotation.
-	pub fn reopen(&self) -> Result<(), io::Error> {
+	/// Flushes the current file, renames it with a timestamp, opens a fresh log,
+	/// and spawns a background thread to compress the old file.
+	fn rotate(&self, state: &mut LoggerState) -> Result<(), io::Error> {
+		state.file.flush()?;
+
+		let now = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
+		let mut new_path = self.log_file_path.to_path_buf().into_os_string();
+		new_path.push(".");
+		new_path.push(now);
+		let rotated_path = PathBuf::from(new_path);
+
+		fs::rename(&self.log_file_path, &rotated_path)?;
+
 		let new_file = open_log_file(&self.log_file_path)?;
-		match self.file.lock() {
-			Ok(mut file) => {
-				// Flush the old buffer before replacing with the new file
-				file.flush()?;
-				*file = new_file;
-				Ok(())
+		state.file = BufWriter::new(new_file);
+
+		// Reset our rotation triggers for the new file
+		state.bytes_written = 0;
+		state.created_at = SystemTime::now();
+
+		// Spawn independent OS thread to compress the old file using native gzip
+		thread::spawn(move || match Command::new("gzip").arg("-f").arg(&rotated_path).status() {
+			Ok(status) if status.success() => {},
+			Ok(status) => {
+				eprintln!("Failed to compress log {:?}: exited with {}", rotated_path, status)
 			},
-			Err(e) => Err(io::Error::other(format!("Failed to acquire lock: {e}"))),
-		}
+			Err(e) => eprintln!("Failed to execute gzip on {:?}: {}", rotated_path, e),
+		});
+
+		Ok(())
 	}
 }
 
@@ -89,43 +133,47 @@ impl Log for ServerLogger {
 			let level_str = format_level(record.level());
 			let line = record.line().unwrap_or(0);
 
+			let log_line = format!(
+				"[{} {} {}:{}] {}",
+				format_timestamp(),
+				level_str,
+				record.target(),
+				line,
+				record.args()
+			);
+
 			// Log to console
-			let _ = match record.level() {
+			match record.level() {
 				Level::Error => {
-					writeln!(
-						io::stderr(),
-						"[{} {} {}:{}] {}",
-						format_timestamp(),
-						level_str,
-						record.target(),
-						line,
-						record.args()
-					)
+					let _ = writeln!(io::stderr(), "{}", log_line);
 				},
 				_ => {
-					writeln!(
-						io::stdout(),
-						"[{} {} {}:{}] {}",
-						format_timestamp(),
-						level_str,
-						record.target(),
-						line,
-						record.args()
-					)
+					let _ = writeln!(io::stdout(), "{}", log_line);
 				},
 			};
 
 			// Log to file
-			if let Ok(mut file) = self.file.lock() {
-				let _ = writeln!(
-					file,
-					"[{} {} {}:{}] {}",
-					format_timestamp(),
-					level_str,
-					record.target(),
-					line,
-					record.args()
-				);
+			let log_bytes = log_line.len() + 1;
+
+			if let Ok(mut state) = self.state.lock() {
+				let mut needs_rotation = false;
+
+				if state.bytes_written + log_bytes > MAX_LOG_SIZE_BYTES {
+					needs_rotation = true;
+				} else if let Ok(age) = SystemTime::now().duration_since(state.created_at) {
+					if age.as_secs() > ROTATION_INTERVAL_SECS {
+						needs_rotation = true;
+					}
+				}
+
+				if needs_rotation {
+					if let Err(e) = self.rotate(&mut state) {
+						eprintln!("Failed to rotate log file: {}", e);
+					}
+				}
+
+				let _ = writeln!(state.file, "{}", log_line);
+				state.bytes_written += log_bytes;
 			}
 		}
 	}
@@ -133,8 +181,8 @@ impl Log for ServerLogger {
 	fn flush(&self) {
 		let _ = io::stdout().flush();
 		let _ = io::stderr().flush();
-		if let Ok(mut file) = self.file.lock() {
-			let _ = file.flush();
+		if let Ok(mut state) = self.state.lock() {
+			let _ = state.file.flush();
 		}
 	}
 }
