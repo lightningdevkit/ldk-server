@@ -8,7 +8,6 @@
 // licenses.
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
 
 use serde_json::{json, Value};
 
@@ -61,29 +60,6 @@ fn test_cert_path() -> String {
 		.to_string()
 }
 
-fn cargo_bin_path() -> String {
-	let output = Command::new("cargo")
-		.args(["build", "--message-format=json"])
-		.stderr(Stdio::piped())
-		.stdout(Stdio::piped())
-		.output()
-		.expect("Failed to build binary");
-
-	let stdout = String::from_utf8(output.stdout).unwrap();
-	for line in stdout.lines() {
-		if let Ok(msg) = serde_json::from_str::<Value>(line) {
-			if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-artifact")
-				&& msg.get("target").and_then(|t| t.get("name")).and_then(|n| n.as_str())
-					== Some("ldk-server-mcp")
-				&& msg.get("executable").and_then(|e| e.as_str()).is_some()
-			{
-				return msg["executable"].as_str().unwrap().to_string();
-			}
-		}
-	}
-	panic!("Could not find compiled binary path");
-}
-
 struct McpProcess {
 	child: std::process::Child,
 	stdin: std::process::ChildStdin,
@@ -92,14 +68,13 @@ struct McpProcess {
 
 impl McpProcess {
 	fn spawn() -> Self {
-		let bin = cargo_bin_path();
-		let mut child = Command::new(&bin)
+		let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ldk-server-mcp"))
 			.env("LDK_BASE_URL", "localhost:19999")
 			.env("LDK_API_KEY", "deadbeef")
 			.env("LDK_TLS_CERT_PATH", test_cert_path())
-			.stdin(Stdio::piped())
-			.stdout(Stdio::piped())
-			.stderr(Stdio::piped())
+			.stdin(std::process::Stdio::piped())
+			.stdout(std::process::Stdio::piped())
+			.stderr(std::process::Stdio::piped())
 			.spawn()
 			.expect("Failed to spawn MCP process");
 
