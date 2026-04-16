@@ -79,10 +79,12 @@ max_payment_size_msat = 25000000000       # 0.25 BTC
 # funding transaction until the client claimed sufficient HTLC parts to pay for the channel open.
 client_trusts_lsp = false
 
-# Allow the LSP clients to keep zero channel reserves, i.e., spend their full balance.
-# Note this will potentially allow them to attempt cheating without risking financial penalty, so
-# this should only be set if you understand the risk and trust you clients.
-allow_client_0reserve = false
+# When set, we will allow clients to spend their entire channel balance in the channels
+# we open to them. This allows clients to try to steal your channel balance with
+# no financial penalty, so this should only be set if you trust your clients.
+#
+# See the `disable_counterparty_reserve` argument of `open_channel` to manually open these channels.
+disable_client_reserve = false
 
 # Optional token for clients (uncomment and set if required)
 ## A token we may require to be sent by the clients.
