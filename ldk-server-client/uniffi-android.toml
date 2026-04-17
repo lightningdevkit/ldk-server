@@ -1,0 +1,5 @@
+[bindings.kotlin]
+package_name = "org.lightningdevkit.ldkserver.client"
+cdylib_name = "ldk_server_client"
+android = true
+android_cleaner = true

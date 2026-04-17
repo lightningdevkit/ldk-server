@@ -3,9 +3,14 @@ name = "ldk-server-client"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
 [features]
 default = []
 serde = ["ldk-server-grpc/serde"]
+uniffi = ["dep:uniffi", "dep:tokio", "dep:thiserror"]
+uniffi-cli = ["uniffi", "uniffi/cli"]
 
 [dependencies]
 ldk-server-grpc = { path = "../ldk-server-grpc" }
@@ -16,6 +21,14 @@ hyper = { version = "0.14", default-features = false, features = ["client", "htt
 hyper-rustls = { version = "0.24", default-features = false, features = ["http2", "tls12", "tokio-runtime"] }
 rustls = "0.21"
 rustls-pemfile = "1"
+uniffi = { version = "0.29.5", features = ["tokio"], optional = true }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread"], optional = true }
+thiserror = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", default-features = false, features = ["macros", "rt"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]
