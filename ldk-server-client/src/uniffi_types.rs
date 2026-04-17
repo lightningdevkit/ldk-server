@@ -12,14 +12,18 @@
 use std::sync::Arc;
 
 use ldk_server_grpc::api::{
-	Bolt11ReceiveResponse, Bolt12ReceiveResponse, DecodeInvoiceResponse, DecodeOfferResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, ListChannelsRequest, ListPaymentsRequest, ListPeersRequest,
-	UnifiedSendResponse,
+	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11SendRequest, Bolt12ReceiveRequest,
+	Bolt12ReceiveResponse, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, ForceCloseChannelRequest, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, ListChannelsRequest,
+	ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest, OnchainSendRequest,
+	OpenChannelRequest, UnifiedSendRequest, UnifiedSendResponse,
 };
 use ldk_server_grpc::types::{
-	offer_amount, payment_kind, BestBlock, Channel, OfferAmount, OutPoint, PageToken, Payment,
-	PaymentDirection as ProstPaymentDirection, PaymentStatus as ProstPaymentStatus, Peer,
+	bolt11_invoice_description, offer_amount, payment_kind, BestBlock, Bolt11InvoiceDescription,
+	Channel, OfferAmount, OutPoint, PageToken, Payment, PaymentDirection as ProstPaymentDirection,
+	PaymentStatus as ProstPaymentStatus, Peer,
 };
 
 use crate::client::LdkServerClient;
@@ -569,5 +573,155 @@ impl LdkServerClientUni {
 	) -> Result<Option<PaymentInfo>, LdkServerClientError> {
 		let resp = self.inner.get_payment_details(GetPaymentDetailsRequest { payment_id }).await?;
 		Ok(resp.payment.map(PaymentInfo::from))
+	}
+
+	// ---- Receive -------------------------------------------------------
+
+	/// Generate a new on-chain address to receive into. Each call yields a fresh address.
+	pub async fn onchain_receive(&self) -> Result<String, LdkServerClientError> {
+		let resp = self.inner.onchain_receive(OnchainReceiveRequest {}).await?;
+		Ok(resp.address)
+	}
+
+	/// Generate a new BOLT11 invoice. `description`, if supplied, is attached as a direct
+	/// description (the hash variant is intentionally not exposed for the MVP).
+	pub async fn bolt11_receive(
+		&self, amount_msat: Option<u64>, description: Option<String>, expiry_secs: u32,
+	) -> Result<Bolt11ReceiveResult, LdkServerClientError> {
+		let description = description.map(|s| Bolt11InvoiceDescription {
+			kind: Some(bolt11_invoice_description::Kind::Direct(s)),
+		});
+		let request = Bolt11ReceiveRequest { amount_msat, description, expiry_secs };
+		let resp = self.inner.bolt11_receive(request).await?;
+		Ok(resp.into())
+	}
+
+	/// Generate a new BOLT12 offer. `description` is required (pass an empty string if you
+	/// want no description).
+	pub async fn bolt12_receive(
+		&self, description: String, amount_msat: Option<u64>, expiry_secs: Option<u32>,
+		quantity: Option<u64>,
+	) -> Result<Bolt12ReceiveResult, LdkServerClientError> {
+		let request = Bolt12ReceiveRequest { description, amount_msat, expiry_secs, quantity };
+		let resp = self.inner.bolt12_receive(request).await?;
+		Ok(resp.into())
+	}
+
+	// ---- Send ----------------------------------------------------------
+
+	/// Pay a BIP21 URI or BIP353 Human-Readable Name. Dispatches to on-chain, BOLT11, or
+	/// BOLT12 on the server side depending on what the URI resolves to.
+	pub async fn unified_send(
+		&self, uri: String, amount_msat: Option<u64>,
+	) -> Result<UnifiedSendResult, LdkServerClientError> {
+		let request = UnifiedSendRequest { uri, amount_msat, route_parameters: None };
+		let resp = self.inner.unified_send(request).await?;
+		UnifiedSendResult::try_from(resp)
+	}
+
+	/// Pay a BOLT11 invoice. `amount_msat` is required for zero-amount invoices and must be
+	/// `None` for fixed-amount invoices. Returns the server-side payment id.
+	pub async fn bolt11_send(
+		&self, invoice: String, amount_msat: Option<u64>,
+	) -> Result<String, LdkServerClientError> {
+		let request = Bolt11SendRequest { invoice, amount_msat, route_parameters: None };
+		let resp = self.inner.bolt11_send(request).await?;
+		Ok(resp.payment_id)
+	}
+
+	/// Pay a BOLT12 offer. Returns the server-side payment id.
+	pub async fn bolt12_send(
+		&self, offer: String, amount_msat: Option<u64>, quantity: Option<u64>,
+		payer_note: Option<String>,
+	) -> Result<String, LdkServerClientError> {
+		let request =
+			Bolt12SendRequest { offer, amount_msat, quantity, payer_note, route_parameters: None };
+		let resp = self.inner.bolt12_send(request).await?;
+		Ok(resp.payment_id)
+	}
+
+	/// Send an on-chain payment. Set `send_all = Some(true)` to sweep the wallet (dangerous
+	/// if anchor channels are open — see `OnchainSendRequest` docs in the proto file).
+	/// Returns the broadcast txid.
+	pub async fn onchain_send(
+		&self, address: String, amount_sats: Option<u64>, send_all: Option<bool>,
+		fee_rate_sat_per_vb: Option<u64>,
+	) -> Result<String, LdkServerClientError> {
+		let request = OnchainSendRequest { address, amount_sats, send_all, fee_rate_sat_per_vb };
+		let resp = self.inner.onchain_send(request).await?;
+		Ok(resp.txid)
+	}
+
+	// ---- Channels ------------------------------------------------------
+
+	/// Open a new channel with the given peer. Returns the local `user_channel_id`.
+	pub async fn open_channel(
+		&self, node_pubkey: String, address: String, channel_amount_sats: u64,
+		push_to_counterparty_msat: Option<u64>, announce_channel: bool,
+	) -> Result<String, LdkServerClientError> {
+		let request = OpenChannelRequest {
+			node_pubkey,
+			address,
+			channel_amount_sats,
+			push_to_counterparty_msat,
+			channel_config: None,
+			announce_channel,
+			disable_counterparty_reserve: false,
+		};
+		let resp = self.inner.open_channel(request).await?;
+		Ok(resp.user_channel_id)
+	}
+
+	/// Cooperatively close a channel.
+	pub async fn close_channel(
+		&self, user_channel_id: String, counterparty_node_id: String,
+	) -> Result<(), LdkServerClientError> {
+		let request = CloseChannelRequest { user_channel_id, counterparty_node_id };
+		self.inner.close_channel(request).await?;
+		Ok(())
+	}
+
+	/// Force-close a channel.
+	pub async fn force_close_channel(
+		&self, user_channel_id: String, counterparty_node_id: String,
+		force_close_reason: Option<String>,
+	) -> Result<(), LdkServerClientError> {
+		let request =
+			ForceCloseChannelRequest { user_channel_id, counterparty_node_id, force_close_reason };
+		self.inner.force_close_channel(request).await?;
+		Ok(())
+	}
+
+	// ---- Peers ---------------------------------------------------------
+
+	/// Connect to a peer. If `persist = true`, we'll try to reconnect after restarts.
+	pub async fn connect_peer(
+		&self, node_pubkey: String, address: String, persist: bool,
+	) -> Result<(), LdkServerClientError> {
+		let request = ConnectPeerRequest { node_pubkey, address, persist };
+		self.inner.connect_peer(request).await?;
+		Ok(())
+	}
+
+	/// Disconnect from a peer.
+	pub async fn disconnect_peer(&self, node_pubkey: String) -> Result<(), LdkServerClientError> {
+		self.inner.disconnect_peer(DisconnectPeerRequest { node_pubkey }).await?;
+		Ok(())
+	}
+
+	// ---- Decode --------------------------------------------------------
+
+	/// Parse a BOLT11 invoice without sending a payment.
+	pub async fn decode_invoice(
+		&self, invoice: String,
+	) -> Result<DecodedInvoice, LdkServerClientError> {
+		let resp = self.inner.decode_invoice(DecodeInvoiceRequest { invoice }).await?;
+		Ok(resp.into())
+	}
+
+	/// Parse a BOLT12 offer without sending a payment.
+	pub async fn decode_offer(&self, offer: String) -> Result<DecodedOffer, LdkServerClientError> {
+		let resp = self.inner.decode_offer(DecodeOfferRequest { offer }).await?;
+		Ok(resp.into())
 	}
 }
