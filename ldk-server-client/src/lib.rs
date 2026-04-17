@@ -20,3 +20,10 @@ pub mod error;
 
 /// Request/Response structs required for interacting with the client.
 pub use ldk_server_grpc;
+
+#[cfg(feature = "uniffi")]
+#[allow(missing_docs)]
+pub mod uniffi_types;
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
