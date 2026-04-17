@@ -725,3 +725,372 @@ impl LdkServerClientUni {
 		Ok(resp.into())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+	use ldk_server_grpc::api::unified_send_response::PaymentResult;
+	use ldk_server_grpc::api::Bolt11ReceiveResponse;
+	use ldk_server_grpc::types::offer_amount::Amount as OfferAmountOneof;
+	use ldk_server_grpc::types::payment_kind::Kind as PaymentKindProst;
+	use ldk_server_grpc::types::{
+		Bolt11, Bolt11Jit, Bolt12Offer, Bolt12Refund, CurrencyAmount, Onchain, PaymentKind,
+		Spontaneous,
+	};
+
+	use super::*;
+
+	#[test]
+	fn error_code_mapping_covers_all_variants() {
+		// Each prost error code maps to a distinct wrapper variant, and the Display output
+		// preserves the original server-side message. We match on the wrapper variant
+		// directly rather than on the Display prefix so this test doesn't break if we
+		// retune wording.
+		let cases: Vec<(LdkServerErrorCode, &str, fn(&LdkServerClientError) -> bool)> = vec![
+			(LdkServerErrorCode::InvalidRequestError, "r1", |e| {
+				matches!(e, LdkServerClientError::InvalidRequest { .. })
+			}),
+			(LdkServerErrorCode::AuthError, "r2", |e| {
+				matches!(e, LdkServerClientError::AuthenticationFailed { .. })
+			}),
+			(LdkServerErrorCode::LightningError, "r3", |e| {
+				matches!(e, LdkServerClientError::LightningError { .. })
+			}),
+			(LdkServerErrorCode::InternalServerError, "r4", |e| {
+				matches!(e, LdkServerClientError::InternalServerError { .. })
+			}),
+			(LdkServerErrorCode::InternalError, "r5", |e| {
+				matches!(e, LdkServerClientError::InternalError { .. })
+			}),
+		];
+		for (code, msg, is_expected_variant) in cases {
+			let err: LdkServerClientError = LdkServerError::new(code.clone(), msg).into();
+			assert!(is_expected_variant(&err), "wrong variant for code {code:?}: {err:?}");
+			assert!(
+				format!("{err}").contains(msg),
+				"display output should contain the original message ({msg})",
+			);
+		}
+	}
+
+	#[test]
+	fn best_block_and_node_info_roundtrip() {
+		let resp = GetNodeInfoResponse {
+			node_id: "0211".to_string(),
+			current_best_block: Some(BestBlock { block_hash: "abcd".to_string(), height: 42 }),
+			latest_lightning_wallet_sync_timestamp: Some(100),
+			latest_onchain_wallet_sync_timestamp: None,
+			latest_fee_rate_cache_update_timestamp: Some(200),
+			latest_rgs_snapshot_timestamp: None,
+			latest_node_announcement_broadcast_timestamp: Some(300),
+			listening_addresses: vec!["127.0.0.1:9735".to_string()],
+			announcement_addresses: vec![],
+			node_alias: Some("my-node".to_string()),
+			node_uris: vec!["0211@example.com:9735".to_string()],
+		};
+		let info: NodeInfo = resp.into();
+		assert_eq!(info.node_id, "0211");
+		let best = info.current_best_block.expect("present");
+		assert_eq!(best.height, 42);
+		assert_eq!(best.block_hash, "abcd");
+		assert_eq!(info.latest_lightning_wallet_sync_timestamp, Some(100));
+		assert_eq!(info.latest_onchain_wallet_sync_timestamp, None);
+		assert_eq!(info.node_alias.as_deref(), Some("my-node"));
+	}
+
+	#[test]
+	fn node_info_handles_missing_best_block() {
+		let info: NodeInfo = GetNodeInfoResponse::default().into();
+		assert!(info.current_best_block.is_none());
+		assert!(info.listening_addresses.is_empty());
+		assert!(info.node_alias.is_none());
+	}
+
+	#[test]
+	fn balance_info_from_defaults() {
+		let balances: BalanceInfo = GetBalancesResponse::default().into();
+		assert_eq!(balances.total_onchain_balance_sats, 0);
+		assert_eq!(balances.total_lightning_balance_sats, 0);
+	}
+
+	#[test]
+	fn payment_direction_and_status_mapping() {
+		assert_eq!(
+			PaymentDirection::from(ProstPaymentDirection::Inbound),
+			PaymentDirection::Inbound
+		);
+		assert_eq!(
+			PaymentDirection::from(ProstPaymentDirection::Outbound),
+			PaymentDirection::Outbound
+		);
+		assert_eq!(PaymentStatus::from(ProstPaymentStatus::Pending), PaymentStatus::Pending);
+		assert_eq!(PaymentStatus::from(ProstPaymentStatus::Succeeded), PaymentStatus::Succeeded);
+		assert_eq!(PaymentStatus::from(ProstPaymentStatus::Failed), PaymentStatus::Failed);
+	}
+
+	#[test]
+	fn payment_kind_covers_all_oneof_variants() {
+		let cases: Vec<(PaymentKindProst, &str)> = vec![
+			(
+				PaymentKindProst::Onchain(Onchain { txid: "deadbeef".to_string(), status: None }),
+				"Onchain",
+			),
+			(
+				PaymentKindProst::Bolt11(Bolt11 {
+					hash: "h11".to_string(),
+					preimage: Some("p11".to_string()),
+					secret: None,
+				}),
+				"Bolt11",
+			),
+			(
+				PaymentKindProst::Bolt11Jit(Bolt11Jit {
+					hash: "hjit".to_string(),
+					preimage: None,
+					secret: None,
+					lsp_fee_limits: None,
+					counterparty_skimmed_fee_msat: None,
+				}),
+				"Bolt11Jit",
+			),
+			(
+				PaymentKindProst::Bolt12Offer(Bolt12Offer {
+					hash: None,
+					preimage: None,
+					secret: None,
+					offer_id: "oid".to_string(),
+					payer_note: None,
+					quantity: None,
+				}),
+				"Bolt12Offer",
+			),
+			(
+				PaymentKindProst::Bolt12Refund(Bolt12Refund {
+					hash: None,
+					preimage: None,
+					secret: None,
+					payer_note: None,
+					quantity: None,
+				}),
+				"Bolt12Refund",
+			),
+			(
+				PaymentKindProst::Spontaneous(Spontaneous {
+					hash: "hsp".to_string(),
+					preimage: None,
+				}),
+				"Spontaneous",
+			),
+		];
+
+		for (prost_kind, label) in cases {
+			let wrapper = PaymentKindInfo::from(prost_kind);
+			let debug_repr = format!("{wrapper:?}");
+			assert!(debug_repr.starts_with(label), "{debug_repr} should start with {label}");
+		}
+	}
+
+	#[test]
+	fn payment_with_unknown_enum_values_defaults_safely() {
+		// Protocol version skew: the server returns a direction/status int the client
+		// doesn't recognize. We should fall back to safe defaults rather than panic.
+		let payment = Payment {
+			id: "x".to_string(),
+			kind: Some(PaymentKind {
+				kind: Some(PaymentKindProst::Spontaneous(Spontaneous {
+					hash: "h".to_string(),
+					preimage: None,
+				})),
+			}),
+			amount_msat: Some(1000),
+			fee_paid_msat: None,
+			direction: 999,
+			status: -1,
+			latest_update_timestamp: 0,
+		};
+		let info: PaymentInfo = payment.into();
+		assert_eq!(info.direction, PaymentDirection::Outbound);
+		assert_eq!(info.status, PaymentStatus::Pending);
+		assert!(info.kind.is_some());
+	}
+
+	#[test]
+	fn channel_info_roundtrip() {
+		let c = Channel {
+			channel_id: "cid".to_string(),
+			counterparty_node_id: "cp".to_string(),
+			funding_txo: Some(OutPoint { txid: "tx".to_string(), vout: 3 }),
+			user_channel_id: "uc".to_string(),
+			unspendable_punishment_reserve: None,
+			channel_value_sats: 1_000_000,
+			feerate_sat_per_1000_weight: 0,
+			outbound_capacity_msat: 500_000_000,
+			inbound_capacity_msat: 500_000_000,
+			confirmations_required: Some(6),
+			confirmations: Some(3),
+			is_outbound: true,
+			is_channel_ready: false,
+			is_usable: false,
+			is_announced: true,
+			channel_config: None,
+			next_outbound_htlc_limit_msat: 0,
+			next_outbound_htlc_minimum_msat: 0,
+			force_close_spend_delay: None,
+			counterparty_outbound_htlc_minimum_msat: None,
+			counterparty_outbound_htlc_maximum_msat: None,
+			counterparty_unspendable_punishment_reserve: 0,
+			counterparty_forwarding_info_fee_base_msat: None,
+			counterparty_forwarding_info_fee_proportional_millionths: None,
+			counterparty_forwarding_info_cltv_expiry_delta: None,
+		};
+		let info: ChannelInfo = c.into();
+		assert_eq!(info.channel_id, "cid");
+		assert_eq!(info.funding_txo.as_ref().map(|o| o.vout), Some(3));
+		assert_eq!(info.channel_value_sats, 1_000_000);
+		assert!(info.is_outbound);
+		assert!(!info.is_usable);
+	}
+
+	#[test]
+	fn peer_info_roundtrip() {
+		let peer = Peer {
+			node_id: "np".to_string(),
+			address: "127.0.0.1:9735".to_string(),
+			is_persisted: true,
+			is_connected: false,
+		};
+		let info: PeerInfo = peer.into();
+		assert_eq!(info.node_id, "np");
+		assert!(info.is_persisted);
+		assert!(!info.is_connected);
+	}
+
+	#[test]
+	fn unified_send_result_dispatches_on_oneof() {
+		let txid_resp =
+			UnifiedSendResponse { payment_result: Some(PaymentResult::Txid("tx".to_string())) };
+		assert!(matches!(
+			UnifiedSendResult::try_from(txid_resp).unwrap(),
+			UnifiedSendResult::Onchain { .. }
+		));
+
+		let b11_resp = UnifiedSendResponse {
+			payment_result: Some(PaymentResult::Bolt11PaymentId("p1".to_string())),
+		};
+		assert!(matches!(
+			UnifiedSendResult::try_from(b11_resp).unwrap(),
+			UnifiedSendResult::Bolt11 { .. }
+		));
+
+		let b12_resp = UnifiedSendResponse {
+			payment_result: Some(PaymentResult::Bolt12PaymentId("p2".to_string())),
+		};
+		assert!(matches!(
+			UnifiedSendResult::try_from(b12_resp).unwrap(),
+			UnifiedSendResult::Bolt12 { .. }
+		));
+
+		// Empty payment_result is a protocol violation and should surface as an error rather
+		// than a mystery default.
+		let empty = UnifiedSendResponse { payment_result: None };
+		assert!(matches!(
+			UnifiedSendResult::try_from(empty),
+			Err(LdkServerClientError::InternalError { .. })
+		));
+	}
+
+	#[test]
+	fn bolt11_receive_roundtrip() {
+		let resp = Bolt11ReceiveResponse {
+			invoice: "lnbc...".to_string(),
+			payment_hash: "ph".to_string(),
+			payment_secret: "ps".to_string(),
+		};
+		let result: Bolt11ReceiveResult = resp.into();
+		assert_eq!(result.invoice, "lnbc...");
+		assert_eq!(result.payment_hash, "ph");
+		assert_eq!(result.payment_secret, "ps");
+	}
+
+	#[test]
+	fn decoded_offer_extracts_bitcoin_amount_only() {
+		let with_btc = DecodeOfferResponse {
+			offer_id: "oid".to_string(),
+			description: None,
+			issuer: None,
+			amount: Some(OfferAmount { amount: Some(OfferAmountOneof::BitcoinAmountMsats(5_000)) }),
+			issuer_signing_pubkey: None,
+			absolute_expiry: None,
+			quantity: None,
+			paths: vec![],
+			features: Default::default(),
+			chains: vec![],
+			metadata: None,
+			is_expired: false,
+		};
+		let d: DecodedOffer = with_btc.into();
+		assert_eq!(d.amount_msat, Some(5_000));
+
+		// Currency-denominated offers flatten to None, not an error — a wallet that can only
+		// pay in Bitcoin should treat this the same as an amount-less offer.
+		let with_currency = DecodeOfferResponse {
+			offer_id: "oid".to_string(),
+			description: None,
+			issuer: None,
+			amount: Some(OfferAmount {
+				amount: Some(OfferAmountOneof::CurrencyAmount(CurrencyAmount {
+					iso4217_code: "USD".to_string(),
+					amount: 42,
+				})),
+			}),
+			issuer_signing_pubkey: None,
+			absolute_expiry: None,
+			quantity: None,
+			paths: vec![],
+			features: Default::default(),
+			chains: vec![],
+			metadata: None,
+			is_expired: false,
+		};
+		let d: DecodedOffer = with_currency.into();
+		assert_eq!(d.amount_msat, None);
+	}
+
+	#[test]
+	fn decoded_invoice_roundtrip() {
+		let resp = DecodeInvoiceResponse {
+			destination: "d".to_string(),
+			payment_hash: "ph".to_string(),
+			amount_msat: Some(1_000),
+			timestamp: 1,
+			expiry: 2,
+			description: Some("coffee".to_string()),
+			description_hash: None,
+			fallback_address: None,
+			min_final_cltv_expiry_delta: 3,
+			payment_secret: "ps".to_string(),
+			route_hints: vec![],
+			features: Default::default(),
+			currency: "bitcoin".to_string(),
+			payment_metadata: None,
+			is_expired: false,
+		};
+		let d: DecodedInvoice = resp.into();
+		assert_eq!(d.amount_msat, Some(1_000));
+		assert_eq!(d.description.as_deref(), Some("coffee"));
+		assert_eq!(d.currency, "bitcoin");
+	}
+
+	#[test]
+	fn page_token_roundtrips_both_ways() {
+		let prost = PageToken { token: "t".to_string(), index: 5 };
+		let info: PageTokenInfo = prost.clone().into();
+		assert_eq!(info.index, 5);
+		let back: PageToken = info.into();
+		assert_eq!(back.token, "t");
+		assert_eq!(back.index, 5);
+	}
+}
