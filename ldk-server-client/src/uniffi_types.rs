@@ -9,15 +9,20 @@
 // Conversions (`From`/`Into`) to and from the underlying prost types are
 // implemented alongside each wrapper.
 
+use std::sync::Arc;
+
 use ldk_server_grpc::api::{
 	Bolt11ReceiveResponse, Bolt12ReceiveResponse, DecodeInvoiceResponse, DecodeOfferResponse,
-	GetBalancesResponse, GetNodeInfoResponse, UnifiedSendResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, ListChannelsRequest, ListPaymentsRequest, ListPeersRequest,
+	UnifiedSendResponse,
 };
 use ldk_server_grpc::types::{
 	offer_amount, payment_kind, BestBlock, Channel, OfferAmount, OutPoint, PageToken, Payment,
 	PaymentDirection as ProstPaymentDirection, PaymentStatus as ProstPaymentStatus, Peer,
 };
 
+use crate::client::LdkServerClient;
 use crate::error::{LdkServerError, LdkServerErrorCode};
 
 // ---------------------------------------------------------------------------
@@ -487,4 +492,82 @@ impl From<PageTokenInfo> for PageToken {
 pub struct ListPaymentsResult {
 	pub payments: Vec<PaymentInfo>,
 	pub next_page_token: Option<PageTokenInfo>,
+}
+
+// ---------------------------------------------------------------------------
+// Client wrapper
+// ---------------------------------------------------------------------------
+
+/// UniFFI-exported wrapper around [`LdkServerClient`].
+///
+/// `LdkServerClient` itself holds `reqwest::Client` + `hyper::Client`, which are not
+/// UniFFI-exportable. This thin wrapper adapts the async API to `Arc<Self>` / `suspend fun`
+/// semantics that UniFFI generates for Kotlin (and Swift).
+#[derive(uniffi::Object)]
+pub struct LdkServerClientUni {
+	inner: LdkServerClient,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl LdkServerClientUni {
+	/// Construct a new client.
+	///
+	/// - `base_url` should omit the scheme (e.g. `"localhost:3000"`).
+	/// - `api_key` is the hex-encoded 32-byte key that the server generates on first run;
+	///   it's used for HMAC-SHA256 request authentication.
+	/// - `server_cert_pem` is the text of the server's TLS certificate; found at
+	///   `<server_storage_dir>/tls.crt` after the server has started.
+	#[uniffi::constructor]
+	pub fn new(
+		base_url: String, api_key: String, server_cert_pem: String,
+	) -> Result<Arc<Self>, LdkServerClientError> {
+		let inner = LdkServerClient::new(base_url, api_key, server_cert_pem.as_bytes())
+			.map_err(|message| LdkServerClientError::InvalidRequest { message })?;
+		Ok(Arc::new(Self { inner }))
+	}
+
+	/// Retrieve the node's identity, sync status, and announced addresses.
+	pub async fn get_node_info(&self) -> Result<NodeInfo, LdkServerClientError> {
+		let resp = self.inner.get_node_info(GetNodeInfoRequest {}).await?;
+		Ok(resp.into())
+	}
+
+	/// Retrieve the summary on-chain and Lightning balances.
+	pub async fn get_balances(&self) -> Result<BalanceInfo, LdkServerClientError> {
+		let resp = self.inner.get_balances(GetBalancesRequest {}).await?;
+		Ok(resp.into())
+	}
+
+	/// List all known channels.
+	pub async fn list_channels(&self) -> Result<Vec<ChannelInfo>, LdkServerClientError> {
+		let resp = self.inner.list_channels(ListChannelsRequest {}).await?;
+		Ok(resp.channels.into_iter().map(ChannelInfo::from).collect())
+	}
+
+	/// List all known peers (connected or persisted).
+	pub async fn list_peers(&self) -> Result<Vec<PeerInfo>, LdkServerClientError> {
+		let resp = self.inner.list_peers(ListPeersRequest {}).await?;
+		Ok(resp.peers.into_iter().map(PeerInfo::from).collect())
+	}
+
+	/// List payments. Pass the `next_page_token` from a prior result to continue pagination.
+	pub async fn list_payments(
+		&self, page_token: Option<PageTokenInfo>,
+	) -> Result<ListPaymentsResult, LdkServerClientError> {
+		let request = ListPaymentsRequest { page_token: page_token.map(PageToken::from) };
+		let resp = self.inner.list_payments(request).await?;
+		Ok(ListPaymentsResult {
+			payments: resp.payments.into_iter().map(PaymentInfo::from).collect(),
+			next_page_token: resp.next_page_token.map(PageTokenInfo::from),
+		})
+	}
+
+	/// Fetch the details for a single payment by id. Returns `None` if no payment with that
+	/// id is known.
+	pub async fn get_payment_details(
+		&self, payment_id: String,
+	) -> Result<Option<PaymentInfo>, LdkServerClientError> {
+		let resp = self.inner.get_payment_details(GetPaymentDetailsRequest { payment_id }).await?;
+		Ok(resp.payment.map(PaymentInfo::from))
+	}
 }
