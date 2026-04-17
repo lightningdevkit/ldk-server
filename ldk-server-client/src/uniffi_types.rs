@@ -39,27 +39,31 @@ use crate::error::{LdkServerError, LdkServerErrorCode};
 /// for client-side / unknown errors.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum LdkServerClientError {
-	#[error("Invalid request: {message}")]
-	InvalidRequest { message: String },
-	#[error("Authentication failed: {message}")]
-	AuthenticationFailed { message: String },
-	#[error("Lightning error: {message}")]
-	LightningError { message: String },
-	#[error("Internal server error: {message}")]
-	InternalServerError { message: String },
-	#[error("Internal error: {message}")]
-	InternalError { message: String },
+	#[error("Invalid request: {reason}")]
+	InvalidRequest { reason: String },
+	#[error("Authentication failed: {reason}")]
+	AuthenticationFailed { reason: String },
+	#[error("Lightning error: {reason}")]
+	LightningError { reason: String },
+	#[error("Internal server error: {reason}")]
+	InternalServerError { reason: String },
+	#[error("Internal error: {reason}")]
+	InternalError { reason: String },
 }
 
 impl From<LdkServerError> for LdkServerClientError {
 	fn from(err: LdkServerError) -> Self {
-		let message = err.message;
+		// NOTE: the field is deliberately named `reason` rather than `message`: UniFFI's
+		// Kotlin generator emits struct-variant errors as subclasses of `Throwable`, and a
+		// constructor property called `message` collides with Throwable's own `message`
+		// property, producing a compile error on the generated code. `reason` sidesteps that.
+		let reason = err.message;
 		match err.error_code {
-			LdkServerErrorCode::InvalidRequestError => Self::InvalidRequest { message },
-			LdkServerErrorCode::AuthError => Self::AuthenticationFailed { message },
-			LdkServerErrorCode::LightningError => Self::LightningError { message },
-			LdkServerErrorCode::InternalServerError => Self::InternalServerError { message },
-			LdkServerErrorCode::InternalError => Self::InternalError { message },
+			LdkServerErrorCode::InvalidRequestError => Self::InvalidRequest { reason },
+			LdkServerErrorCode::AuthError => Self::AuthenticationFailed { reason },
+			LdkServerErrorCode::LightningError => Self::LightningError { reason },
+			LdkServerErrorCode::InternalServerError => Self::InternalServerError { reason },
+			LdkServerErrorCode::InternalError => Self::InternalError { reason },
 		}
 	}
 }
@@ -354,7 +358,7 @@ impl TryFrom<UnifiedSendResponse> for UnifiedSendResult {
 			Some(PaymentResult::Bolt11PaymentId(payment_id)) => Ok(Self::Bolt11 { payment_id }),
 			Some(PaymentResult::Bolt12PaymentId(payment_id)) => Ok(Self::Bolt12 { payment_id }),
 			None => Err(LdkServerClientError::InternalError {
-				message: "server returned UnifiedSendResponse with no payment_result".to_string(),
+				reason: "server returned UnifiedSendResponse with no payment_result".to_string(),
 			}),
 		}
 	}
@@ -526,7 +530,7 @@ impl LdkServerClientUni {
 		base_url: String, api_key: String, server_cert_pem: String,
 	) -> Result<Arc<Self>, LdkServerClientError> {
 		let inner = LdkServerClient::new(base_url, api_key, server_cert_pem.as_bytes())
-			.map_err(|message| LdkServerClientError::InvalidRequest { message })?;
+			.map_err(|reason| LdkServerClientError::InvalidRequest { reason })?;
 		Ok(Arc::new(Self { inner }))
 	}
 
