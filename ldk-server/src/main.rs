@@ -824,9 +824,7 @@ mod tests {
 		assert!(is_channel_open_failure(Some(
 			&ClosureReason::CounterpartyCoopClosedUnfundedChannel,
 		)));
-		assert!(is_channel_open_failure(Some(
-			&ClosureReason::LocallyCoopClosedUnfundedChannel,
-		)));
+		assert!(is_channel_open_failure(Some(&ClosureReason::LocallyCoopClosedUnfundedChannel,)));
 
 		assert!(!is_channel_open_failure(Some(&ClosureReason::CommitmentTxConfirmed)));
 		assert!(!is_channel_open_failure(None));
@@ -842,9 +840,9 @@ mod tests {
 			events::ChannelClosureInitiator::Local
 		);
 		assert_eq!(
-			closure_initiator_from_reason(Some(
-				&ClosureReason::LocallyInitiatedCooperativeClosure,
-			)),
+			closure_initiator_from_reason(
+				Some(&ClosureReason::LocallyInitiatedCooperativeClosure,)
+			),
 			events::ChannelClosureInitiator::Local
 		);
 
@@ -878,10 +876,7 @@ mod tests {
 			message: "manual force close".to_string(),
 		});
 
-		assert_eq!(
-			proto.kind,
-			events::ChannelStateChangeReasonKind::HolderForceClosed as i32
-		);
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::HolderForceClosed as i32);
 		assert!(proto.message.contains("manual force close"));
 		match proto.details {
 			Some(Details::HolderForceClosed(details)) => {
@@ -899,10 +894,7 @@ mod tests {
 			required_feerate_sat_per_kw: 250,
 		});
 
-		assert_eq!(
-			proto.kind,
-			events::ChannelStateChangeReasonKind::PeerFeerateTooLow as i32
-		);
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::PeerFeerateTooLow as i32);
 		match proto.details {
 			Some(Details::PeerFeerateTooLow(details)) => {
 				assert_eq!(details.peer_feerate_sat_per_kw, 100);
@@ -915,10 +907,7 @@ mod tests {
 	#[test]
 	fn test_closure_reason_to_proto_without_details() {
 		let proto = closure_reason_to_proto(&ClosureReason::FundingTimedOut);
-		assert_eq!(
-			proto.kind,
-			events::ChannelStateChangeReasonKind::FundingTimedOut as i32
-		);
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::FundingTimedOut as i32);
 		assert!(proto.details.is_none());
 	}
 }
