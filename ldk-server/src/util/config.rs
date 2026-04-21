@@ -15,6 +15,7 @@ use std::{fs, io};
 use clap::Parser;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
+use ldk_node::config::{HRNResolverConfig, HumanReadableNamesConfig};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
 use ldk_node::liquidity::LSPS2ServiceConfig;
@@ -61,6 +62,7 @@ pub struct Config {
 	pub metrics_username: Option<String>,
 	pub metrics_password: Option<String>,
 	pub tor_config: Option<TorConfig>,
+	pub hrn_config: HumanReadableNamesConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +116,7 @@ struct ConfigBuilder {
 	metrics_username: Option<String>,
 	metrics_password: Option<String>,
 	tor_proxy_address: Option<String>,
+	hrn: Option<HrnTomlConfig>,
 }
 
 impl ConfigBuilder {
@@ -179,6 +182,10 @@ impl ConfigBuilder {
 
 		if let Some(tor) = toml.tor {
 			self.tor_proxy_address = Some(tor.proxy_address)
+		}
+
+		if let Some(hrn) = toml.hrn {
+			self.hrn = Some(hrn);
 		}
 	}
 
@@ -402,6 +409,11 @@ impl ConfigBuilder {
 			})
 			.transpose()?;
 
+		let hrn_config = match self.hrn {
+			Some(hrn) => HumanReadableNamesConfig::try_from(hrn)?,
+			None => HumanReadableNamesConfig::default(),
+		};
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -422,6 +434,7 @@ impl ConfigBuilder {
 			metrics_username,
 			metrics_password,
 			tor_config: tor_proxy_address.map(|proxy_address| TorConfig { proxy_address }),
+			hrn_config,
 		})
 	}
 }
@@ -439,6 +452,7 @@ pub struct TomlConfig {
 	tls: Option<TomlTlsConfig>,
 	metrics: Option<MetricsTomlConfig>,
 	tor: Option<TomlTorConfig>,
+	hrn: Option<HrnTomlConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -503,6 +517,93 @@ struct MetricsTomlConfig {
 #[derive(Deserialize, Serialize)]
 struct TomlTorConfig {
 	proxy_address: String,
+}
+
+#[derive(Deserialize, Serialize)]
+struct HrnTomlConfig {
+	mode: Option<String>,
+	dns_server_address: Option<String>,
+	enable_resolution_service: Option<bool>,
+}
+
+impl TryFrom<HrnTomlConfig> for HumanReadableNamesConfig {
+	type Error = io::Error;
+
+	fn try_from(value: HrnTomlConfig) -> Result<Self, Self::Error> {
+		let HrnTomlConfig { mode, dns_server_address, enable_resolution_service } = value;
+
+		let resolution_config = match mode.as_deref() {
+			None | Some("dns") => {
+				// Start from LDK Node's DNS defaults so we don't have to hardcode them, but fall
+				// back to explicit values if the upstream default ever stops being `Dns`.
+				let (mut dns_server_address_val, mut enable_hrn_resolution_service) =
+					if let HRNResolverConfig::Dns {
+						dns_server_address,
+						enable_hrn_resolution_service,
+					} = HumanReadableNamesConfig::default().resolution_config
+					{
+						(dns_server_address, enable_hrn_resolution_service)
+					} else {
+						(
+							SocketAddress::from_str("8.8.8.8:53")
+								.expect("`8.8.8.8:53` is a valid socket address"),
+							false,
+						)
+					};
+
+				if let Some(addr) = dns_server_address.as_deref() {
+					dns_server_address_val = parse_dns_server_address(addr)?;
+				}
+				if let Some(enable) = enable_resolution_service {
+					enable_hrn_resolution_service = enable;
+				}
+
+				HRNResolverConfig::Dns {
+					dns_server_address: dns_server_address_val,
+					enable_hrn_resolution_service,
+				}
+			},
+			Some("blip32") => {
+				if dns_server_address.is_some() {
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						"`hrn.dns_server_address` only applies when `hrn.mode = \"dns\"`"
+							.to_string(),
+					));
+				}
+				if enable_resolution_service.is_some() {
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						"`hrn.enable_resolution_service` only applies when `hrn.mode = \"dns\"`"
+							.to_string(),
+					));
+				}
+				HRNResolverConfig::Blip32
+			},
+			Some(other) => {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					format!("Invalid HRN mode '{}' configured; expected 'dns' or 'blip32'", other),
+				))
+			},
+		};
+
+		Ok(HumanReadableNamesConfig { resolution_config })
+	}
+}
+
+/// Parses a DNS server address, falling back to port 53 if the user omitted the port.
+fn parse_dns_server_address(addr: &str) -> io::Result<SocketAddress> {
+	if let Ok(sa) = SocketAddress::from_str(addr) {
+		return Ok(sa);
+	}
+	let with_default_port = format!("{}:53", addr);
+	SocketAddress::from_str(&with_default_port).map_err(|e| {
+		io::Error::new(
+			io::ErrorKind::InvalidInput,
+			format!("Invalid HRN DNS server address configured: {}", e),
+		)
+	})
 }
 
 #[derive(Deserialize, Serialize)]
@@ -936,6 +1037,7 @@ mod tests {
 			tor_config: Some(TorConfig {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
+			hrn_config: HumanReadableNamesConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1241,6 +1343,7 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_config: None,
+			hrn_config: HumanReadableNamesConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1350,6 +1453,7 @@ mod tests {
 			tor_config: Some(TorConfig {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
+			hrn_config: HumanReadableNamesConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1500,5 +1604,114 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+	}
+
+	#[test]
+	fn test_hrn_config() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_hrn_config.toml";
+
+		let base_config = r#"
+				[node]
+				network = "regtest"
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+
+				[liquidity.lsps2_service]
+				advertise_service = false
+				channel_opening_fee_ppm = 1000
+				channel_over_provisioning_ppm = 500000
+				min_channel_opening_fee_msat = 10000000
+				min_channel_lifetime = 4320
+				max_client_to_self_delay = 1440
+				min_payment_size_msat = 10000000
+				max_payment_size_msat = 25000000000
+				client_trusts_lsp = true
+				disable_client_reserve = false
+				"#;
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		// Default: no `[hrn]` section -> DNS against 8.8.8.8:53, resolution service disabled.
+		fs::write(storage_path.join(config_file_name), base_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+		match config.hrn_config.resolution_config {
+			HRNResolverConfig::Dns { dns_server_address, enable_hrn_resolution_service } => {
+				assert_eq!(dns_server_address, SocketAddress::from_str("8.8.8.8:53").unwrap());
+				assert!(!enable_hrn_resolution_service);
+			},
+			other => panic!("unexpected default HRN resolver config: {:?}", other),
+		}
+
+		// Custom DNS server address with resolution service enabled.
+		let toml_config = format!(
+			"{}\n[hrn]\ndns_server_address = \"1.1.1.1:53\"\nenable_resolution_service = true\n",
+			base_config
+		);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+		match config.hrn_config.resolution_config {
+			HRNResolverConfig::Dns { dns_server_address, enable_hrn_resolution_service } => {
+				assert_eq!(dns_server_address, SocketAddress::from_str("1.1.1.1:53").unwrap());
+				assert!(enable_hrn_resolution_service);
+			},
+			other => panic!("unexpected HRN resolver config: {:?}", other),
+		}
+
+		// Blip32 mode.
+		let toml_config = format!("{}\n[hrn]\nmode = \"blip32\"\n", base_config);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+		assert!(matches!(config.hrn_config.resolution_config, HRNResolverConfig::Blip32));
+
+		// Invalid mode is rejected.
+		let toml_config = format!("{}\n[hrn]\nmode = \"bogus\"\n", base_config);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+		// Invalid DNS server address is rejected (contains chars disallowed in hostnames, so
+		// neither the as-is parse nor the `:53` fallback can accept it).
+		let toml_config =
+			format!("{}\n[hrn]\ndns_server_address = \"invalid@address\"\n", base_config);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+		// DNS server address without an explicit port defaults to port 53.
+		let toml_config = format!("{}\n[hrn]\ndns_server_address = \"1.1.1.1\"\n", base_config);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+		match config.hrn_config.resolution_config {
+			HRNResolverConfig::Dns { dns_server_address, .. } => {
+				assert_eq!(dns_server_address, SocketAddress::from_str("1.1.1.1:53").unwrap());
+			},
+			other => panic!("unexpected HRN resolver config: {:?}", other),
+		}
+
+		// `blip32` mode combined with DNS-only settings is rejected so users aren't confused
+		// by settings that would silently have no effect.
+		let toml_config = format!(
+			"{}\n[hrn]\nmode = \"blip32\"\ndns_server_address = \"1.1.1.1:53\"\n",
+			base_config
+		);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("dns_server_address"));
+
+		let toml_config = format!(
+			"{}\n[hrn]\nmode = \"blip32\"\nenable_resolution_service = true\n",
+			base_config
+		);
+		fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("enable_resolution_service"));
 	}
 }

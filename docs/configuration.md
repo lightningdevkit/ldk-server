@@ -123,6 +123,23 @@ are not proxied. This does not set up inbound connections, to make your node rea
 hidden service, you need to configure Tor separately. See the [Tor guide](tor.md) for the
 full setup.
 
+### `[hrn]`
+
+Configures how the node resolves [BIP 353](https://github.com/bitcoin/bips/blob/master/bip-0353.mediawiki)
+Human-Readable Names (e.g., `₿alice@example.com`) to Lightning payment destinations.
+
+Two resolution methods are supported via the `mode` field:
+
+- **`"dns"`** (default) - Resolve names locally using a DNS server. The server is set via
+  `dns_server_address` (default: `8.8.8.8:53`, Google Public DNS). The port defaults to
+  `53` if omitted. When `enable_resolution_service = true`, the node additionally offers
+  HRN resolution to the rest of the network over Onion Messages. This requires the node
+  to be announceable so resolution requests can be routed to it, and is therefore
+  disabled by default.
+- **`"blip32"`** - Ask other nodes to resolve names on our behalf via
+  [bLIP-32](https://github.com/lightning/blips/blob/master/blip-0032.md). `dns_server_address`
+  and `enable_resolution_service` only apply in `"dns"` mode and are rejected here.
+
 ## Storage Layout
 
 ```

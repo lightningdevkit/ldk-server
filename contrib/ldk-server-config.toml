@@ -103,3 +103,16 @@ poll_metrics_interval = 60       # The polling interval for metrics in seconds. 
 [tor]
 # Only connections to OnionV3 peers will be made via this proxy; other connections (IPv4 peers, Electrum server) will not be routed over Tor.
 #proxy_address = "127.0.0.1:9050"      # Tor daemon SOCKS proxy address.
+
+# Human-Readable Names (BIP 353) resolution
+[hrn]
+# Resolution method: "dns" (resolve locally via a DNS server) or "blip32" (ask other
+# nodes to resolve for us via bLIP-32). Defaults to "dns".
+#mode = "dns"
+# DNS server used when `mode = "dns"`. Defaults to 8.8.8.8:53 (Google Public DNS). The
+# port defaults to 53 if omitted (e.g., "1.1.1.1" is treated as "1.1.1.1:53").
+#dns_server_address = "8.8.8.8:53"
+# When set to true (and `mode = "dns"`), also offer HRN resolution to the rest of the
+# network over Onion Messages. Requires the node to be announceable so resolution
+# requests can be routed to us. Defaults to false.
+#enable_resolution_service = false
