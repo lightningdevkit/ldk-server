@@ -28,7 +28,7 @@ use ldk_node::bitcoin::Network;
 use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
-use ldk_node::{Builder, Event, Node};
+use ldk_node::{Builder, Event, Node, RecoveryMode};
 use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
 use ldk_server_grpc::types::Payment;
@@ -193,6 +193,17 @@ fn main() {
 	builder.set_liquidity_provider_lsps2(
 		config_file.lsps2_service_config.expect("Missing liquidity.lsps2_server config"),
 	);
+
+	if let Some(rescan_from_height) = args_config.rescan_from_height {
+		info!(
+			"Wallet recovery mode requested via --rescan-from-height {}; the setting only \
+			 takes effect if this is the node's first startup.",
+			rescan_from_height
+		);
+		builder.set_wallet_recovery_mode(Some(RecoveryMode {
+			rescan_from_height: Some(rescan_from_height),
+		}));
+	}
 
 	let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
 		Ok(runtime) => Arc::new(runtime),
