@@ -26,7 +26,6 @@ use hyper::server::conn::http2;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
 use ldk_node::config::Config;
-use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
 use ldk_server_grpc::events;
@@ -204,11 +203,13 @@ fn main() {
 
 	builder.set_runtime(runtime.handle().clone());
 
-	let seed_path = storage_dir.join("keys_seed").to_str().unwrap().to_string();
-	let node_entropy = match NodeEntropy::from_seed_path(seed_path) {
+	let node_entropy = match crate::util::entropy::load_or_generate_node_entropy(
+		&storage_dir,
+		&config_file.entropy,
+	) {
 		Ok(entropy) => entropy,
 		Err(e) => {
-			error!("Failed to load or generate seed: {e}");
+			error!("Failed to load or generate node entropy: {e}");
 			std::process::exit(-1);
 		},
 	};

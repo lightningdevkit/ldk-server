@@ -61,6 +61,18 @@ pub struct Config {
 	pub metrics_username: Option<String>,
 	pub metrics_password: Option<String>,
 	pub tor_config: Option<TorConfig>,
+	pub entropy: EntropyConfig,
+}
+
+/// Configuration for the node's entropy source.
+///
+/// When both `mnemonic_file` and `seed_file` are unset, the node defaults to loading or
+/// generating a BIP39 mnemonic at `<storage_dir>/keys_mnemonic`. If a legacy raw-seed file
+/// exists at `<storage_dir>/keys_seed`, it is used for backwards compatibility.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct EntropyConfig {
+	pub mnemonic_file: Option<String>,
+	pub seed_file: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +126,7 @@ struct ConfigBuilder {
 	metrics_username: Option<String>,
 	metrics_password: Option<String>,
 	tor_proxy_address: Option<String>,
+	entropy: EntropyConfig,
 }
 
 impl ConfigBuilder {
@@ -130,6 +143,11 @@ impl ConfigBuilder {
 			self.pathfinding_scores_source_url =
 				node.pathfinding_scores_source_url.or(self.pathfinding_scores_source_url.clone());
 			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
+			if let Some(entropy) = node.entropy {
+				self.entropy.mnemonic_file =
+					entropy.mnemonic_file.or(self.entropy.mnemonic_file.take());
+				self.entropy.seed_file = entropy.seed_file.or(self.entropy.seed_file.take());
+			}
 		}
 
 		if let Some(storage) = toml.storage {
@@ -402,6 +420,13 @@ impl ConfigBuilder {
 			})
 			.transpose()?;
 
+		if self.entropy.mnemonic_file.is_some() && self.entropy.seed_file.is_some() {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"Only one of `node.entropy.mnemonic_file` and `node.entropy.seed_file` may be configured.".to_string(),
+			));
+		}
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -422,6 +447,7 @@ impl ConfigBuilder {
 			metrics_username,
 			metrics_password,
 			tor_config: tor_proxy_address.map(|proxy_address| TorConfig { proxy_address }),
+			entropy: self.entropy,
 		})
 	}
 }
@@ -450,6 +476,13 @@ struct NodeConfig {
 	alias: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
 	rgs_server_url: Option<String>,
+	entropy: Option<NodeEntropyTomlConfig>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct NodeEntropyTomlConfig {
+	mnemonic_file: Option<String>,
+	seed_file: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -936,6 +969,7 @@ mod tests {
 			tor_config: Some(TorConfig {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
+			entropy: EntropyConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1241,6 +1275,7 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_config: None,
+			entropy: EntropyConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1350,6 +1385,7 @@ mod tests {
 			tor_config: Some(TorConfig {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
+			entropy: EntropyConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1500,5 +1536,64 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+	}
+
+	#[test]
+	fn test_parses_node_entropy_section() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_parses_node_entropy_section.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			grpc_service_address = "127.0.0.1:3002"
+
+			[node.entropy]
+			mnemonic_file = "/some/path/keys_mnemonic"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(config.entropy.mnemonic_file, Some("/some/path/keys_mnemonic".to_string()));
+		assert_eq!(config.entropy.seed_file, None);
+	}
+
+	#[test]
+	fn test_rejects_both_mnemonic_and_seed_file() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rejects_both_mnemonic_and_seed_file.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			grpc_service_address = "127.0.0.1:3002"
+
+			[node.entropy]
+			mnemonic_file = "/some/path/keys_mnemonic"
+			seed_file = "/some/path/keys_seed"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("Only one of"));
 	}
 }

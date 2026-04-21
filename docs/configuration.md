@@ -127,7 +127,8 @@ full setup.
 
 ```
 <storage_dir>/
-  keys_seed              # Node entropy/seed
+  keys_mnemonic          # BIP39 mnemonic (default for new installs)
+  keys_seed              # Legacy raw seed (only present on installs initialized before mnemonic support)
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
@@ -137,6 +138,20 @@ full setup.
     ldk_server_data.sqlite # Payment and forwarding history
 ```
 
-The `keys_seed` file is the node's master secret, required to recover on-chain funds.
-`ldk_node_data.sqlite` holds channel state, both are required to recover channel funds. See
-[Operations - Backups](operations.md#backups) for backup guidance.
+The mnemonic (or, for legacy installs, the raw seed) is the node's master secret, required to
+recover on-chain funds. `ldk_node_data.sqlite` holds channel state, both are required to recover
+channel funds. See [Operations - Backups](operations.md#backups) for backup guidance.
+
+### Node entropy (`[node.entropy]`)
+
+By default, ldk-server reads or generates a 24-word BIP39 mnemonic at `<storage_dir>/keys_mnemonic`,
+which can be imported into any standard BIP39-compatible wallet to recover on-chain funds. The
+defaults can be overridden under `[node.entropy]`:
+
+- `mnemonic_file`: path to the BIP39 mnemonic file. Defaults to `<storage_dir>/keys_mnemonic`. If
+  the file does not exist on first start, a fresh 24-word mnemonic is generated and written.
+- `seed_file`: path to a raw 64-byte seed file. Provided for backwards compatibility with installs
+  initialized before BIP39 mnemonic support. Mutually exclusive with `mnemonic_file`.
+
+For backwards compatibility, if neither field is configured and a `keys_seed` file exists at the
+storage root, ldk-server will continue to use it.
