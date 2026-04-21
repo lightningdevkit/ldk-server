@@ -9,6 +9,15 @@ alias = "ldk_server"                          # Lightning node alias
 #rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"  # Optional: RGS URL for rapid gossip sync
 #async_payments_role = "client"               # Optional async payments role: "client" or "server"
 
+# Node entropy settings
+[node.entropy]
+# Path to a BIP39 mnemonic file. If unset and no legacy `keys_seed` file exists, a fresh
+# 24-word mnemonic is generated on first start. Defaults to "<storage_dir>/keys_mnemonic".
+#mnemonic_file = "/tmp/ldk-server/keys_mnemonic"
+# Legacy: path to a raw 64-byte seed file used by ldk-server installs initialized before
+# BIP39 mnemonic support. Mutually exclusive with `mnemonic_file`.
+#seed_file = "/tmp/ldk-server/keys_seed"
+
 # Storage settings
 [storage.disk]
 dir_path = "/tmp/ldk-server/"                 # Path for LDK and BDK data persistence, optional, defaults to ~/Library/Application Support/ldk-server/ on macOS, ~/.ldk-server/ on Linux
