@@ -1001,7 +1001,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -1203,7 +1203,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-node"
 version = "0.8.0+git"
-source = "git+https://github.com/lightningdevkit/ldk-node?rev=c754e2fe85c70741b5e370334cd16856c615265e#c754e2fe85c70741b5e370334cd16856c615265e"
+source = "git+https://github.com/lightningdevkit/ldk-node?rev=21eea8c881790db7a90bcad4f7f45f341c72222b#21eea8c881790db7a90bcad4f7f45f341c72222b"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1224,6 +1224,7 @@ dependencies = [
  "lightning",
  "lightning-background-processor",
  "lightning-block-sync",
+ "lightning-dns-resolver",
  "lightning-invoice",
  "lightning-liquidity",
  "lightning-macros",
@@ -1378,6 +1379,17 @@ dependencies = [
  "bitreq",
  "lightning",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lightning-dns-resolver"
+version = "0.3.0+git"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=38a62c32454d3eac22578144c479dbf9a6d9bff6#38a62c32454d3eac22578144c479dbf9a6d9bff6"
+dependencies = [
+ "dnssec-prover",
+ "lightning",
+ "lightning-types",
  "tokio",
 ]
 
@@ -1733,7 +1745,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.34",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "thiserror",
  "tokio",
  "tracing",
@@ -1770,7 +1782,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
