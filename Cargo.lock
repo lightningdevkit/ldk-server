@@ -530,7 +530,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1001,7 +1001,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -1203,7 +1203,6 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-node"
 version = "0.8.0+git"
-source = "git+https://github.com/lightningdevkit/ldk-node?rev=c754e2fe85c70741b5e370334cd16856c615265e#c754e2fe85c70741b5e370334cd16856c615265e"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1224,6 +1223,7 @@ dependencies = [
  "lightning",
  "lightning-background-processor",
  "lightning-block-sync",
+ "lightning-dns-resolver",
  "lightning-invoice",
  "lightning-liquidity",
  "lightning-macros",
@@ -1378,6 +1378,17 @@ dependencies = [
  "bitreq",
  "lightning",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lightning-dns-resolver"
+version = "0.3.0+git"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=38a62c32454d3eac22578144c479dbf9a6d9bff6#38a62c32454d3eac22578144c479dbf9a6d9bff6"
+dependencies = [
+ "dnssec-prover",
+ "lightning",
+ "lightning-types",
  "tokio",
 ]
 
@@ -1733,7 +1744,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.34",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "thiserror",
  "tokio",
  "tracing",
@@ -1770,9 +1781,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2014,7 +2025,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2112,7 +2123,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes 0.13.0",
  "rand 0.8.5",
  "secp256k1-sys",
  "serde",
@@ -2335,7 +2346,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

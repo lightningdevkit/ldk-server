@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "c754e2fe85c70741b5e370334cd16856c615265e" }
+# TODO: the `RecoveryMode` API used below lives on the ldk-node branch
+# `2026-04-abort-on-first-startup-tip-fetch-failure`. Restore this to a pinned upstream git rev
+# once that branch merges.
+ldk-node = { path = "/home/tnull/workspace/worktrees/ldk-node/2026-04-abort-on-first-startup-tip-fetch-failure" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 hyper = { version = "1", default-features = false, features = ["server", "http2"] }
 http-body-util = { version = "0.1", default-features = false }

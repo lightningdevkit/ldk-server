@@ -702,6 +702,13 @@ pub struct ArgsConfig {
 		help = "Tor daemon SOCKS proxy address. Only connections to OnionV3 peers will be made via this proxy; other connections (IPv4 peers, Electrum server) will not be routed over Tor."
 	)]
 	tor_proxy_address: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_RESCAN_FROM_HEIGHT",
+		help = "Triggers wallet recovery on the next startup. On Bitcoin Core RPC/REST chain sources, the given block height is used as the wallet birthday so the chain is rescanned from that height (useful on pruned nodes when the wallet's birthday is known). On Esplora/Electrum chain sources the given height is ignored, but setting the flag still forces a one-shot BDK `full_scan` so funds sent to previously-unknown addresses are re-discovered. Only takes effect on first startup (i.e. for a freshly-persisted wallet)."
+	)]
+	pub rescan_from_height: Option<u32>,
 }
 
 pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
