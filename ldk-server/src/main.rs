@@ -48,7 +48,7 @@ use crate::io::persist::{
 };
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
-use crate::util::logger::ServerLogger;
+use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
@@ -121,10 +121,20 @@ fn main() {
 		std::process::exit(-1);
 	}
 
-	if let Err(e) = ServerLogger::init(config_file.log_level, &log_file_path) {
-		eprintln!("Failed to initialize logger: {e}");
-		std::process::exit(-1);
-	}
+	let log_config = LogConfig {
+		log_to_file: config_file.log_to_file,
+		log_max_files: config_file.log_max_files,
+		log_max_size_bytes: config_file.log_max_size_bytes,
+		log_rotation_interval_secs: config_file.log_rotation_interval_secs,
+	};
+
+	let logger = match ServerLogger::init(config_file.log_level, &log_file_path, log_config) {
+		Ok(logger) => logger,
+		Err(e) => {
+			eprintln!("Failed to initialize logger: {e}");
+			std::process::exit(-1);
+		},
+	};
 
 	let api_key = match load_or_generate_api_key(&network_dir) {
 		Ok(key) => key,
@@ -252,6 +262,14 @@ fn main() {
 	}
 
 	runtime.block_on(async {
+		// Register SIGHUP handler for log rotation
+		let mut sighup_stream = match tokio::signal::unix::signal(SignalKind::hangup()) {
+			Ok(stream) => stream,
+			Err(e) => {
+				error!("Failed to register SIGHUP handler: {e}");
+				std::process::exit(-1);
+			}
+		};
 
 		let mut sigterm_stream = match tokio::signal::unix::signal(SignalKind::terminate()) {
 			Ok(stream) => stream,
@@ -506,6 +524,12 @@ fn main() {
 					info!("Received CTRL-C, shutting down..");
 					let _ = shutdown_tx.send(true);
 					break;
+				}
+				_ = sighup_stream.recv() => {
+					info!("Received SIGHUP, reopening log file..");
+					if let Err(e) = logger.reopen() {
+						error!("Failed to reopen log file on SIGHUP: {e}");
+					}
 				}
 				_ = sigterm_stream.recv() => {
 					info!("Received SIGTERM, shutting down..");
