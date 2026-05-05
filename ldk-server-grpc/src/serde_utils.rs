@@ -37,6 +37,7 @@ macro_rules! stringify_enum_serializer {
 stringify_enum_serializer!(serialize_payment_direction, crate::types::PaymentDirection);
 stringify_enum_serializer!(serialize_payment_status, crate::types::PaymentStatus);
 stringify_enum_serializer!(serialize_balance_source, crate::types::BalanceSource);
+stringify_enum_serializer!(serialize_network, crate::types::Network);
 
 /// Serializes `Option<prost::bytes::Bytes>` as a hex string (or null).
 pub fn serialize_opt_bytes_hex<S>(

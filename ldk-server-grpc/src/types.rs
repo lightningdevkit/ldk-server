@@ -1234,6 +1234,49 @@ impl PaymentStatus {
 		}
 	}
 }
+/// The Bitcoin network the node is running on.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Network {
+	/// Mainnet Bitcoin.
+	Bitcoin = 0,
+	/// Bitcoin's testnet (testnet3) network.
+	Testnet = 1,
+	/// Bitcoin's testnet4 network.
+	Testnet4 = 2,
+	/// Bitcoin's signet network.
+	Signet = 3,
+	/// Bitcoin's regtest network.
+	Regtest = 4,
+}
+impl Network {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			Network::Bitcoin => "BITCOIN",
+			Network::Testnet => "TESTNET",
+			Network::Testnet4 => "TESTNET4",
+			Network::Signet => "SIGNET",
+			Network::Regtest => "REGTEST",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"BITCOIN" => Some(Self::Bitcoin),
+			"TESTNET" => Some(Self::Testnet),
+			"TESTNET4" => Some(Self::Testnet4),
+			"SIGNET" => Some(Self::Signet),
+			"REGTEST" => Some(Self::Regtest),
+			_ => None,
+		}
+	}
+}
 /// Indicates whether the balance is derived from a cooperative close, a force-close (for holder or counterparty),
 /// or whether it is for an HTLC.
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]

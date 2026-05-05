@@ -14,6 +14,7 @@ use ldk_server_grpc::types::BestBlock;
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use crate::util::proto_adapter::network_to_proto;
 
 pub(crate) async fn handle_get_node_info_request(
 	context: Arc<Context>, _request: GetNodeInfoRequest,
@@ -49,6 +50,8 @@ pub(crate) async fn handle_get_node_info_request(
 		};
 		addrs.into_iter().map(|a| format!("{node_id}@{a}")).collect()
 	};
+	let network = network_to_proto(node_status.network) as i32;
+
 	let response = GetNodeInfoResponse {
 		node_id,
 		current_best_block: Some(best_block),
@@ -62,6 +65,7 @@ pub(crate) async fn handle_get_node_info_request(
 		announcement_addresses,
 		node_alias,
 		node_uris,
+		network,
 	};
 	Ok(response)
 }

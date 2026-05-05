@@ -79,6 +79,10 @@ pub struct GetNodeInfoResponse {
 	/// Will be empty if no announcement addresses are configured.
 	#[prost(string, repeated, tag = "12")]
 	pub node_uris: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// The Bitcoin network the node is running on (e.g., "bitcoin", "testnet", "signet", "regtest").
+	#[prost(enumeration = "super::types::Network", tag = "13")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "crate::serde_utils::serialize_network"))]
+	pub network: i32,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
