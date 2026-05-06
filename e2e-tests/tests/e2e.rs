@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, LdkServerConfig, LdkServerHandle, TestBitcoind,
+	wait_for_onchain_balance, wait_for_usable_channel, LdkServerConfig, LdkServerHandle,
+	TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -21,10 +22,10 @@ use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
-	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest,
+	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
-use ldk_server_client::ldk_server_grpc::events::EventEnvelope;
+use ldk_server_client::ldk_server_grpc::events::{ChannelState, EventEnvelope};
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
 };
@@ -408,6 +409,160 @@ async fn test_cli_open_channel() {
 		&["open-channel", server_b.node_id(), &addr, "100000sat", "--announce-channel"],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_a, 1.0);
+	bitcoind.fund_address(&addr_b, 0.1);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_onchain_balance(server_a.client(), Duration::from_secs(30)).await;
+	wait_for_onchain_balance(server_b.client(), Duration::from_secs(30)).await;
+
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	let open_resp = server_a
+		.client()
+		.open_channel(OpenChannelRequest {
+			node_pubkey: server_b.node_id().to_string(),
+			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			channel_amount_sats: 100_000,
+			push_to_counterparty_msat: None,
+			channel_config: None,
+			announce_channel: true,
+			disable_counterparty_reserve: false,
+		})
+		.await
+		.unwrap();
+
+	let pending = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Pending as i32
+		)
+	})
+	.await;
+	assert!(matches!(pending.event, Some(Event::ChannelStateChanged(_))));
+
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_usable_channel(server_a.client(), &bitcoind, Duration::from_secs(60)).await;
+
+	let ready = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Ready as i32
+		)
+	})
+	.await;
+	assert!(matches!(ready.event, Some(Event::ChannelStateChanged(_))));
+
+	run_cli(&server_a, &["close-channel", &open_resp.user_channel_id, server_b.node_id()]);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+
+	let closed = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Closed as i32
+		)
+	})
+	.await;
+
+	match closed.event {
+		Some(Event::ChannelStateChanged(channel_event)) => {
+			assert_eq!(channel_event.user_channel_id, open_resp.user_channel_id);
+			assert_eq!(channel_event.state, ChannelState::Closed as i32);
+		},
+		other => panic!("expected ChannelStateChanged event, got {other:?}"),
+	}
+}
+
+#[tokio::test]
+async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_closed() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_a, 1.0);
+	bitcoind.fund_address(&addr_b, 0.1);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_onchain_balance(server_a.client(), Duration::from_secs(30)).await;
+	wait_for_onchain_balance(server_b.client(), Duration::from_secs(30)).await;
+
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	let open_resp = server_a
+		.client()
+		.open_channel(OpenChannelRequest {
+			node_pubkey: server_b.node_id().to_string(),
+			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			channel_amount_sats: 100_000,
+			push_to_counterparty_msat: None,
+			channel_config: None,
+			announce_channel: true,
+			disable_counterparty_reserve: false,
+		})
+		.await
+		.unwrap();
+
+	let pending = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Pending as i32
+		)
+	})
+	.await;
+	assert!(matches!(pending.event, Some(Event::ChannelStateChanged(_))));
+
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_usable_channel(server_a.client(), &bitcoind, Duration::from_secs(60)).await;
+
+	let ready = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Ready as i32
+		)
+	})
+	.await;
+	assert!(matches!(ready.event, Some(Event::ChannelStateChanged(_))));
+
+	run_cli(&server_a, &["force-close-channel", &open_resp.user_channel_id, server_b.node_id()]);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+
+	let closed = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Closed as i32
+		)
+	})
+	.await;
+
+	match closed.event {
+		Some(Event::ChannelStateChanged(channel_event)) => {
+			assert_eq!(channel_event.user_channel_id, open_resp.user_channel_id);
+			assert_eq!(channel_event.state, ChannelState::Closed as i32);
+		},
+		other => panic!("expected ChannelStateChanged event, got {other:?}"),
+	}
 }
 
 #[tokio::test]

@@ -12,6 +12,7 @@ mod io;
 mod service;
 mod util;
 
+use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
 use ldk_node::config::Config;
 use ldk_node::entropy::NodeEntropy;
+use ldk_node::lightning::events::ClosureReason;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::{Builder, Event, Node};
 use ldk_server_grpc::events;
@@ -272,6 +274,11 @@ fn main() {
 			}
 		};
 		let event_node = Arc::clone(&node);
+		let mut ready_channel_ids: HashSet<String> = event_node
+			.list_channels()
+			.into_iter()
+			.map(|channel| channel.channel_id.0.to_lower_hex_string())
+			.collect();
 
 		let metrics: Option<Arc<Metrics>> = if config_file.metrics_enabled {
 			let poll_metrics_interval = Duration::from_secs(config_file.poll_metrics_interval.unwrap_or(60));
@@ -324,38 +331,110 @@ fn main() {
 
 		loop {
 			select! {
-				event = event_node.next_event_async() => {
-					match event {
-						Event::ChannelPending { channel_id, counterparty_node_id, .. } => {
-							info!(
-								"CHANNEL_PENDING: {} from counterparty {}",
-								channel_id, counterparty_node_id
-							);
-							if let Err(e) = event_node.event_handled() {
-								error!("Failed to mark event as handled: {e}");
-							}
-						},
-						Event::ChannelReady { channel_id, counterparty_node_id, .. } => {
-							info!(
-								"CHANNEL_READY: {} from counterparty {:?}",
-								channel_id, counterparty_node_id
-							);
-							if let Err(e) = event_node.event_handled() {
-								error!("Failed to mark event as handled: {e}");
-							}
+					event = event_node.next_event_async() => {
+						match event {
+							Event::ChannelPending {
+								channel_id,
+								user_channel_id,
+								counterparty_node_id,
+								funding_txo,
+								..
+							} => {
+								info!(
+									"CHANNEL_PENDING: {} from counterparty {}",
+									channel_id, counterparty_node_id
+								);
+
+								send_channel_state_event(
+									event_envelope::Event::ChannelStateChanged(events::ChannelStateChanged {
+										channel_id: channel_id.0.to_lower_hex_string(),
+										user_channel_id: user_channel_id.0.to_string(),
+										counterparty_node_id: Some(counterparty_node_id.to_string()),
+										state: events::ChannelState::Pending.into(),
+										funding_txo: Some(funding_txo.to_string()),
+										reason: None,
+										closure_initiator: events::ChannelClosureInitiator::Unspecified.into(),
+									}),
+									&event_sender,
+								);
+
+								if let Err(e) = event_node.event_handled() {
+									error!("Failed to mark event as handled: {e}");
+								}
+							},
+							Event::ChannelReady {
+								channel_id,
+								user_channel_id,
+								counterparty_node_id,
+								funding_txo,
+							} => {
+								info!(
+									"CHANNEL_READY: {} from counterparty {:?}",
+									channel_id, counterparty_node_id
+								);
+
+								let channel_id_hex = channel_id.0.to_lower_hex_string();
+								ready_channel_ids.insert(channel_id_hex.clone());
+
+								send_channel_state_event(
+									event_envelope::Event::ChannelStateChanged(events::ChannelStateChanged {
+										channel_id: channel_id_hex,
+										user_channel_id: user_channel_id.0.to_string(),
+										counterparty_node_id: counterparty_node_id
+											.map(|node_id| node_id.to_string()),
+										state: events::ChannelState::Ready.into(),
+										funding_txo: funding_txo.map(|outpoint| outpoint.to_string()),
+										reason: None,
+										closure_initiator: events::ChannelClosureInitiator::Unspecified.into(),
+									}),
+									&event_sender,
+								);
+
+								if let Err(e) = event_node.event_handled() {
+									error!("Failed to mark event as handled: {e}");
+								}
 
 							if let Some(metrics) = &metrics {
 								metrics.update_channels_count(false);
 							}
 						},
-						Event::ChannelClosed { channel_id, counterparty_node_id, .. } => {
-							info!(
-								"CHANNEL_CLOSED: {} from counterparty {:?}",
-								channel_id, counterparty_node_id
-							);
-							if let Err(e) = event_node.event_handled() {
-								error!("Failed to mark event as handled: {e}");
-							}
+							Event::ChannelClosed {
+								channel_id,
+								user_channel_id,
+								counterparty_node_id,
+								reason,
+							} => {
+								info!(
+									"CHANNEL_CLOSED: {} from counterparty {:?}",
+									channel_id, counterparty_node_id
+								);
+
+								let channel_id_hex = channel_id.0.to_lower_hex_string();
+								let was_ready = ready_channel_ids.remove(&channel_id_hex);
+								let reason_ref = reason.as_ref();
+								let is_open_failure = !was_ready && is_channel_open_failure(reason_ref);
+
+								send_channel_state_event(
+									event_envelope::Event::ChannelStateChanged(events::ChannelStateChanged {
+										channel_id: channel_id_hex,
+										user_channel_id: user_channel_id.0.to_string(),
+										counterparty_node_id: counterparty_node_id
+											.map(|node_id| node_id.to_string()),
+										state: if is_open_failure {
+											events::ChannelState::OpenFailed.into()
+										} else {
+											events::ChannelState::Closed.into()
+										},
+										funding_txo: None,
+										reason: reason_ref.map(closure_reason_to_proto),
+										closure_initiator: closure_initiator_from_reason(reason_ref).into(),
+									}),
+									&event_sender,
+								);
+
+								if let Err(e) = event_node.event_handled() {
+									error!("Failed to mark event as handled: {e}");
+								}
 
 							if let Some(metrics) = &metrics {
 								metrics.update_channels_count(true);
@@ -556,6 +635,131 @@ fn send_event_and_upsert_payment(
 	}
 }
 
+fn send_channel_state_event(
+	event: event_envelope::Event, event_sender: &broadcast::Sender<EventEnvelope>,
+) {
+	if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
+		debug!("No event subscribers connected, skipping event: {e}");
+	}
+}
+
+fn is_channel_open_failure(reason: Option<&ClosureReason>) -> bool {
+	matches!(
+		reason,
+		Some(ClosureReason::FundingTimedOut)
+			| Some(ClosureReason::DisconnectedPeer)
+			| Some(ClosureReason::CounterpartyCoopClosedUnfundedChannel)
+			| Some(ClosureReason::LocallyCoopClosedUnfundedChannel)
+			| Some(ClosureReason::FundingBatchClosure)
+	)
+}
+
+fn closure_initiator_from_reason(
+	reason: Option<&ClosureReason>,
+) -> events::ChannelClosureInitiator {
+	match reason {
+		Some(ClosureReason::HolderForceClosed { .. })
+		| Some(ClosureReason::LocallyInitiatedCooperativeClosure)
+		| Some(ClosureReason::LocallyCoopClosedUnfundedChannel) => events::ChannelClosureInitiator::Local,
+		Some(ClosureReason::CounterpartyForceClosed { .. })
+		| Some(ClosureReason::CounterpartyInitiatedCooperativeClosure)
+		| Some(ClosureReason::CounterpartyCoopClosedUnfundedChannel) => {
+			events::ChannelClosureInitiator::Remote
+		},
+		Some(_) => events::ChannelClosureInitiator::Unknown,
+		None => events::ChannelClosureInitiator::Unspecified,
+	}
+}
+
+fn closure_reason_to_proto(reason: &ClosureReason) -> events::ChannelStateChangeReason {
+	events::ChannelStateChangeReason {
+		kind: closure_reason_kind(reason).into(),
+		message: reason.to_string(),
+		details: closure_reason_details(reason),
+	}
+}
+
+fn closure_reason_kind(reason: &ClosureReason) -> events::ChannelStateChangeReasonKind {
+	match reason {
+		ClosureReason::CounterpartyForceClosed { .. } => {
+			events::ChannelStateChangeReasonKind::CounterpartyForceClosed
+		},
+		ClosureReason::HolderForceClosed { .. } => {
+			events::ChannelStateChangeReasonKind::HolderForceClosed
+		},
+		ClosureReason::LegacyCooperativeClosure => {
+			events::ChannelStateChangeReasonKind::LegacyCooperativeClosure
+		},
+		ClosureReason::CounterpartyInitiatedCooperativeClosure => {
+			events::ChannelStateChangeReasonKind::CounterpartyInitiatedCooperativeClosure
+		},
+		ClosureReason::LocallyInitiatedCooperativeClosure => {
+			events::ChannelStateChangeReasonKind::LocallyInitiatedCooperativeClosure
+		},
+		ClosureReason::CommitmentTxConfirmed => {
+			events::ChannelStateChangeReasonKind::CommitmentTxConfirmed
+		},
+		ClosureReason::FundingTimedOut => events::ChannelStateChangeReasonKind::FundingTimedOut,
+		ClosureReason::ProcessingError { .. } => {
+			events::ChannelStateChangeReasonKind::ProcessingError
+		},
+		ClosureReason::DisconnectedPeer => events::ChannelStateChangeReasonKind::DisconnectedPeer,
+		ClosureReason::OutdatedChannelManager => {
+			events::ChannelStateChangeReasonKind::OutdatedChannelManager
+		},
+		ClosureReason::CounterpartyCoopClosedUnfundedChannel => {
+			events::ChannelStateChangeReasonKind::CounterpartyCoopClosedUnfundedChannel
+		},
+		ClosureReason::LocallyCoopClosedUnfundedChannel => {
+			events::ChannelStateChangeReasonKind::LocallyCoopClosedUnfundedChannel
+		},
+		ClosureReason::FundingBatchClosure => {
+			events::ChannelStateChangeReasonKind::FundingBatchClosure
+		},
+		ClosureReason::HTLCsTimedOut { .. } => events::ChannelStateChangeReasonKind::HtlcsTimedOut,
+		ClosureReason::PeerFeerateTooLow { .. } => {
+			events::ChannelStateChangeReasonKind::PeerFeerateTooLow
+		},
+	}
+}
+
+fn closure_reason_details(
+	reason: &ClosureReason,
+) -> Option<events::channel_state_change_reason::Details> {
+	use events::channel_state_change_reason::Details;
+
+	match reason {
+		ClosureReason::CounterpartyForceClosed { peer_msg } => {
+			Some(Details::CounterpartyForceClosed(events::CounterpartyForceClosedDetails {
+				peer_msg: peer_msg.to_string(),
+			}))
+		},
+		ClosureReason::HolderForceClosed {
+			broadcasted_latest_txn,
+			message: force_close_message,
+		} => Some(Details::HolderForceClosed(events::HolderForceClosedDetails {
+			broadcasted_latest_txn: *broadcasted_latest_txn,
+			message: force_close_message.clone(),
+		})),
+		ClosureReason::ProcessingError { err } => {
+			Some(Details::ProcessingError(events::ProcessingErrorDetails { err: err.clone() }))
+		},
+		ClosureReason::HTLCsTimedOut { payment_hash } => {
+			Some(Details::HtlcsTimedOut(events::HtlcsTimedOutDetails {
+				payment_hash: payment_hash.map(|hash| hash.to_string()),
+			}))
+		},
+		ClosureReason::PeerFeerateTooLow {
+			peer_feerate_sat_per_kw,
+			required_feerate_sat_per_kw,
+		} => Some(Details::PeerFeerateTooLow(events::PeerFeerateTooLowDetails {
+			peer_feerate_sat_per_kw: *peer_feerate_sat_per_kw,
+			required_feerate_sat_per_kw: *required_feerate_sat_per_kw,
+		})),
+		_ => None,
+	}
+}
+
 fn upsert_payment_details(
 	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment: &Payment,
 ) {
@@ -605,5 +809,106 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 
 		debug!("Generated new API key at {}", api_key_path.display());
 		Ok(key_bytes.to_lower_hex_string())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use ldk_server_grpc::events::channel_state_change_reason::Details;
+
+	#[test]
+	fn test_is_channel_open_failure_classification() {
+		assert!(is_channel_open_failure(Some(&ClosureReason::FundingTimedOut)));
+		assert!(is_channel_open_failure(Some(&ClosureReason::DisconnectedPeer)));
+		assert!(is_channel_open_failure(Some(&ClosureReason::FundingBatchClosure)));
+		assert!(is_channel_open_failure(Some(
+			&ClosureReason::CounterpartyCoopClosedUnfundedChannel,
+		)));
+		assert!(is_channel_open_failure(Some(&ClosureReason::LocallyCoopClosedUnfundedChannel,)));
+
+		assert!(!is_channel_open_failure(Some(&ClosureReason::CommitmentTxConfirmed)));
+		assert!(!is_channel_open_failure(None));
+	}
+
+	#[test]
+	fn test_closure_initiator_mapping() {
+		assert_eq!(
+			closure_initiator_from_reason(Some(&ClosureReason::HolderForceClosed {
+				broadcasted_latest_txn: Some(true),
+				message: "local close".to_string(),
+			})),
+			events::ChannelClosureInitiator::Local
+		);
+		assert_eq!(
+			closure_initiator_from_reason(
+				Some(&ClosureReason::LocallyInitiatedCooperativeClosure,)
+			),
+			events::ChannelClosureInitiator::Local
+		);
+
+		assert_eq!(
+			closure_initiator_from_reason(Some(
+				&ClosureReason::CounterpartyInitiatedCooperativeClosure,
+			)),
+			events::ChannelClosureInitiator::Remote
+		);
+		assert_eq!(
+			closure_initiator_from_reason(Some(
+				&ClosureReason::CounterpartyCoopClosedUnfundedChannel,
+			)),
+			events::ChannelClosureInitiator::Remote
+		);
+
+		assert_eq!(
+			closure_initiator_from_reason(Some(&ClosureReason::CommitmentTxConfirmed)),
+			events::ChannelClosureInitiator::Unknown
+		);
+		assert_eq!(
+			closure_initiator_from_reason(None),
+			events::ChannelClosureInitiator::Unspecified
+		);
+	}
+
+	#[test]
+	fn test_closure_reason_to_proto_holder_force_closed_details() {
+		let proto = closure_reason_to_proto(&ClosureReason::HolderForceClosed {
+			broadcasted_latest_txn: Some(false),
+			message: "manual force close".to_string(),
+		});
+
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::HolderForceClosed as i32);
+		assert!(proto.message.contains("manual force close"));
+		match proto.details {
+			Some(Details::HolderForceClosed(details)) => {
+				assert_eq!(details.broadcasted_latest_txn, Some(false));
+				assert_eq!(details.message, "manual force close");
+			},
+			other => panic!("expected HolderForceClosed details, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_closure_reason_to_proto_peer_feerate_details() {
+		let proto = closure_reason_to_proto(&ClosureReason::PeerFeerateTooLow {
+			peer_feerate_sat_per_kw: 100,
+			required_feerate_sat_per_kw: 250,
+		});
+
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::PeerFeerateTooLow as i32);
+		match proto.details {
+			Some(Details::PeerFeerateTooLow(details)) => {
+				assert_eq!(details.peer_feerate_sat_per_kw, 100);
+				assert_eq!(details.required_feerate_sat_per_kw, 250);
+			},
+			other => panic!("expected PeerFeerateTooLow details, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_closure_reason_to_proto_without_details() {
+		let proto = closure_reason_to_proto(&ClosureReason::FundingTimedOut);
+		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::FundingTimedOut as i32);
+		assert!(proto.details.is_none());
 	}
 }
