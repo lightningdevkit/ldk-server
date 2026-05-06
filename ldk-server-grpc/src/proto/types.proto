@@ -201,6 +201,24 @@ enum PaymentStatus {
   FAILED = 2;
 }
 
+// The Bitcoin network the node is running on.
+enum Network {
+  // Mainnet Bitcoin.
+  BITCOIN = 0;
+
+  // Bitcoin's testnet (testnet3) network.
+  TESTNET = 1;
+
+  // Bitcoin's testnet4 network.
+  TESTNET4 = 2;
+
+  // Bitcoin's signet network.
+  SIGNET = 3;
+
+  // Bitcoin's regtest network.
+  REGTEST = 4;
+}
+
 // A forwarded payment through our node.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded
 message ForwardedPayment{

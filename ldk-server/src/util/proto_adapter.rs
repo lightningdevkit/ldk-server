@@ -11,6 +11,7 @@ use bytes::Bytes;
 use hex::prelude::*;
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::secp256k1::PublicKey;
+use ldk_node::bitcoin::Network;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::chain::channelmonitor::BalanceSource;
 use ldk_node::lightning::ln::types::ChannelId;
@@ -508,5 +509,16 @@ pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_grpc::types::Gra
 	ldk_server_grpc::types::GraphNode {
 		channels: node.channels,
 		announcement_info: node.announcement_info.map(graph_node_announcement_to_proto),
+	}
+}
+
+pub(crate) fn network_to_proto(network: Network) -> ldk_server_grpc::types::Network {
+	use ldk_server_grpc::types::Network as ProtoNetwork;
+	match network {
+		Network::Bitcoin => ProtoNetwork::Bitcoin,
+		Network::Testnet => ProtoNetwork::Testnet,
+		Network::Testnet4 => ProtoNetwork::Testnet4,
+		Network::Signet => ProtoNetwork::Signet,
+		Network::Regtest => ProtoNetwork::Regtest,
 	}
 }
