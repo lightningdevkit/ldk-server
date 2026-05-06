@@ -21,13 +21,17 @@ The server handles `SIGTERM` and `CTRL-C` (SIGINT). On receipt, it:
 
 ### Log Rotation
 
-> **Important:** LDK Server does not rotate or truncate its own log file. Without log rotation
-> configured, the log file will grow indefinitely and can eventually fill your disk. A full
-> disk can prevent the node from persisting channel state, risking fund loss.
+By default, LDK Server logs to `stdout`/`stderr`. When running under `systemd` or Docker, 
+this allows the environment (e.g., `journald`) to handle persistence, rotation, and 
+compression automatically.
 
-The server reopens its log file on `SIGHUP`. This integrates with standard `logrotate`. Save
-the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to match your
-setup):
+If you enable `log_to_file` in the configuration, LDK Server will automatically rotate 
+logs when they exceed 50MB or 24 hours (configurable) and keep the last 5 uncompressed 
+log files.
+
+If you prefer to use system `logrotate` for file logs, the server still reopens its log 
+file on `SIGHUP`. Save the following config to `/etc/logrotate.d/ldk-server` 
+(adjust the log path to match your setup):
 
 ```
 /var/lib/ldk-server/regtest/ldk-server.log {

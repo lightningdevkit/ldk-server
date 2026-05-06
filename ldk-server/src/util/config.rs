@@ -56,6 +56,10 @@ pub struct Config {
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
+	pub log_max_size_bytes: usize,
+	pub log_rotation_interval_secs: u64,
+	pub log_max_files: usize,
+	pub log_to_file: bool,
 	pub pathfinding_scores_source_url: Option<String>,
 	pub metrics_enabled: bool,
 	pub poll_metrics_interval: Option<u64>,
@@ -110,6 +114,10 @@ struct ConfigBuilder {
 	lsps2: Option<LiquidityConfig>,
 	log_level: Option<String>,
 	log_file_path: Option<String>,
+	log_max_size_mb: Option<u64>,
+	log_rotation_interval_hours: Option<u64>,
+	log_max_files: Option<usize>,
+	log_to_file: Option<bool>,
 	pathfinding_scores_source_url: Option<String>,
 	metrics_enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
@@ -158,6 +166,11 @@ impl ConfigBuilder {
 		if let Some(log) = toml.log {
 			self.log_level = log.level.or(self.log_level.clone());
 			self.log_file_path = log.file.or(self.log_file_path.clone());
+			self.log_max_size_mb = log.max_size_mb.or(self.log_max_size_mb);
+			self.log_rotation_interval_hours =
+				log.rotation_interval_hours.or(self.log_rotation_interval_hours);
+			self.log_max_files = log.max_files.or(self.log_max_files);
+			self.log_to_file = log.log_to_file.or(self.log_to_file);
 		}
 
 		if let Some(liquidity) = toml.liquidity {
@@ -248,6 +261,22 @@ impl ConfigBuilder {
 
 		if let Some(tor_proxy_address) = &args.tor_proxy_address {
 			self.tor_proxy_address = Some(tor_proxy_address.clone());
+		}
+
+		if let Some(log_max_size_mb) = args.log_max_size_mb {
+			self.log_max_size_mb = Some(log_max_size_mb);
+		}
+
+		if let Some(log_rotation_interval_hours) = args.log_rotation_interval_hours {
+			self.log_rotation_interval_hours = Some(log_rotation_interval_hours);
+		}
+
+		if let Some(log_max_files) = args.log_max_files {
+			self.log_max_files = Some(log_max_files);
+		}
+
+		if args.log_to_file {
+			self.log_to_file = Some(true);
 		}
 	}
 
@@ -358,6 +387,11 @@ impl ConfigBuilder {
 			.transpose()?
 			.unwrap_or(LevelFilter::Debug);
 
+		let log_max_size_bytes = self.log_max_size_mb.unwrap_or(50) * 1024 * 1024;
+		let log_rotation_interval_secs = self.log_rotation_interval_hours.unwrap_or(24) * 60 * 60;
+		let log_max_files = self.log_max_files.unwrap_or(5);
+		let log_to_file = self.log_to_file.unwrap_or(true);
+
 		let lsps2_client_config = self
 			.lsps2
 			.as_ref()
@@ -428,6 +462,10 @@ impl ConfigBuilder {
 			lsps2_service_config,
 			log_level,
 			log_file_path: self.log_file_path,
+			log_max_size_bytes: log_max_size_bytes as usize,
+			log_rotation_interval_secs,
+			log_max_files,
+			log_to_file,
 			pathfinding_scores_source_url,
 			metrics_enabled,
 			poll_metrics_interval,
@@ -497,6 +535,10 @@ struct EsploraConfig {
 struct LogConfig {
 	level: Option<String>,
 	file: Option<String>,
+	max_size_mb: Option<u64>,
+	rotation_interval_hours: Option<u64>,
+	max_files: Option<usize>,
+	log_to_file: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -735,6 +777,34 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_LOG_MAX_SIZE_MB",
+		help = "The maximum size of the log file in MB before rotation. Defaults to 50MB."
+	)]
+	log_max_size_mb: Option<u64>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_LOG_ROTATION_INTERVAL_HOURS",
+		help = "The maximum age of the log file in hours before rotation. Defaults to 24h."
+	)]
+	log_rotation_interval_hours: Option<u64>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_LOG_MAX_FILES",
+		help = "The maximum number of rotated log files to keep. Defaults to 5."
+	)]
+	log_max_files: Option<usize>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_LOG_TO_FILE",
+		help = "The option to enable logging to a file. Defaults to true. If false, logging to file is disabled."
+	)]
+	log_to_file: bool,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_BITCOIND_RPC_ADDRESS",
 		help = "The underlying Bitcoin node RPC address (host:port)."
 	)]
@@ -896,6 +966,10 @@ mod tests {
 				[log]
 				level = "Trace"
 				file = "/var/log/ldk-server.log"
+				max_size_mb = 50
+				rotation_interval_hours = 24
+				max_files = 5
+				log_to_file = true
 
 				[bitcoind]
 				rpc_address = "127.0.0.1:8332"
@@ -941,6 +1015,10 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			log_to_file: true,
+			log_max_size_mb: Some(50),
+			log_rotation_interval_hours: Some(24),
+			log_max_files: Some(5),
 		}
 	}
 
@@ -962,6 +1040,10 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			log_to_file: true,
+			log_max_size_mb: None,
+			log_rotation_interval_hours: None,
+			log_max_files: None,
 		}
 	}
 
@@ -1029,6 +1111,10 @@ mod tests {
 			}),
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			log_max_size_bytes: 50 * 1024 * 1024,
+			log_rotation_interval_secs: 24 * 60 * 60,
+			log_max_files: 5,
+			log_to_file: true,
 			pathfinding_scores_source_url: None,
 			metrics_enabled: false,
 			poll_metrics_interval: None,
@@ -1344,6 +1430,10 @@ mod tests {
 			metrics_password: None,
 			tor_config: None,
 			hrn_config: HumanReadableNamesConfig::default(),
+			log_max_size_bytes: 50 * 1024 * 1024,
+			log_rotation_interval_secs: 24 * 60 * 60,
+			log_max_files: 5,
+			log_to_file: true,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1357,6 +1447,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
+		assert_eq!(config.log_max_size_bytes, expected.log_max_size_bytes);
+		assert_eq!(config.log_rotation_interval_secs, expected.log_rotation_interval_secs);
+		assert_eq!(config.log_max_files, expected.log_max_files);
+		assert_eq!(config.log_to_file, expected.log_to_file);
 	}
 
 	#[test]
@@ -1454,6 +1548,10 @@ mod tests {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
 			hrn_config: HumanReadableNamesConfig::default(),
+			log_max_size_bytes: 50 * 1024 * 1024,
+			log_rotation_interval_secs: 24 * 60 * 60,
+			log_max_files: 5,
+			log_to_file: false,
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);

@@ -48,7 +48,7 @@ use crate::io::persist::{
 };
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
-use crate::util::logger::ServerLogger;
+use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
@@ -121,7 +121,14 @@ fn main() {
 		std::process::exit(-1);
 	}
 
-	let logger = match ServerLogger::init(config_file.log_level, &log_file_path) {
+	let log_config = LogConfig {
+		log_to_file: config_file.log_to_file,
+		log_max_files: config_file.log_max_files,
+		log_max_size_bytes: config_file.log_max_size_bytes,
+		log_rotation_interval_secs: config_file.log_rotation_interval_secs,
+	};
+
+	let logger = match ServerLogger::init(config_file.log_level, &log_file_path, log_config) {
 		Ok(logger) => logger,
 		Err(e) => {
 			eprintln!("Failed to initialize logger: {e}");
@@ -519,6 +526,7 @@ fn main() {
 					break;
 				}
 				_ = sighup_stream.recv() => {
+					info!("Received SIGHUP, reopening log file..");
 					if let Err(e) = logger.reopen() {
 						error!("Failed to reopen log file on SIGHUP: {e}");
 					}

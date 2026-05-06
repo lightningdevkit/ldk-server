@@ -15,6 +15,10 @@ dir_path = "/tmp/ldk-server/"                 # Path for LDK and BDK data persis
 [log]
 level = "Debug"                               # Log level (Error, Warn, Info, Debug, Trace)
 #file = "/tmp/ldk-server/ldk-server.log"      # Log file path
+log_to_file = true                           # Enable logging to a file (default: true, also logs to both stdout and stderr)
+#max_size_mb = 50                              # Max size of log file before rotation (default: 50MB)
+#rotation_interval_hours = 24                  # Max age of log file before rotation (default: 24h)
+#max_files = 5                                 # Number of rotated log files to keep (default: 5)
 
 [tls]
 #cert_path = "/path/to/tls.crt"               # Path to TLS certificate, by default uses dir_path/tls.crt
