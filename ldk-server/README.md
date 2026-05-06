@@ -14,7 +14,7 @@ See the [Getting Started](../docs/getting-started.md) guide for a full walkthrou
 ## Configuration
 
 A fully annotated config template is provided at
-[ldk-server-config.toml](ldk-server-config.toml). See
+[ldk-server-config.toml](../contrib/ldk-server-config.toml). See
 [Configuration](../docs/configuration.md) for details on all options, environment variables,
 and Bitcoin backend choices.
 
