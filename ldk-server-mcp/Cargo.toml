@@ -1,0 +1,38 @@
+[package]
+name = "ldk-server-mcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ldk-server-client = { path = "../ldk-server-client" }
+ldk-server-grpc = { path = "../ldk-server-grpc" }
+
+# HTTP server
+axum = { version = "0.7", default-features = false, features = ["json", "tokio"] }
+hyper = { version = "1", default-features = false, features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio", "service", "server-auto", "http1", "http2"] }
+
+# TLS
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+ring = { version = "0.17", default-features = false }
+
+# Async runtime
+tokio = { version = "1.38.0", default-features = false, features = ["time", "signal", "rt-multi-thread", "sync", "macros", "net"] }
+
+# Serialization
+serde = { version = "1.0.203", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+toml = { version = "0.8.9", default-features = false, features = ["parse"] }
+
+# CLI
+clap = { version = "4.0.5", default-features = false, features = ["derive", "std", "error-context", "suggestions", "help", "env"] }
+
+# Utility
+log = { version = "0.4.28", features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+hex = { package = "hex-conservative", version = "0.2.1", default-features = false, features = ["std"] }
+base64 = { version = "0.21", default-features = false, features = ["std"] }
+getrandom = { version = "0.2", default-features = false }
+
+[dev-dependencies]
+tower = { version = "0.5", default-features = false, features = ["util"] }

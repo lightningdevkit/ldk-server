@@ -1,0 +1,37 @@
+# LDK Server MCP gateway settings
+[gateway]
+# Address the gateway listens on for HTTPS (UI + future MCP endpoint).
+listen_addr = "127.0.0.1:3537"
+
+# Directory the gateway uses for persistent state. Holds tls.crt / tls.key
+# (auto-generated if not provided), the future sqlite token store, and the
+# bootstrap admin token hash.
+storage_dir = "/var/lib/ldk-server-mcp"
+
+# Optional. Defaults to "info". Accepts: error, warn, info, debug, trace, off.
+#log_level = "info"
+
+# Optional. Defaults to <storage_dir>/ldk-server-mcp.log.
+#log_file_path = "/var/log/ldk-server-mcp.log"
+
+# Optional TLS overrides. If both are omitted, a self-signed certificate is
+# auto-generated under storage_dir on first start (mirrors the daemon).
+#[gateway.tls]
+#cert_path = "/etc/ldk-server-mcp/tls.crt"
+#key_path  = "/etc/ldk-server-mcp/tls.key"
+# Extra hosts to include in the auto-generated certificate's SAN list. The
+# names "localhost" and "127.0.0.1" are always included.
+#hosts = ["mcp.example.com"]
+
+# Connection details for the upstream LDK Server daemon.
+[daemon]
+# Bare host:port; the scheme is stripped if present.
+address = "127.0.0.1:3536"
+
+# Path to the api_key file that the daemon writes on first start. Typically
+# under <daemon storage_dir>/<network>/api_key. Must be absolute.
+api_key_path = "/var/lib/ldk-server/bitcoin/api_key"
+
+# Path to the daemon's TLS certificate. Used to pin the daemon's self-signed
+# cert when the gateway connects to it. Must be absolute.
+tls_cert_path = "/var/lib/ldk-server/tls.crt"
