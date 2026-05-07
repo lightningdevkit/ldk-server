@@ -7,15 +7,25 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+//! Shared `ldk-server` client configuration.
+//!
+//! Parses the TOML configuration file used by the `ldk-server` daemon and exposes helpers for
+//! locating the server's TLS certificate and API key on disk, so multiple clients (CLI, MCP
+//! bridge, etc.) can resolve connection credentials in a consistent way.
+
 use std::path::PathBuf;
 
+use hex_conservative::DisplayHex;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
+
+/// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
 
+/// Returns the OS-specific default data directory used by `ldk-server`.
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
 	{
@@ -33,56 +43,74 @@ pub fn get_default_data_dir() -> Option<PathBuf> {
 	}
 }
 
+/// Default path of the `ldk-server` configuration TOML file inside the default data directory.
 pub fn get_default_config_path() -> Option<PathBuf> {
 	get_default_data_dir().map(|dir| dir.join(DEFAULT_CONFIG_FILE))
 }
 
+/// Default path of the server's TLS certificate inside the default data directory.
 pub fn get_default_cert_path() -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(DEFAULT_CERT_FILE))
 }
 
+/// Default path of the network-scoped API key file inside the default data directory.
 pub fn get_default_api_key_path(network: &str) -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(network).join(API_KEY_FILE))
 }
 
+/// Path of the network-scoped API key file inside the given storage directory.
 pub fn api_key_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
 	PathBuf::from(storage_dir).join(network).join(API_KEY_FILE)
 }
 
+/// Path of the server's TLS certificate inside the given storage directory.
 pub fn cert_path_for_storage_dir(storage_dir: &str) -> PathBuf {
 	PathBuf::from(storage_dir).join(DEFAULT_CERT_FILE)
 }
 
+/// Top-level structure of the `ldk-server` configuration TOML file.
 #[derive(Debug, Deserialize)]
 pub struct Config {
+	/// Node-level configuration.
 	pub node: NodeConfig,
+	/// Optional TLS configuration.
 	pub tls: Option<TlsConfig>,
+	/// Optional storage configuration.
 	pub storage: Option<StorageConfig>,
 }
 
+/// `[tls]` section of the configuration file.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
+	/// Path to the server's TLS certificate in PEM format.
 	pub cert_path: Option<String>,
 }
 
+/// `[node]` section of the configuration file.
 #[derive(Debug, Deserialize)]
 pub struct NodeConfig {
+	/// Address of the `ldk-server` gRPC service.
 	#[serde(default = "default_grpc_service_address")]
 	pub grpc_service_address: String,
 	network: String,
 }
 
+/// `[storage]` section of the configuration file.
 #[derive(Debug, Deserialize)]
 pub struct StorageConfig {
+	/// On-disk storage configuration.
 	pub disk: Option<DiskConfig>,
 }
 
+/// `[storage.disk]` section of the configuration file.
 #[derive(Debug, Deserialize)]
 pub struct DiskConfig {
+	/// Directory used by the server to store its persistent data.
 	pub dir_path: Option<String>,
 }
 
 impl Config {
+	/// Returns the normalized Bitcoin network name configured for the node.
 	pub fn network(&self) -> Result<String, String> {
 		match self.node.network.as_str() {
 			"bitcoin" | "mainnet" => Ok("bitcoin".to_string()),
@@ -95,6 +123,7 @@ impl Config {
 	}
 }
 
+/// Reads and parses the `ldk-server` configuration file at `path`.
 pub fn load_config(path: &PathBuf) -> Result<Config, String> {
 	let contents = std::fs::read_to_string(path)
 		.map_err(|e| format!("Failed to read config file '{}': {}", path.display(), e))?;
@@ -102,10 +131,54 @@ pub fn load_config(path: &PathBuf) -> Result<Config, String> {
 		.map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
 }
 
-pub fn resolve_base_url(cli_base_url: Option<String>, config: Option<&Config>) -> String {
-	cli_base_url
+/// Resolves the base URL of the `ldk-server` gRPC endpoint.
+///
+/// Prefers `override_url`, falls back to the configuration file, and finally to
+/// [`DEFAULT_GRPC_SERVICE_ADDRESS`].
+pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -> String {
+	override_url
 		.or_else(|| config.map(|config| config.node.grpc_service_address.clone()))
 		.unwrap_or_else(default_grpc_service_address)
+}
+
+/// Resolves the API key used to authenticate against the `ldk-server` gRPC endpoint.
+///
+/// Prefers `override_key`, falls back to reading the API key file from the configured storage
+/// directory, and finally from the OS-specific default data directory. The raw bytes read from
+/// disk are lower-hex encoded before being returned.
+pub fn resolve_api_key(override_key: Option<String>, config: Option<&Config>) -> Option<String> {
+	override_key.or_else(|| {
+		let network =
+			config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
+		storage_dir(config)
+			.map(|dir| api_key_path_for_storage_dir(dir, &network))
+			.and_then(|path| std::fs::read(&path).ok())
+			.or_else(|| {
+				get_default_api_key_path(&network).and_then(|path| std::fs::read(&path).ok())
+			})
+			.map(|bytes| bytes.to_lower_hex_string())
+	})
+}
+
+/// Resolves the path to the server's TLS certificate (PEM).
+///
+/// Prefers `override_path`, falls back to `tls.cert_path` in the configuration file, then to the
+/// certificate inside the configured storage directory (if present), and finally to the
+/// OS-specific default path.
+pub fn resolve_cert_path(
+	override_path: Option<PathBuf>, config: Option<&Config>,
+) -> Option<PathBuf> {
+	override_path
+		.or_else(|| {
+			config
+				.and_then(|c| c.tls.as_ref().and_then(|t| t.cert_path.as_ref().map(PathBuf::from)))
+		})
+		.or_else(|| storage_dir(config).map(cert_path_for_storage_dir).filter(|p| p.exists()))
+		.or_else(get_default_cert_path)
+}
+
+fn storage_dir(config: Option<&Config>) -> Option<&str> {
+	config.and_then(|c| c.storage.as_ref()?.disk.as_ref()?.dir_path.as_deref())
 }
 
 fn default_grpc_service_address() -> String {

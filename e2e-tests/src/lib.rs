@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -16,6 +16,7 @@ use std::time::Duration;
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
+use serde_json::Value;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_grpc::api::{
 	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
@@ -289,6 +290,69 @@ pub fn server_binary_path() -> PathBuf {
 /// Returns the path to the ldk-server-cli binary (built automatically by build.rs).
 pub fn cli_binary_path() -> PathBuf {
 	PathBuf::from(env!("LDK_SERVER_CLI_BIN"))
+}
+
+/// Returns the path to the ldk-server-mcp binary (built automatically by build.rs).
+pub fn mcp_binary_path() -> PathBuf {
+	PathBuf::from(env!("LDK_SERVER_MCP_BIN"))
+}
+
+/// Handle to a running ldk-server-mcp child process.
+pub struct McpHandle {
+	child: Option<Child>,
+	stdin: std::process::ChildStdin,
+	stdout: BufReader<std::process::ChildStdout>,
+}
+
+impl McpHandle {
+	pub fn start(server: &LdkServerHandle) -> Self {
+		let mcp_path = mcp_binary_path();
+		let mut child = Command::new(&mcp_path)
+			.env("LDK_BASE_URL", server.base_url())
+			.env("LDK_API_KEY", &server.api_key)
+			.env("LDK_TLS_CERT_PATH", server.tls_cert_path.to_str().unwrap())
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn()
+			.unwrap_or_else(|e| panic!("Failed to run MCP server at {:?}: {}", mcp_path, e));
+
+		let stdin = child.stdin.take().unwrap();
+		let stdout = BufReader::new(child.stdout.take().unwrap());
+
+		Self { child: Some(child), stdin, stdout }
+	}
+
+	pub fn send(&mut self, request: &Value) {
+		let line = serde_json::to_string(request).unwrap();
+		writeln!(self.stdin, "{}", line).unwrap();
+		self.stdin.flush().unwrap();
+	}
+
+	pub fn recv(&mut self) -> Value {
+		let mut line = String::new();
+		self.stdout.read_line(&mut line).expect("Failed to read MCP stdout");
+		serde_json::from_str(line.trim()).expect("Failed to parse MCP response")
+	}
+
+	pub fn call(&mut self, id: u64, method: &str, params: Value) -> Value {
+		self.send(&serde_json::json!({
+			"jsonrpc": "2.0",
+			"id": id,
+			"method": method,
+			"params": params,
+		}));
+		self.recv()
+	}
+}
+
+impl Drop for McpHandle {
+	fn drop(&mut self) {
+		if let Some(mut child) = self.child.take() {
+			let _ = child.kill();
+			let _ = child.wait();
+		}
+	}
 }
 
 /// Run a CLI command against the given server handle and return raw stdout as a string.

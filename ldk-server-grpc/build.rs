@@ -38,9 +38,10 @@ fn generate_protos() {
 		.bytes(&["."])
 		.type_attribute(
 			".",
-			"#[cfg_attr(feature = \"serde\", derive(serde::Serialize))]",
+			"#[cfg_attr(feature = \"serde\", derive(serde::Serialize, serde::Deserialize))]",
 		)
 		.type_attribute(".", "#[cfg_attr(feature = \"serde\", serde(rename_all = \"snake_case\"))]")
+		.message_attribute(".", "#[cfg_attr(feature = \"serde\", serde(default))]")
 		.field_attribute(
 			"types.Bolt11.secret",
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_opt_bytes_hex\"))]",
