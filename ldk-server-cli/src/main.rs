@@ -12,13 +12,12 @@ use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
-use config::{
-	api_key_path_for_storage_dir, cert_path_for_storage_dir, get_default_api_key_path,
-	get_default_cert_path, get_default_config_path, load_config, resolve_base_url,
-	DEFAULT_GRPC_SERVICE_ADDRESS,
-};
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
+use ldk_server_client::config::{
+	get_default_config_path, load_config, resolve_api_key, resolve_base_url, resolve_cert_path,
+	DEFAULT_GRPC_SERVICE_ADDRESS,
+};
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
@@ -49,22 +48,17 @@ use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
 	RouteParametersConfig,
 };
+use ldk_server_client::{
+	DEFAULT_EXPIRY_SECS, DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF, DEFAULT_MAX_PATH_COUNT,
+	DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 use types::{
 	Amount, CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse,
 };
 
-mod config;
 mod types;
-
-// Having these default values as constants in the Proto file and
-// importing/reusing them here might be better, but Proto3 removed
-// the ability to set default values.
-const DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA: u32 = 1008;
-const DEFAULT_MAX_PATH_COUNT: u32 = 10;
-const DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF: u32 = 2;
-const DEFAULT_EXPIRY_SECS: u32 = 86_400;
 
 const DEFAULT_DIR: &str = if cfg!(target_os = "macos") {
 	"~/Library/Application Support/ldk-server"
@@ -570,43 +564,15 @@ async fn main() {
 
 	let config_path = cli.config.map(PathBuf::from).or_else(get_default_config_path);
 	let config = config_path.as_ref().and_then(|p| load_config(p).ok());
-	let storage_dir =
-		config.as_ref().and_then(|c| c.storage.as_ref()?.disk.as_ref()?.dir_path.as_deref());
 
-	// Get API key from argument, then from api_key file in storage dir, then from default location
-	let api_key = cli
-		.api_key
-		.or_else(|| {
-			let network =
-				config.as_ref().and_then(|c| c.network().ok()).unwrap_or("bitcoin".to_string());
-			storage_dir
-				.map(|dir| api_key_path_for_storage_dir(dir, &network))
-				.and_then(|path| std::fs::read(&path).ok())
-				.or_else(|| {
-					get_default_api_key_path(&network)
-						.and_then(|path| std::fs::read(&path).ok())
-				})
-				.map(|bytes| bytes.to_lower_hex_string())
-		})
-		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
-			std::process::exit(1);
-		});
+	let api_key = resolve_api_key(cli.api_key, config.as_ref()).unwrap_or_else(|| {
+		eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+		std::process::exit(1);
+	});
 
-	// Get base URL from argument then from config file
 	let base_url = resolve_base_url(cli.base_url, config.as_ref());
 
-	// Get TLS cert path from argument, then from config tls.cert_path, then from storage dir,
-	// then try default location.
-	let tls_cert_path = cli.tls_cert.map(PathBuf::from).or_else(|| {
-		config
-			.as_ref()
-			.and_then(|c| c.tls.as_ref().and_then(|t| t.cert_path.as_ref().map(PathBuf::from)))
-			.or_else(|| {
-				storage_dir.map(cert_path_for_storage_dir).filter(|path| path.exists())
-			})
-			.or_else(get_default_cert_path)
-	})
+	let tls_cert_path = resolve_cert_path(cli.tls_cert.map(PathBuf::from), config.as_ref())
 		.unwrap_or_else(|| {
 			eprintln!("TLS cert path not provided. Use --tls-cert or ensure config file exists at {DEFAULT_DIR}/config.toml");
 			std::process::exit(1);

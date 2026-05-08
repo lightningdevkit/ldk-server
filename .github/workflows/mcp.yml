@@ -1,0 +1,33 @@
+name: MCP Checks
+
+on: [ push, pull_request ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-unit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal --default-toolchain stable
+          rustup override set stable
+          rustup component add clippy
+
+      - name: Check MCP crate builds
+        run: cargo check -p ldk-server-mcp
+
+      - name: Run MCP crate tests
+        run: cargo test -p ldk-server-mcp
+
+      - name: Run MCP crate clippy
+        run: cargo clippy -p ldk-server-mcp --all-targets -- -D warnings

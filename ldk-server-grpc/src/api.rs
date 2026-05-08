@@ -11,14 +11,16 @@
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.node_id>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.status>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetNodeInfoRequest {}
 /// The response for the `GetNodeInfo` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetNodeInfoResponse {
@@ -86,14 +88,16 @@ pub struct GetNodeInfoResponse {
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainReceiveRequest {}
 /// The response for the `OnchainReceive` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainReceiveResponse {
@@ -102,8 +106,9 @@ pub struct OnchainReceiveResponse {
 	pub address: ::prost::alloc::string::String,
 }
 /// Send an on-chain payment to the given address.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainSendRequest {
@@ -131,8 +136,9 @@ pub struct OnchainSendRequest {
 	pub fee_rate_sat_per_vb: ::core::option::Option<u64>,
 }
 /// The response for the `OnchainSend` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OnchainSendResponse {
@@ -146,8 +152,9 @@ pub struct OnchainSendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveRequest {
@@ -163,8 +170,9 @@ pub struct Bolt11ReceiveRequest {
 	pub expiry_secs: u32,
 }
 /// The response for the `Bolt11Receive` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveResponse {
@@ -187,8 +195,9 @@ pub struct Bolt11ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveForHashRequest {
@@ -207,8 +216,9 @@ pub struct Bolt11ReceiveForHashRequest {
 	pub payment_hash: ::prost::alloc::string::String,
 }
 /// The response for the `Bolt11ReceiveForHash` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveForHashResponse {
@@ -221,8 +231,9 @@ pub struct Bolt11ReceiveForHashResponse {
 /// Manually claim a payment for a given payment hash with the corresponding preimage.
 /// This should be used to claim payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ClaimForHashRequest {
@@ -239,16 +250,18 @@ pub struct Bolt11ClaimForHashRequest {
 	pub preimage: ::prost::alloc::string::String,
 }
 /// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ClaimForHashResponse {}
 /// Manually fail a payment for a given payment hash.
 /// This should be used to reject payments created via `Bolt11ReceiveForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11FailForHashRequest {
@@ -257,16 +270,18 @@ pub struct Bolt11FailForHashRequest {
 	pub payment_hash: ::prost::alloc::string::String,
 }
 /// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11FailForHashResponse {}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 /// LSPS2 just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveViaJitChannelRequest {
@@ -285,8 +300,9 @@ pub struct Bolt11ReceiveViaJitChannelRequest {
 	pub max_total_lsp_fee_limit_msat: ::core::option::Option<u64>,
 }
 /// The response for the `Bolt11ReceiveViaJitChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveViaJitChannelResponse {
@@ -297,8 +313,9 @@ pub struct Bolt11ReceiveViaJitChannelResponse {
 /// Return a variable-amount BOLT11 invoice that can be used to receive a payment via an LSPS2
 /// just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
@@ -315,8 +332,9 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 	pub max_proportional_lsp_fee_limit_ppm_msat: ::core::option::Option<u64>,
 }
 /// The response for the `Bolt11ReceiveVariableAmountViaJitChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
@@ -326,8 +344,9 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
 }
 /// Send a payment for a BOLT11 invoice.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11SendRequest {
@@ -344,8 +363,9 @@ pub struct Bolt11SendRequest {
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
 /// The response for the `Bolt11Send` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11SendResponse {
@@ -358,8 +378,9 @@ pub struct Bolt11SendResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive_variable_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt12ReceiveRequest {
@@ -378,8 +399,9 @@ pub struct Bolt12ReceiveRequest {
 	pub quantity: ::core::option::Option<u64>,
 }
 /// The response for the `Bolt12Receive` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt12ReceiveResponse {
@@ -396,8 +418,9 @@ pub struct Bolt12ReceiveResponse {
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send_using_amount>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt12SendRequest {
@@ -420,8 +443,9 @@ pub struct Bolt12SendRequest {
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
 /// The response for the `Bolt12Send` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt12SendResponse {
@@ -431,8 +455,9 @@ pub struct Bolt12SendResponse {
 }
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpontaneousSendRequest {
@@ -447,8 +472,9 @@ pub struct SpontaneousSendRequest {
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
 /// The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpontaneousSendResponse {
@@ -458,8 +484,9 @@ pub struct SpontaneousSendResponse {
 }
 /// Creates a new outbound channel to the given remote node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect_open_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OpenChannelRequest {
@@ -487,8 +514,9 @@ pub struct OpenChannelRequest {
 	pub disable_counterparty_reserve: bool,
 }
 /// The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OpenChannelResponse {
@@ -498,8 +526,9 @@ pub struct OpenChannelResponse {
 }
 /// Increases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_in>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpliceInRequest {
@@ -514,15 +543,17 @@ pub struct SpliceInRequest {
 	pub splice_amount_sats: u64,
 }
 /// The response for the `SpliceIn` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpliceInResponse {}
 /// Decreases the channel balance by the given amount.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.splice_out>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpliceOutRequest {
@@ -542,8 +573,9 @@ pub struct SpliceOutRequest {
 	pub splice_amount_sats: u64,
 }
 /// The response for the `SpliceOut` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SpliceOutResponse {
@@ -553,8 +585,9 @@ pub struct SpliceOutResponse {
 }
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateChannelConfigRequest {
@@ -569,15 +602,17 @@ pub struct UpdateChannelConfigRequest {
 	pub channel_config: ::core::option::Option<super::types::ChannelConfig>,
 }
 /// The response for the `UpdateChannelConfig` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateChannelConfigResponse {}
 /// Closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.close_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CloseChannelRequest {
@@ -589,15 +624,17 @@ pub struct CloseChannelRequest {
 	pub counterparty_node_id: ::prost::alloc::string::String,
 }
 /// The response for the `CloseChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CloseChannelResponse {}
 /// Force closes the channel specified by given request.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.force_close_channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForceCloseChannelRequest {
@@ -612,21 +649,24 @@ pub struct ForceCloseChannelRequest {
 	pub force_close_reason: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `ForceCloseChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForceCloseChannelResponse {}
 /// Returns a list of known channels.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_channels>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListChannelsRequest {}
 /// The response for the `ListChannels` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListChannelsResponse {
@@ -636,8 +676,9 @@ pub struct ListChannelsResponse {
 }
 /// Returns payment details for a given payment_id.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.payment>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPaymentDetailsRequest {
@@ -646,8 +687,9 @@ pub struct GetPaymentDetailsRequest {
 	pub payment_id: ::prost::alloc::string::String,
 }
 /// The response for the `GetPaymentDetails` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetPaymentDetailsResponse {
@@ -658,8 +700,9 @@ pub struct GetPaymentDetailsResponse {
 }
 /// Retrieves list of all payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_payments>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPaymentsRequest {
@@ -673,8 +716,9 @@ pub struct ListPaymentsRequest {
 	pub page_token: ::core::option::Option<super::types::PageToken>,
 }
 /// The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPaymentsResponse {
@@ -699,8 +743,9 @@ pub struct ListPaymentsResponse {
 }
 /// Retrieves list of all forwarded payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListForwardedPaymentsRequest {
@@ -714,8 +759,9 @@ pub struct ListForwardedPaymentsRequest {
 	pub page_token: ::core::option::Option<super::types::PageToken>,
 }
 /// The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListForwardedPaymentsResponse {
@@ -740,8 +786,9 @@ pub struct ListForwardedPaymentsResponse {
 }
 /// Sign a message with the node's secret key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignMessageRequest {
@@ -750,8 +797,9 @@ pub struct SignMessageRequest {
 	pub message: ::prost::bytes::Bytes,
 }
 /// The response for the `SignMessage` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignMessageResponse {
@@ -761,8 +809,9 @@ pub struct SignMessageResponse {
 }
 /// Verify a signature against a message and public key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VerifySignatureRequest {
@@ -777,8 +826,9 @@ pub struct VerifySignatureRequest {
 	pub public_key: ::prost::alloc::string::String,
 }
 /// The response for the `VerifySignature` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VerifySignatureResponse {
@@ -788,14 +838,16 @@ pub struct VerifySignatureResponse {
 }
 /// Export the pathfinding scores used by the router.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.export_pathfinding_scores>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportPathfindingScoresRequest {}
 /// The response for the `ExportPathfindingScores` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExportPathfindingScoresResponse {
@@ -805,14 +857,16 @@ pub struct ExportPathfindingScoresResponse {
 }
 /// Retrieves an overview of all known balances.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_balances>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBalancesRequest {}
 /// The response for the `GetBalances` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBalancesResponse {
@@ -857,8 +911,9 @@ pub struct GetBalancesResponse {
 }
 /// Connect to a peer on the Lightning Network.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectPeerRequest {
@@ -875,15 +930,17 @@ pub struct ConnectPeerRequest {
 	pub persist: bool,
 }
 /// The response for the `ConnectPeer` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConnectPeerResponse {}
 /// Disconnect from a peer and remove it from the peer store.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.disconnect>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisconnectPeerRequest {
@@ -892,21 +949,24 @@ pub struct DisconnectPeerRequest {
 	pub node_pubkey: ::prost::alloc::string::String,
 }
 /// The response for the `DisconnectPeer` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DisconnectPeerResponse {}
 /// Returns a list of peers.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPeersRequest {}
 /// The response for the `ListPeers` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPeersResponse {
@@ -916,14 +976,16 @@ pub struct ListPeersResponse {
 }
 /// Returns a list of all known short channel IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_channels>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListChannelsRequest {}
 /// The response for the `GraphListChannels` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListChannelsResponse {
@@ -933,8 +995,9 @@ pub struct GraphListChannelsResponse {
 }
 /// Returns information on a channel with the given short channel ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.channel>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphGetChannelRequest {
@@ -943,8 +1006,9 @@ pub struct GraphGetChannelRequest {
 	pub short_channel_id: u64,
 }
 /// The response for the `GraphGetChannel` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphGetChannelResponse {
@@ -954,14 +1018,16 @@ pub struct GraphGetChannelResponse {
 }
 /// Returns a list of all known node IDs in the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.list_nodes>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListNodesRequest {}
 /// The response for the `GraphListNodes` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphListNodesResponse {
@@ -975,8 +1041,9 @@ pub struct GraphListNodesResponse {
 /// has an offer and/or invoice, it will try to pay the offer first followed by the invoice.
 /// If they both fail, the on-chain payment will be paid.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.UnifiedPayment.html#method.send>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UnifiedSendRequest {
@@ -991,8 +1058,9 @@ pub struct UnifiedSendRequest {
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
 }
 /// The response for the `UnifiedSend` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UnifiedSendResponse {
@@ -1002,7 +1070,7 @@ pub struct UnifiedSendResponse {
 }
 /// Nested message and enum types in `UnifiedSendResponse`.
 pub mod unified_send_response {
-	#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 	#[allow(clippy::derive_partial_eq_without_eq)]
 	#[derive(Clone, PartialEq, ::prost::Oneof)]
@@ -1020,8 +1088,9 @@ pub mod unified_send_response {
 }
 /// Returns information on a node with the given ID from the network graph.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/graph/struct.NetworkGraph.html#method.node>
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphGetNodeRequest {
@@ -1030,8 +1099,9 @@ pub struct GraphGetNodeRequest {
 	pub node_id: ::prost::alloc::string::String,
 }
 /// The response for the `GraphGetNode` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GraphGetNodeResponse {
@@ -1041,8 +1111,9 @@ pub struct GraphGetNodeResponse {
 }
 /// Decode a BOLT11 invoice and return its parsed fields.
 /// This does not require a running node — it only parses the invoice string.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DecodeInvoiceRequest {
@@ -1051,8 +1122,9 @@ pub struct DecodeInvoiceRequest {
 	pub invoice: ::prost::alloc::string::String,
 }
 /// The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DecodeInvoiceResponse {
@@ -1104,8 +1176,9 @@ pub struct DecodeInvoiceResponse {
 }
 /// Decode a BOLT12 offer and return its parsed fields.
 /// This does not require a running node — it only parses the offer string.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DecodeOfferRequest {
@@ -1114,8 +1187,9 @@ pub struct DecodeOfferRequest {
 	pub offer: ::prost::alloc::string::String,
 }
 /// The response for the `DecodeOffer` RPC. On failure, a gRPC error status is returned.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DecodeOfferResponse {
@@ -1157,8 +1231,9 @@ pub struct DecodeOfferResponse {
 	pub is_expired: bool,
 }
 /// Subscribe to a stream of server events.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeEventsRequest {}
