@@ -57,10 +57,12 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 
 #[cfg(test)]
 mod tests {
-	use super::resolve_config;
-	use ldk_server_client::config::{get_default_config_path, DEFAULT_GRPC_SERVICE_ADDRESS};
 	use std::path::PathBuf;
 	use std::sync::Mutex;
+
+	use ldk_server_client::config::{get_default_config_path, DEFAULT_GRPC_SERVICE_ADDRESS};
+
+	use super::resolve_config;
 
 	// Tests that call resolve_config manipulate process-global environment
 	// variables, so they must not run in parallel.
