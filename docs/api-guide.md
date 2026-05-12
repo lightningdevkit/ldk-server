@@ -24,9 +24,12 @@ x-auth: HMAC <unix_timestamp>:<hmac_hex>
 Where:
 
 - `unix_timestamp` is the current time in seconds since the Unix epoch
-- `hmac_hex` is the hex-encoded result of `HMAC-SHA256(api_key_bytes, timestamp_be_bytes)`
+- `hmac_hex` is the hex-encoded result of
+  `HMAC-SHA256(api_key_bytes, timestamp_be_bytes || grpc_request_body_bytes)`
     - `api_key_bytes` is the API key string encoded as UTF-8 bytes
     - `timestamp_be_bytes` is the timestamp as a big-endian 8-byte unsigned integer
+    - `grpc_request_body_bytes` is the raw gRPC request body sent over HTTP/2, including
+      the 5-byte gRPC message frame
 
 The server rejects requests where the timestamp differs from the server's clock by more than
 **60 seconds**.

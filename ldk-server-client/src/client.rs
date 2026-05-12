@@ -106,16 +106,16 @@ impl LdkServerClient {
 
 	/// Computes the HMAC-SHA256 authentication header value.
 	/// Format: "HMAC <timestamp>:<hmac_hex>"
-	/// Uses timestamp-only HMAC (no body) since TLS guarantees integrity.
-	fn compute_auth_header(&self) -> String {
+	/// The signature covers the timestamp and raw gRPC request body bytes.
+	fn compute_auth_header(&self, body: &[u8]) -> String {
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("System time should be after Unix epoch")
 			.as_secs();
 
-		// HMAC-SHA256(api_key, timestamp_bytes) — no body
 		let mut hmac_engine: HmacEngine<sha256::Hash> = HmacEngine::new(self.api_key.as_bytes());
 		hmac_engine.input(&timestamp.to_be_bytes());
+		hmac_engine.input(body);
 		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
 
 		format!("HMAC {}:{}", timestamp, hmac_result)
@@ -428,7 +428,7 @@ impl LdkServerClient {
 		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header();
+		let auth_header = self.compute_auth_header(&grpc_body);
 
 		let response = self
 			.client
@@ -471,7 +471,7 @@ impl LdkServerClient {
 		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header();
+		let auth_header = self.compute_auth_header(&grpc_body);
 
 		let response = self
 			.streaming_client

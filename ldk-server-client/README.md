@@ -30,7 +30,8 @@ println!("Node ID: {}", info.node_id);
 
 The client handles HMAC-SHA256 authentication automatically. Pass the hex-encoded API key
 (found at `<storage_dir>/<network>/api_key`) and the server's TLS certificate (found at
-`<storage_dir>/tls.crt`).
+`<storage_dir>/tls.crt`). Each request signature covers both the timestamp and the raw gRPC
+request body bytes.
 
 ## Event Streaming
 
