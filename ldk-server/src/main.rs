@@ -173,6 +173,11 @@ fn main() {
 		builder.set_gossip_source_rgs(rgs_server_url);
 	}
 
+	if let Err(e) = builder.set_async_payments_role(config_file.async_payments_role) {
+		error!("Failed to configure async payments role: {e}");
+		std::process::exit(-1);
+	}
+
 	if let Some(lsps2_client_config) = config_file.lsps2_client_config {
 		builder.set_liquidity_source_lsps2(
 			lsps2_client_config.node_id,
