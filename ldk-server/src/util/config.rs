@@ -15,7 +15,7 @@ use std::{fs, io};
 use clap::Parser;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
-use ldk_node::config::{HRNResolverConfig, HumanReadableNamesConfig};
+use ldk_node::config::{AsyncPaymentsRole, HRNResolverConfig, HumanReadableNamesConfig};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
 use ldk_node::liquidity::LSPS2ServiceConfig;
@@ -57,6 +57,7 @@ pub struct Config {
 	pub log_level: LevelFilter,
 	pub log_file_path: Option<String>,
 	pub pathfinding_scores_source_url: Option<String>,
+	pub async_payments_role: Option<AsyncPaymentsRole>,
 	pub metrics_enabled: bool,
 	pub poll_metrics_interval: Option<u64>,
 	pub metrics_username: Option<String>,
@@ -111,6 +112,7 @@ struct ConfigBuilder {
 	log_level: Option<String>,
 	log_file_path: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
+	async_payments_role: Option<String>,
 	metrics_enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
 	metrics_username: Option<String>,
@@ -132,6 +134,8 @@ impl ConfigBuilder {
 			self.alias = node.alias.or(self.alias.clone());
 			self.pathfinding_scores_source_url =
 				node.pathfinding_scores_source_url.or(self.pathfinding_scores_source_url.clone());
+			self.async_payments_role =
+				node.async_payments_role.or(self.async_payments_role.clone());
 			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
 		}
 
@@ -228,6 +232,10 @@ impl ConfigBuilder {
 
 		if let Some(pathfinding_scores_source_url) = &args.pathfinding_scores_source_url {
 			self.pathfinding_scores_source_url = Some(pathfinding_scores_source_url.clone());
+		}
+
+		if let Some(async_payments_role) = &args.node_async_payments_role {
+			self.async_payments_role = Some(async_payments_role.clone());
 		}
 
 		if args.metrics_enabled {
@@ -383,6 +391,9 @@ impl ConfigBuilder {
 
 		let pathfinding_scores_source_url = self.pathfinding_scores_source_url;
 
+		let async_payments_role =
+			self.async_payments_role.as_deref().map(parse_async_payments_role).transpose()?;
+
 		let metrics_enabled = self.metrics_enabled.unwrap_or(false);
 
 		let poll_metrics_interval = self.poll_metrics_interval;
@@ -429,6 +440,7 @@ impl ConfigBuilder {
 			log_level,
 			log_file_path: self.log_file_path,
 			pathfinding_scores_source_url,
+			async_payments_role,
 			metrics_enabled,
 			poll_metrics_interval,
 			metrics_username,
@@ -463,6 +475,7 @@ struct NodeConfig {
 	grpc_service_address: Option<String>,
 	alias: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
+	async_payments_role: Option<String>,
 	rgs_server_url: Option<String>,
 }
 
@@ -604,6 +617,20 @@ fn parse_dns_server_address(addr: &str) -> io::Result<SocketAddress> {
 			format!("Invalid HRN DNS server address configured: {}", e),
 		)
 	})
+}
+
+fn parse_async_payments_role(role: &str) -> io::Result<AsyncPaymentsRole> {
+	match role.trim().to_ascii_lowercase().as_str() {
+		"client" => Ok(AsyncPaymentsRole::Client),
+		"server" => Ok(AsyncPaymentsRole::Server),
+		other => Err(io::Error::new(
+			io::ErrorKind::InvalidInput,
+			format!(
+				"Invalid async payments role '{}' configured; expected 'client' or 'server'",
+				other
+			),
+		)),
+	}
 }
 
 #[derive(Deserialize, Serialize)]
@@ -770,6 +797,13 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_NODE_ASYNC_PAYMENTS_ROLE",
+		help = "The async payments role for the node. Valid values are `client` or `server`."
+	)]
+	node_async_payments_role: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_METRICS_ENABLED",
 		help = "The option to enable the metrics endpoint. WARNING: This endpoint is unauthenticated."
 	)]
@@ -884,6 +918,7 @@ mod tests {
 				grpc_service_address = "127.0.0.1:3002"
 				alias = "LDK Server"
 				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"
+				async_payments_role = "client"
 
 				[tls]
 				cert_path = "/path/to/tls.crt"
@@ -936,6 +971,7 @@ mod tests {
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
+			node_async_payments_role: Some(String::from("server")),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -957,6 +993,7 @@ mod tests {
 			bitcoind_rpc_password: None,
 			storage_dir_path: None,
 			pathfinding_scores_source_url: None,
+			node_async_payments_role: None,
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1030,6 +1067,7 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: None,
+			async_payments_role: Some(AsyncPaymentsRole::Client),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1054,6 +1092,7 @@ mod tests {
 		assert_eq!(config.log_level, expected.log_level);
 		assert_eq!(config.log_file_path, expected.log_file_path);
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Client)));
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 
@@ -1338,6 +1377,7 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
+			async_payments_role: Some(AsyncPaymentsRole::Server),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1355,6 +1395,7 @@ mod tests {
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert!(config.lsps2_service_config.is_none());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 	}
@@ -1446,6 +1487,7 @@ mod tests {
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
+			async_payments_role: Some(AsyncPaymentsRole::Server),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1467,6 +1509,7 @@ mod tests {
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
+		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 	}

@@ -51,8 +51,13 @@ on macOS).
 ### `[node]`
 
 Core node settings: which Bitcoin network to use, Lightning peer listening and announcement
-addresses, the gRPC bind address, node alias, and optional Rapid Gossip Sync / pathfinding
-scores URLs.
+addresses, the gRPC bind address, node alias, optional Rapid Gossip Sync / pathfinding
+scores URLs, and the async payments role.
+
+Set `async_payments_role = "client"` to ask peers to hold HTLCs where possible, allowing
+this node to go offline. Set `async_payments_role = "server"` to hold async payment HTLCs
+and onion messages for peers. The server role requires an announceable node configuration.
+Leave the field unset to disable async payments.
 
 ### `[storage.disk]`
 

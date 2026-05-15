@@ -7,6 +7,7 @@ listening_addresses = ["localhost:9735"]      # Lightning node listening address
 alias = "ldk_server"                          # Lightning node alias
 #pathfinding_scores_source_url = ""           # External Pathfinding Scores Source
 #rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"  # Optional: RGS URL for rapid gossip sync
+#async_payments_role = "client"               # Optional async payments role: "client" or "server"
 
 # Storage settings
 [storage.disk]
