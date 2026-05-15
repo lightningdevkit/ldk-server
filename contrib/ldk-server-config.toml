@@ -19,6 +19,7 @@ level = "Debug"                               # Log level (Error, Warn, Info, De
 [tls]
 #cert_path = "/path/to/tls.crt"               # Path to TLS certificate, by default uses dir_path/tls.crt
 #key_path = "/path/to/tls.key"                # Path to TLS private key, by default uses dir_path/tls.key
+# For CA-signed certs, point cert_path/key_path to your ACME output files.
 #hosts = ["example.com"]                      # Allowed hosts for TLS, will always include "localhost" and "127.0.0.1"
 
 # Must set one of bitcoind, electrum, or esplora

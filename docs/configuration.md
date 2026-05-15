@@ -71,7 +71,9 @@ Alternative Names. If no certificate exists, the server auto-generates a self-si
 P-256 cert. `localhost` and `127.0.0.1` are always included in the SANs. Add your server's
 public hostname or IP to `hosts` if clients connect remotely.
 
-To bring your own certificate (e.g., from Let's Encrypt), set `cert_path` and `key_path`.
+To bring your own certificate (for example, from a public CA), set `cert_path` and
+`key_path`. The server reads these files on startup, so renewals require a restart.
+See [Operations - TLS](operations.md#tls) for a recommended CA-signed flow.
 
 ### Bitcoin Backend
 
