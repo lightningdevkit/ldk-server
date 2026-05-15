@@ -47,7 +47,7 @@ setup):
 ### What to Back Up
 
 | File                                   | Priority     | Description                                                                |
-|----------------------------------------|--------------|----------------------------------------------------------------------------|
+| -------------------------------------- | ------------ | -------------------------------------------------------------------------- |
 | `<storage_dir>/keys_seed`              | **Critical** | Node identity and master secret. Required to recover on-chain funds.       |
 | `<network_dir>/ldk_node_data.sqlite`   | **Critical** | Channel state and on-chain wallet data. Required to recover channel funds. |
 | `<network_dir>/ldk_server_data.sqlite` | Nice-to-have | Payment and forwarding history                                             |
@@ -79,6 +79,39 @@ setup):
 - Private key stored at `<storage_dir>/tls.key` with `0400` permissions
 - Certificate includes `localhost` and `127.0.0.1` in SANs by default
 - Add your server's hostname/IP to `[tls] hosts` for remote access
+
+### CA-Signed Certificates (Let's Encrypt / ACME)
+
+For production deployments, many operators prefer a publicly trusted certificate. The
+recommended approach is to provision the certificate outside of LDK Server (via an ACME
+client) and point `[tls] cert_path` and `key_path` to the resulting files.
+
+High-level flow:
+
+1. Choose a public hostname for the gRPC endpoint (e.g., `ldk.example.com`).
+2. Set `grpc_service_address` to bind on the public interface.
+3. Add the hostname to `[tls] hosts` so SANs match what clients connect to.
+4. Use an ACME client (certbot, lego, acme.sh) to obtain a certificate for the hostname.
+5. Configure `[tls] cert_path` and `key_path` to the ACME output files.
+6. Restart the server after renewals (LDK Server reads TLS files at startup).
+
+Example (certbot with a pre-provisioned DNS or HTTP-01 flow):
+
+```toml
+[node]
+grpc_service_address = "0.0.0.0:3536"
+
+[tls]
+cert_path = "/etc/letsencrypt/live/ldk.example.com/fullchain.pem"
+key_path = "/etc/letsencrypt/live/ldk.example.com/privkey.pem"
+hosts = ["ldk.example.com"]
+```
+
+Notes:
+
+- Ensure the `ldk-server` process can read the cert and key files.
+- After a renewal, restart the service to pick up the new certificate.
+- If you want zero-downtime renewals, place a reverse proxy in front and terminate TLS there.
 
 ### Network Exposure
 
@@ -129,7 +162,7 @@ scrape_configs:
       username: prometheus
       password: secret
     static_configs:
-      - targets: [ 'localhost:3536' ]
+      - targets: ["localhost:3536"]
 ```
 
 ### Available Metrics
