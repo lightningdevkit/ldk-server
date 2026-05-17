@@ -387,6 +387,13 @@ impl ConfigBuilder {
 
 		let poll_metrics_interval = self.poll_metrics_interval;
 
+		if let Some(0) = poll_metrics_interval {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"poll_metrics_interval must be greater than 0",
+			));
+		}
+
 		let metrics_username = self.metrics_username;
 		let metrics_password = self.metrics_password;
 
@@ -597,7 +604,11 @@ fn parse_dns_server_address(addr: &str) -> io::Result<SocketAddress> {
 	if let Ok(sa) = SocketAddress::from_str(addr) {
 		return Ok(sa);
 	}
-	let with_default_port = format!("{}:53", addr);
+	let with_default_port = if addr.contains(':') && !addr.starts_with('[') {
+		format!("[{}]:53", addr)
+	} else {
+		format!("{}:53", addr)
+	};
 	SocketAddress::from_str(&with_default_port).map_err(|e| {
 		io::Error::new(
 			io::ErrorKind::InvalidInput,
@@ -1713,5 +1724,26 @@ mod tests {
 		let err = load_config(&args_config).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 		assert!(err.to_string().contains("enable_resolution_service"));
+	}
+
+	#[test]
+	fn test_parse_dns_server_address() {
+		assert_eq!(
+			parse_dns_server_address("8.8.8.8:53").unwrap(),
+			SocketAddress::from_str("8.8.8.8:53").unwrap()
+		);
+		assert_eq!(
+			parse_dns_server_address("1.1.1.1").unwrap(),
+			SocketAddress::from_str("1.1.1.1:53").unwrap()
+		);
+		assert_eq!(
+			parse_dns_server_address("[2001:db8::1]:53").unwrap(),
+			SocketAddress::from_str("[2001:db8::1]:53").unwrap()
+		);
+		assert_eq!(
+			parse_dns_server_address("2001:db8::1").unwrap(),
+			SocketAddress::from_str("[2001:db8::1]:53").unwrap()
+		);
+		assert!(parse_dns_server_address("invalid@address").is_err());
 	}
 }
