@@ -1,6 +1,9 @@
 # ldk-server-mcp
 
-An [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that exposes [LDK Server](https://github.com/lightningdevkit/ldk-server) operations as tools for AI agents. It communicates over JSON-RPC 2.0 via stdio and connects to an LDK Server instance over TLS using the [`ldk-server-client`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-client) library.
+An [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that
+exposes [LDK Server](https://github.com/lightningdevkit/ldk-server) operations as tools for AI agents. It communicates
+over JSON-RPC 2.0 via stdio and connects to an LDK Server instance over TLS using the [
+`ldk-server-client`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-client) library.
 
 This crate lives inside the `ldk-server` workspace.
 
@@ -18,7 +21,8 @@ The server reads configuration in this precedence order (highest wins):
 2. **CLI argument**: `--config <path>` pointing to a TOML config file
 3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_key`
 
-The TOML config format is the same as used by [`ldk-server-cli`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-cli):
+The TOML config format is the same as used by [
+`ldk-server-cli`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-cli):
 
 ```toml
 [node]
@@ -112,7 +116,9 @@ cargo test --manifest-path e2e-tests/Cargo.toml mcp -- --nocapture
 
 Licensed under either of
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](https://github.com/lightningdevkit/ldk-server/blob/main/LICENSE-APACHE)
+  or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT License ([LICENSE-MIT](https://github.com/lightningdevkit/ldk-server/blob/main/LICENSE-MIT)
+  or http://opensource.org/licenses/MIT)
 
 at your option.

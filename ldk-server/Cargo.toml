@@ -1,7 +1,16 @@
 [package]
 name = "ldk-server"
 version = "0.1.0"
+authors = ["benthecarman <benthecarman@live.com>", "Elias Rohrer <dev@tnull.de>"]
+homepage = "https://lightningdevkit.org/"
+license = "MIT OR Apache-2.0"
 edition = "2021"
+rust-version = "1.85"
+description = "A ready-to-run Lightning node daemon built using LDK Node."
+repository = "https://github.com/lightningdevkit/ldk-server/"
+readme = "README.md"
+keywords = ["bitcoin", "lightning", "ldk", "server"]
+categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "16eaa6f46308965f501904506be3ceecd293f358" }
