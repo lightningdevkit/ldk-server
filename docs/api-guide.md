@@ -188,7 +188,7 @@ See [Pagination](#pagination) below for how to page through results.
 
 | RPC               | Description                                                 |
 |-------------------|-------------------------------------------------------------|
-| `SubscribeEvents` | **Server-streaming.** Subscribe to real-time payment events |
+| `SubscribeEvents` | **Server-streaming.** Subscribe to real-time payment and channel events |
 
 `SubscribeEvents` returns a stream of `EventEnvelope` messages. Each envelope contains one of:
 
@@ -199,6 +199,7 @@ See [Pagination](#pagination) below for how to page through results.
 | `PaymentFailed`     | An outbound payment failed                                            |
 | `PaymentClaimable`  | A hodl invoice payment arrived and is waiting to be claimed or failed |
 | `PaymentForwarded`  | A payment was routed through this node                                |
+| `ChannelStateChanged` | A channel changed state (pending, ready, open failed, closed)      |
 
 Events are broadcast to all connected subscribers. The server uses a bounded broadcast channel
 (capacity 1024). A slow subscriber that falls behind will miss events.

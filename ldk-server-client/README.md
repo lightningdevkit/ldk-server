@@ -34,7 +34,7 @@ The client handles HMAC-SHA256 authentication automatically. Pass the hex-encode
 
 ## Event Streaming
 
-Subscribe to real-time payment events:
+Subscribe to real-time payment and channel events:
 
 ```rust,no_run
 # use ldk_server_client::client::LdkServerClient;
@@ -46,6 +46,39 @@ let mut stream = client.subscribe_events().await.unwrap();
 while let Some(result) = stream.next_message().await {
     match result {
         Ok(event) => println!("Event: {:?}", event),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
+# }
+```
+
+Pattern-match channel state changes:
+
+```rust,no_run
+# use ldk_server_client::client::LdkServerClient;
+# use ldk_server_client::ldk_server_grpc::events::{event_envelope, ChannelState};
+# #[tokio::main]
+# async fn main() {
+# let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
+# let client = LdkServerClient::new("localhost:3536".to_string(), "key".to_string(), &cert_pem).unwrap();
+let mut stream = client.subscribe_events().await.unwrap();
+while let Some(result) = stream.next_message().await {
+    match result {
+        Ok(event) => {
+            if let Some(event_envelope::Event::ChannelStateChanged(channel_event)) = event.event {
+                let state = ChannelState::from_i32(channel_event.state)
+                    .unwrap_or(ChannelState::Unspecified);
+                println!(
+                    "channel {} -> {}",
+                    channel_event.channel_id,
+                    state.as_str_name()
+                );
+
+                if let Some(reason) = channel_event.reason {
+                    println!("reason: {}", reason.message);
+                }
+            }
+        }
         Err(e) => eprintln!("Error: {}", e),
     }
 }
