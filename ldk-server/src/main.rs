@@ -14,7 +14,6 @@ mod util;
 
 use std::collections::HashSet;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -56,6 +55,7 @@ use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
+use crate::util::write_new;
 
 const API_KEY_FILE: &str = "api_key";
 
@@ -834,12 +834,7 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 		let mut key_bytes = [0u8; 32];
 		getrandom::getrandom(&mut key_bytes).map_err(std::io::Error::other)?;
 
-		// Write the raw bytes to the file
-		fs::write(&api_key_path, key_bytes)?;
-
-		// Set permissions to 0400 (read-only for owner)
-		let permissions = fs::Permissions::from_mode(0o400);
-		fs::set_permissions(&api_key_path, permissions)?;
+		write_new(&api_key_path, &key_bytes, 0o400)?;
 
 		debug!("Generated new API key at {}", api_key_path.display());
 		Ok(key_bytes.to_lower_hex_string())

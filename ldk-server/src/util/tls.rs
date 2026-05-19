@@ -9,7 +9,7 @@
 
 use std::fs;
 use std::net::IpAddr;
-use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use base64::Engine;
 use ring::rand::SystemRandom;
@@ -18,6 +18,7 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::ServerConfig;
 
 use crate::util::config::TlsConfig;
+use crate::util::write_new;
 
 // Issuer and Subject common name
 const ISSUER_NAME: &str = "localhost";
@@ -133,10 +134,8 @@ fn generate_self_signed_cert(
 	let cert_pem = der_to_pem(&cert_der, PEM_CERT_BEGIN, PEM_CERT_END);
 	let key_pem = der_to_pem(pkcs8_doc.as_ref(), PEM_KEY_BEGIN, PEM_KEY_END);
 
-	fs::write(key_path, &key_pem)
+	write_new(Path::new(key_path), key_pem.as_bytes(), 0o400)
 		.map_err(|e| format!("Failed to write TLS key to '{key_path}': {e}"))?;
-	fs::set_permissions(key_path, fs::Permissions::from_mode(0o400))
-		.map_err(|e| format!("Failed to set TLS key permissions for '{key_path}': {e}"))?;
 	fs::write(cert_path, &cert_pem)
 		.map_err(|e| format!("Failed to write TLS certificate to '{cert_path}': {e}"))?;
 
