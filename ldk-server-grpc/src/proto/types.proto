@@ -897,19 +897,41 @@ message OfferQuantity {
 
 // A blinded path to the offer recipient.
 message BlindedPath {
-  // The hex-encoded public key of the introduction node, if available.
-  // If the introduction node is a directed short channel ID, this will be empty
-  // and `introduction_scid` will be set instead.
-  optional string introduction_node_id = 1;
+  // Identifies the introduction node of the blinded path, either directly by
+  // node id or indirectly via a directed short channel ID.
+  oneof introduction_node {
+    // The hex-encoded public key of the introduction node.
+    string node_id = 1;
+
+    // The directed short channel ID identifying the introduction node.
+    DirectedShortChannelId directed_scid = 2;
+  }
 
   // The hex-encoded blinding point.
-  string blinding_point = 2;
+  string blinding_point = 3;
 
   // The number of blinded hops in the path.
-  uint32 num_hops = 3;
+  uint32 num_hops = 4;
+}
 
-  // If the introduction node is a directed short channel ID rather than a node ID.
-  optional uint64 introduction_scid = 4;
+// A short channel ID together with a direction byte identifying one of the
+// channel's two endpoints.
+message DirectedShortChannelId {
+  // The short channel ID.
+  uint64 scid = 1;
+
+  // Which endpoint of the channel is being referred to.
+  ChannelDirection direction = 2;
+}
+
+// Identifies one of the two endpoints of a channel, by lexicographic order of
+// node ids.
+enum ChannelDirection {
+  // The endpoint whose node id is lexicographically smaller.
+  NODE_ONE = 0;
+
+  // The endpoint whose node id is lexicographically greater.
+  NODE_TWO = 1;
 }
 
 // A feature bit advertised in a BOLT11 invoice.

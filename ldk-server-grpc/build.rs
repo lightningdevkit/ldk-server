@@ -75,6 +75,10 @@ fn generate_protos() {
             "#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_network\"))]",
         )
 		.field_attribute(
+			"types.DirectedShortChannelId.direction",
+			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_channel_direction\"))]",
+		)
+		.field_attribute(
 			"api.UnifiedSendResponse.payment_result",
 			"#[cfg_attr(feature = \"serde\", serde(flatten))]",
 		)
