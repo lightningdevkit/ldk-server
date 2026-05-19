@@ -1180,20 +1180,52 @@ pub mod offer_quantity {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlindedPath {
-	/// The hex-encoded public key of the introduction node, if available.
-	/// If the introduction node is a directed short channel ID, this will be empty
-	/// and `introduction_scid` will be set instead.
-	#[prost(string, optional, tag = "1")]
-	pub introduction_node_id: ::core::option::Option<::prost::alloc::string::String>,
 	/// The hex-encoded blinding point.
-	#[prost(string, tag = "2")]
+	#[prost(string, tag = "3")]
 	pub blinding_point: ::prost::alloc::string::String,
 	/// The number of blinded hops in the path.
-	#[prost(uint32, tag = "3")]
+	#[prost(uint32, tag = "4")]
 	pub num_hops: u32,
-	/// If the introduction node is a directed short channel ID rather than a node ID.
-	#[prost(uint64, optional, tag = "4")]
-	pub introduction_scid: ::core::option::Option<u64>,
+	/// Identifies the introduction node of the blinded path, either directly by
+	/// node id or indirectly via a directed short channel ID.
+	#[prost(oneof = "blinded_path::IntroductionNode", tags = "1, 2")]
+	pub introduction_node: ::core::option::Option<blinded_path::IntroductionNode>,
+}
+/// Nested message and enum types in `BlindedPath`.
+pub mod blinded_path {
+	/// Identifies the introduction node of the blinded path, either directly by
+	/// node id or indirectly via a directed short channel ID.
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum IntroductionNode {
+		/// The hex-encoded public key of the introduction node.
+		#[prost(string, tag = "1")]
+		NodeId(::prost::alloc::string::String),
+		/// The directed short channel ID identifying the introduction node.
+		#[prost(message, tag = "2")]
+		DirectedScid(super::DirectedShortChannelId),
+	}
+}
+/// A short channel ID together with a direction byte identifying one of the
+/// channel's two endpoints.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DirectedShortChannelId {
+	/// The short channel ID.
+	#[prost(uint64, tag = "1")]
+	pub scid: u64,
+	/// Which endpoint of the channel is being referred to.
+	#[prost(enumeration = "ChannelDirection", tag = "2")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_channel_direction")
+	)]
+	pub direction: i32,
 }
 /// A feature bit advertised in a BOLT11 invoice.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1357,6 +1389,38 @@ impl BalanceSource {
 			"COUNTERPARTY_FORCE_CLOSED" => Some(Self::CounterpartyForceClosed),
 			"COOP_CLOSE" => Some(Self::CoopClose),
 			"HTLC" => Some(Self::Htlc),
+			_ => None,
+		}
+	}
+}
+/// Identifies one of the two endpoints of a channel, by lexicographic order of
+/// node ids.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ChannelDirection {
+	/// The endpoint whose node id is lexicographically smaller.
+	NodeOne = 0,
+	/// The endpoint whose node id is lexicographically greater.
+	NodeTwo = 1,
+}
+impl ChannelDirection {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			ChannelDirection::NodeOne => "NODE_ONE",
+			ChannelDirection::NodeTwo => "NODE_TWO",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"NODE_ONE" => Some(Self::NodeOne),
+			"NODE_TWO" => Some(Self::NodeTwo),
 			_ => None,
 		}
 	}
