@@ -460,6 +460,7 @@ impl ConfigBuilder {
 
 /// Configuration loaded from a TOML file.
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TomlConfig {
 	node: Option<NodeConfig>,
 	storage: Option<StorageConfig>,
@@ -475,6 +476,7 @@ pub struct TomlConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct NodeConfig {
 	network: Option<Network>,
 	listening_addresses: Option<Vec<String>>,
@@ -487,16 +489,19 @@ struct NodeConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct StorageConfig {
 	disk: Option<DiskConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct DiskConfig {
 	dir_path: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct BitcoindConfig {
 	rpc_address: Option<String>,
 	rpc_user: Option<String>,
@@ -504,22 +509,26 @@ struct BitcoindConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct ElectrumConfig {
 	server_url: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct EsploraConfig {
 	server_url: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct LogConfig {
 	level: Option<String>,
 	file: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct TomlTlsConfig {
 	cert_path: Option<String>,
 	key_path: Option<String>,
@@ -527,6 +536,7 @@ struct TomlTlsConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct MetricsTomlConfig {
 	enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
@@ -535,11 +545,13 @@ struct MetricsTomlConfig {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct TomlTorConfig {
 	proxy_address: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct HrnTomlConfig {
 	mode: Option<String>,
 	dns_server_address: Option<String>,
@@ -645,12 +657,14 @@ fn parse_async_payments_role(role: &str) -> io::Result<AsyncPaymentsRole> {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct LiquidityConfig {
 	lsps2_client: Option<LSPSClientTomlConfig>,
 	lsps2_service: Option<LSPS2ServiceTomlConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
 struct LSPSClientTomlConfig {
 	node_pubkey: String,
 	address: String,
@@ -658,6 +672,7 @@ struct LSPSClientTomlConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
 struct LSPS2ServiceTomlConfig {
 	advertise_service: bool,
 	channel_opening_fee_ppm: u32,
@@ -1343,6 +1358,73 @@ mod tests {
 		validate_missing!("network =", missing_field_msg("network"));
 	}
 
+	#[test]
+	fn test_config_unknown_fields_in_file() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_config_unknown_fields_in_file.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		fs::write(
+			storage_path.join(config_file_name),
+			format!("{}\n[unknown]\noption = true\n", DEFAULT_CONFIG),
+		)
+		.unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+		assert!(err.to_string().contains("unknown field `unknown`"));
+
+		fs::write(
+			storage_path.join(config_file_name),
+			DEFAULT_CONFIG
+				.replace("network = \"regtest\"", "network = \"regtest\"\nunknown = true"),
+		)
+		.unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+		assert!(err.to_string().contains("unknown field `unknown`"));
+	}
+
+	#[test]
+	#[cfg(not(feature = "experimental-lsps2-support"))]
+	fn test_config_allows_unused_lsps2_service_config_without_feature() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name =
+			"test_config_allows_unused_lsps2_service_config_without_feature.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[liquidity.lsps2_service]
+			advertise_service = false
+			channel_opening_fee_ppm = 1000
+			channel_over_provisioning_ppm = 500000
+			min_channel_opening_fee_msat = 10000000
+			min_channel_lifetime = 4320
+			max_client_to_self_delay = 1440
+			min_payment_size_msat = 10000000
+			max_payment_size_msat = 25000000000
+			client_trusts_lsp = true
+			disable_client_reserve = false
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+		assert!(config.lsps2_service_config.is_none());
+	}
+
 	fn remove_config_line(config: &str, key: &str) -> String {
 		config
 			.lines()
@@ -1573,7 +1655,6 @@ mod tests {
 		let toml_config = r#"
 			[node]
 			network = "regtest"
-			rest_service_address = "127.0.0.1:3002"
 
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"
@@ -1584,10 +1665,6 @@ mod tests {
 			enabled = true
 			username = "admin"
 			password = "password123"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1621,7 +1698,6 @@ mod tests {
 		let toml_config = r#"
 			[node]
 			network = "regtest"
-			rest_service_address = "127.0.0.1:3002"
 
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"
@@ -1631,10 +1707,6 @@ mod tests {
 			[metrics]
 			enabled = true
 			username = "admin"
-
-			[rabbitmq]
-			connection_string = "rabbitmq_connection_string"
-			exchange_name = "rabbitmq_exchange_name"
 
 			[liquidity.lsps2_service]
 			advertise_service = false
