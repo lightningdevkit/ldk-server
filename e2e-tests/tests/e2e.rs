@@ -193,6 +193,7 @@ async fn test_cli_decode_invoice() {
 	assert!(decoded["timestamp"].as_u64().unwrap() > 0);
 	assert!(decoded["min_final_cltv_expiry_delta"].as_u64().unwrap() > 0);
 	assert_eq!(decoded["is_expired"], false);
+	assert_eq!(decoded["kind"], "bolt11");
 
 	// Verify features — LDK BOLT11 invoices always set VariableLengthOnion, PaymentSecret,
 	// and BasicMPP.
