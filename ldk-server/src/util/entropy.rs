@@ -20,30 +20,20 @@ use log::info;
 use crate::util::config::EntropyConfig;
 
 const DEFAULT_MNEMONIC_FILE: &str = "keys_mnemonic";
+#[cfg(test)]
 const LEGACY_SEED_FILE: &str = "keys_seed";
 
 pub(crate) fn load_or_generate_node_entropy(
 	storage_dir: &Path, entropy_config: &EntropyConfig,
 ) -> io::Result<NodeEntropy> {
-	if let Some(seed_file) = &entropy_config.seed_file {
-		info!("Loading node entropy from raw seed file at {}", seed_file);
-		return NodeEntropy::from_seed_path(seed_file.clone())
-			.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
-	}
-
-	let legacy_seed_path = storage_dir.join(LEGACY_SEED_FILE);
-	if entropy_config.mnemonic_file.is_none() && legacy_seed_path.exists() {
-		info!(
-			"Detected legacy raw seed file at {}; continuing to use it. New installs use a BIP39 mnemonic by default.",
-			legacy_seed_path.display()
-		);
-		return NodeEntropy::from_seed_path(legacy_seed_path.to_string_lossy().into_owned())
-			.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
-	}
-
-	let mnemonic_path = match &entropy_config.mnemonic_file {
-		Some(p) => PathBuf::from(p),
-		None => storage_dir.join(DEFAULT_MNEMONIC_FILE),
+	let mnemonic_path = match entropy_config {
+		EntropyConfig::SeedFile(seed_file) => {
+			info!("Loading node entropy from raw seed file at {}", seed_file);
+			return NodeEntropy::from_seed_path(seed_file.clone())
+				.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
+		},
+		EntropyConfig::MnemonicFile(path) => PathBuf::from(path),
+		EntropyConfig::Default => storage_dir.join(DEFAULT_MNEMONIC_FILE),
 	};
 
 	let mnemonic = if mnemonic_path.exists() {
@@ -72,9 +62,9 @@ pub(crate) fn load_or_generate_node_entropy(
 
 fn write_mnemonic_file(path: &Path, mnemonic: &Mnemonic) -> io::Result<()> {
 	let mut f = fs::OpenOptions::new().create_new(true).write(true).mode(0o600).open(path)?;
+	f.set_permissions(fs::Permissions::from_mode(0o600))?;
 	writeln!(f, "{}", mnemonic)?;
 	f.sync_all()?;
-	fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
 	Ok(())
 }
 
@@ -133,17 +123,14 @@ mod tests {
 	}
 
 	#[test]
-	fn auto_detects_legacy_keys_seed() {
+	fn default_entropy_ignores_legacy_keys_seed() {
 		let dir = tempdir("legacy");
 		let legacy_path = dir.join(LEGACY_SEED_FILE);
 		fs::write(&legacy_path, vec![0x42u8; 64]).unwrap();
 
 		load_or_generate_node_entropy(&dir, &EntropyConfig::default()).unwrap();
 
-		assert!(
-			!dir.join(DEFAULT_MNEMONIC_FILE).exists(),
-			"keys_mnemonic was unexpectedly created"
-		);
+		assert!(dir.join(DEFAULT_MNEMONIC_FILE).exists(), "keys_mnemonic was not created");
 		assert!(legacy_path.exists(), "legacy keys_seed was removed");
 	}
 
@@ -153,10 +140,7 @@ mod tests {
 		let custom_seed = dir.join("custom-seed.bin");
 		fs::write(&custom_seed, vec![0x17u8; 64]).unwrap();
 
-		let cfg = EntropyConfig {
-			seed_file: Some(custom_seed.to_string_lossy().into_owned()),
-			mnemonic_file: None,
-		};
+		let cfg = EntropyConfig::SeedFile(custom_seed.to_string_lossy().into_owned());
 
 		load_or_generate_node_entropy(&dir, &cfg).unwrap();
 
@@ -183,10 +167,7 @@ mod tests {
 	fn custom_mnemonic_path_respected() {
 		let dir = tempdir("custom-mnemonic");
 		let custom_path = dir.join("elsewhere").join("my_mnemonic");
-		let cfg = EntropyConfig {
-			mnemonic_file: Some(custom_path.to_string_lossy().into_owned()),
-			seed_file: None,
-		};
+		let cfg = EntropyConfig::MnemonicFile(custom_path.to_string_lossy().into_owned());
 
 		load_or_generate_node_entropy(&dir, &cfg).unwrap();
 

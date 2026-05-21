@@ -69,13 +69,14 @@ pub struct Config {
 
 /// Configuration for the node's entropy source.
 ///
-/// When both `mnemonic_file` and `seed_file` are unset, the node defaults to loading or
-/// generating a BIP39 mnemonic at `<storage_dir>/keys_mnemonic`. If a legacy raw-seed file
-/// exists at `<storage_dir>/keys_seed`, it is used for backwards compatibility.
+/// When unset, the node defaults to loading or generating a BIP39 mnemonic at
+/// `<storage_dir>/keys_mnemonic`.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct EntropyConfig {
-	pub mnemonic_file: Option<String>,
-	pub seed_file: Option<String>,
+pub enum EntropyConfig {
+	#[default]
+	Default,
+	MnemonicFile(String),
+	SeedFile(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,7 +136,7 @@ struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
-	fn merge_toml(&mut self, toml: TomlConfig) {
+	fn merge_toml(&mut self, toml: TomlConfig) -> io::Result<()> {
 		if let Some(node) = toml.node {
 			self.network = node.network.or(self.network);
 			self.listening_addresses =
@@ -151,9 +152,7 @@ impl ConfigBuilder {
 				node.async_payments_role.or(self.async_payments_role.clone());
 			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
 			if let Some(entropy) = node.entropy {
-				self.entropy.mnemonic_file =
-					entropy.mnemonic_file.or(self.entropy.mnemonic_file.take());
-				self.entropy.seed_file = entropy.seed_file.or(self.entropy.seed_file.take());
+				self.entropy = EntropyConfig::from_paths(entropy.mnemonic_file, entropy.seed_file)?;
 			}
 		}
 
@@ -209,9 +208,11 @@ impl ConfigBuilder {
 		if let Some(hrn) = toml.hrn {
 			self.hrn = Some(hrn);
 		}
+
+		Ok(())
 	}
 
-	fn merge_args(&mut self, args: &ArgsConfig) {
+	fn merge_args(&mut self, args: &ArgsConfig) -> io::Result<()> {
 		if let Some(network) = args.node_network {
 			self.network = Some(network);
 		}
@@ -275,6 +276,15 @@ impl ConfigBuilder {
 		if let Some(tor_proxy_address) = &args.tor_proxy_address {
 			self.tor_proxy_address = Some(tor_proxy_address.clone());
 		}
+
+		if args.node_entropy_mnemonic_file.is_some() || args.node_entropy_seed_file.is_some() {
+			self.entropy = EntropyConfig::from_paths(
+				args.node_entropy_mnemonic_file.clone(),
+				args.node_entropy_seed_file.clone(),
+			)?;
+		}
+
+		Ok(())
 	}
 
 	fn build(self) -> io::Result<Config> {
@@ -450,13 +460,6 @@ impl ConfigBuilder {
 			None => HumanReadableNamesConfig::default(),
 		};
 
-		if self.entropy.mnemonic_file.is_some() && self.entropy.seed_file.is_some() {
-			return Err(io::Error::new(
-				io::ErrorKind::InvalidInput,
-				"Only one of `node.entropy.mnemonic_file` and `node.entropy.seed_file` may be configured.".to_string(),
-			));
-		}
-
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -481,6 +484,20 @@ impl ConfigBuilder {
 			hrn_config,
 			entropy: self.entropy,
 		})
+	}
+}
+
+impl EntropyConfig {
+	fn from_paths(mnemonic_file: Option<String>, seed_file: Option<String>) -> io::Result<Self> {
+		match (mnemonic_file, seed_file) {
+			(Some(_), Some(_)) => Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"Only one of `node.entropy.mnemonic_file`/`--node-entropy-mnemonic-file` and `node.entropy.seed_file`/`--node-entropy-seed-file` may be configured.".to_string(),
+			)),
+			(Some(mnemonic_file), None) => Ok(Self::MnemonicFile(mnemonic_file)),
+			(None, Some(seed_file)) => Ok(Self::SeedFile(seed_file)),
+			(None, None) => Ok(Self::Default),
+		}
 	}
 }
 
@@ -848,6 +865,20 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_NODE_ENTROPY_MNEMONIC_FILE",
+		help = "Path to the BIP39 mnemonic file used for node entropy."
+	)]
+	node_entropy_mnemonic_file: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_NODE_ENTROPY_SEED_FILE",
+		help = "Legacy path to a raw 64-byte seed file used for node entropy."
+	)]
+	node_entropy_seed_file: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_METRICS_ENABLED",
 		help = "The option to enable the metrics endpoint. WARNING: This endpoint is unauthenticated."
 	)]
@@ -903,10 +934,10 @@ pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
 			)
 		})?;
 
-		builder.merge_toml(toml_config);
+		builder.merge_toml(toml_config)?;
 	}
 
-	builder.merge_args(args);
+	builder.merge_args(args)?;
 
 	builder.build()
 }
@@ -946,8 +977,10 @@ fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
 
 #[cfg(test)]
 mod tests {
+	use std::ffi::OsString;
 	use std::str::FromStr;
 
+	use clap::Parser;
 	use ldk_node::bitcoin::secp256k1::PublicKey;
 	use ldk_node::bitcoin::Network;
 	use ldk_node::lightning::ln::msgs::SocketAddress;
@@ -1021,6 +1054,8 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			node_entropy_mnemonic_file: None,
+			node_entropy_seed_file: None,
 		}
 	}
 
@@ -1043,6 +1078,8 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			node_entropy_mnemonic_file: None,
+			node_entropy_seed_file: None,
 		}
 	}
 
@@ -1051,6 +1088,13 @@ mod tests {
 			"Missing `{}`. Please provide it via config file, CLI argument, or environment variable.",
 			field
 		)
+	}
+
+	fn restore_env_var(key: &str, old_value: Option<OsString>) {
+		match old_value {
+			Some(value) => std::env::set_var(key, value),
+			None => std::env::remove_var(key),
+		}
 	}
 
 	#[test]
@@ -1851,8 +1895,10 @@ mod tests {
 			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
 
 		let config = load_config(&args_config).unwrap();
-		assert_eq!(config.entropy.mnemonic_file, Some("/some/path/keys_mnemonic".to_string()));
-		assert_eq!(config.entropy.seed_file, None);
+		assert_eq!(
+			config.entropy,
+			EntropyConfig::MnemonicFile("/some/path/keys_mnemonic".to_string())
+		);
 	}
 
 	#[test]
@@ -1883,5 +1929,63 @@ mod tests {
 		let err = load_config(&args_config).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 		assert!(err.to_string().contains("Only one of"));
+	}
+
+	#[test]
+	fn test_node_entropy_args_override_file() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_node_entropy_args_override_file.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			grpc_service_address = "127.0.0.1:3002"
+
+			[node.entropy]
+			mnemonic_file = "/config/keys_mnemonic"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		args_config.node_entropy_seed_file = Some("/legacy/keys_seed".to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(config.entropy, EntropyConfig::SeedFile("/legacy/keys_seed".to_string()));
+	}
+
+	#[test]
+	fn test_rejects_both_entropy_args() {
+		let mut args_config = default_args_config();
+		args_config.node_entropy_mnemonic_file = Some("/some/path/keys_mnemonic".to_string());
+		args_config.node_entropy_seed_file = Some("/some/path/keys_seed".to_string());
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("Only one of"));
+	}
+
+	#[test]
+	fn test_node_entropy_mnemonic_file_env() {
+		let mnemonic_key = "LDK_SERVER_NODE_ENTROPY_MNEMONIC_FILE";
+		let seed_key = "LDK_SERVER_NODE_ENTROPY_SEED_FILE";
+		let old_mnemonic = std::env::var_os(mnemonic_key);
+		let old_seed = std::env::var_os(seed_key);
+
+		std::env::set_var(mnemonic_key, "/env/keys_mnemonic");
+		std::env::remove_var(seed_key);
+		let parse_result = ArgsConfig::try_parse_from(["ldk-server"]);
+		restore_env_var(mnemonic_key, old_mnemonic);
+		restore_env_var(seed_key, old_seed);
+
+		let args_config = parse_result.unwrap();
+		assert_eq!(args_config.node_entropy_mnemonic_file, Some("/env/keys_mnemonic".to_string()));
+		assert_eq!(args_config.node_entropy_seed_file, None);
 	}
 }
