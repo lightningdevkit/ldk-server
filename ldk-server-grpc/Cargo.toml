@@ -1,7 +1,17 @@
 [package]
 name = "ldk-server-grpc"
 version = "0.1.0"
+authors = ["benthecarman <benthecarman@live.com>", "Elias Rohrer <dev@tnull.de>"]
+homepage = "https://lightningdevkit.org/"
+license = "MIT OR Apache-2.0"
 edition = "2021"
+rust-version = "1.85"
+description = "Protocol Buffer definitions and Rust types for the LDK Server API."
+repository = "https://github.com/lightningdevkit/ldk-server/"
+documentation = "https://docs.rs/ldk-server-grpc"
+readme = "README.md"
+keywords = ["bitcoin", "lightning", "ldk", "server", "grpc"]
+categories = ["cryptography::cryptocurrencies"]
 
 build = "build.rs"
 

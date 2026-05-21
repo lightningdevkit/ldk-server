@@ -1,7 +1,17 @@
 [package]
 name = "ldk-server-client"
 version = "0.1.0"
+authors = ["benthecarman <benthecarman@live.com>", "Elias Rohrer <dev@tnull.de>"]
+homepage = "https://lightningdevkit.org/"
+license = "MIT OR Apache-2.0"
 edition = "2021"
+rust-version = "1.85"
+description = "An async Rust client library for communicating with LDK Server."
+repository = "https://github.com/lightningdevkit/ldk-server/"
+documentation = "https://docs.rs/ldk-server-client"
+readme = "README.md"
+keywords = ["bitcoin", "lightning", "ldk", "server"]
+categories = ["cryptography::cryptocurrencies"]
 
 [features]
 default = []

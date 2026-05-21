@@ -1,7 +1,16 @@
 [package]
 name = "ldk-server-mcp"
 version = "0.1.0"
+authors = ["benthecarman <benthecarman@live.com>", "Elias Rohrer <dev@tnull.de>"]
+homepage = "https://lightningdevkit.org/"
+license = "MIT OR Apache-2.0"
 edition = "2021"
+rust-version = "1.85"
+description = "An MCP server exposing LDK Server operations as tools."
+repository = "https://github.com/lightningdevkit/ldk-server/"
+readme = "README.md"
+keywords = ["bitcoin", "lightning", "ldk", "server", "mcp"]
+categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 hex-conservative = { version = "0.2", default-features = false, features = ["std"] }
