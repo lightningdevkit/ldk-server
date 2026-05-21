@@ -70,6 +70,7 @@ pub fn cert_path_for_storage_dir(storage_dir: &str) -> PathBuf {
 
 /// Top-level structure of the `ldk-server` configuration TOML file.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
 	/// Node-level configuration.
 	pub node: NodeConfig,
@@ -81,6 +82,7 @@ pub struct Config {
 
 /// `[tls]` section of the configuration file.
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TlsConfig {
 	/// Path to the server's TLS certificate in PEM format.
 	pub cert_path: Option<String>,
@@ -88,6 +90,7 @@ pub struct TlsConfig {
 
 /// `[node]` section of the configuration file.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NodeConfig {
 	/// Address of the `ldk-server` gRPC service.
 	#[serde(default = "default_grpc_service_address")]
@@ -97,6 +100,7 @@ pub struct NodeConfig {
 
 /// `[storage]` section of the configuration file.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StorageConfig {
 	/// On-disk storage configuration.
 	pub disk: Option<DiskConfig>,
@@ -104,6 +108,7 @@ pub struct StorageConfig {
 
 /// `[storage.disk]` section of the configuration file.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DiskConfig {
 	/// Directory used by the server to store its persistent data.
 	pub dir_path: Option<String>,
@@ -200,6 +205,31 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(config.node.grpc_service_address, DEFAULT_GRPC_SERVICE_ADDRESS);
+	}
+
+	#[test]
+	fn config_rejects_unknown_fields() {
+		let top_level_err = toml::from_str::<Config>(
+			r#"
+				[node]
+				network = "regtest"
+
+				[unknown]
+				option = true
+			"#,
+		)
+		.unwrap_err();
+		assert!(top_level_err.to_string().contains("unknown field `unknown`"));
+
+		let node_err = toml::from_str::<Config>(
+			r#"
+				[node]
+				network = "regtest"
+				unknown = true
+			"#,
+		)
+		.unwrap_err();
+		assert!(node_err.to_string().contains("unknown field `unknown`"));
 	}
 
 	#[test]
