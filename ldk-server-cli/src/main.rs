@@ -563,7 +563,20 @@ async fn main() {
 	}
 
 	let config_path = cli.config.map(PathBuf::from).or_else(get_default_config_path);
-	let config = config_path.as_ref().and_then(|p| load_config(p).ok());
+	let config = match config_path.as_ref() {
+		None => None,
+		Some(path) => {
+			if path.is_file() {
+				let cfg = load_config(path).unwrap_or_else(|e| {
+					eprintln!("Failed to load config file '{}': {}", path.display(), e);
+					std::process::exit(1);
+				});
+				Some(cfg)
+			} else {
+				None
+			}
+		},
+	};
 
 	let api_key = resolve_api_key(cli.api_key, config.as_ref()).unwrap_or_else(|| {
 		eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
