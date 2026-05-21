@@ -1109,19 +1109,21 @@ pub struct GraphGetNodeResponse {
 	#[prost(message, optional, tag = "1")]
 	pub node: ::core::option::Option<super::types::GraphNode>,
 }
-/// Decode a BOLT11 invoice and return its parsed fields.
-/// This does not require a running node — it only parses the invoice string.
+/// Decode a BOLT11 or BOLT12 invoice and return its parsed fields.
+/// This does not require a running node — it only parses the invoice.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DecodeInvoiceRequest {
-	/// The BOLT11 invoice string to decode.
+	/// The invoice to decode: either a BOLT11 invoice string or a hex-encoded BOLT12 invoice.
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
 }
 /// The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
+/// `kind` indicates which invoice type was decoded; fields that do not apply to that type
+/// are left empty (e.g. `payment_secret` and `route_hints` are BOLT11-only).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
@@ -1173,6 +1175,9 @@ pub struct DecodeInvoiceResponse {
 	/// Whether the invoice has expired.
 	#[prost(bool, tag = "15")]
 	pub is_expired: bool,
+	/// The kind of decoded invoice: "bolt11" or "bolt12".
+	#[prost(string, tag = "16")]
+	pub kind: ::prost::alloc::string::String,
 }
 /// Decode a BOLT12 offer and return its parsed fields.
 /// This does not require a running node — it only parses the offer string.

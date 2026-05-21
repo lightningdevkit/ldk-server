@@ -615,7 +615,7 @@ pub fn decode_invoice_schema() -> Value {
 		"properties": {
 			"invoice": {
 				"type": "string",
-				"description": "The BOLT11 invoice string to decode"
+				"description": "A BOLT11 invoice string or a hex-encoded BOLT12 invoice to decode"
 			}
 		},
 		"required": ["invoice"]

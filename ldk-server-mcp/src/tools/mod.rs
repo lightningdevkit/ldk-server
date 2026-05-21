@@ -243,7 +243,7 @@ pub fn build_tool_registry() -> ToolRegistry {
 		),
 		tool_spec(
 			"decode_invoice",
-			"Decode a BOLT11 invoice and return its parsed fields",
+			"Decode a BOLT11 or BOLT12 invoice and return its parsed fields",
 			schema::decode_invoice_schema,
 			|client, args| Box::pin(handlers::handle_decode_invoice(client, args)),
 		),

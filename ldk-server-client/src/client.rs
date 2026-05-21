@@ -351,7 +351,7 @@ impl LdkServerClient {
 		self.grpc_unary(&request, UNIFIED_SEND_PATH).await
 	}
 
-	/// Decode a BOLT11 invoice and return its parsed fields.
+	/// Decode a BOLT11 or BOLT12 invoice and return its parsed fields.
 	pub async fn decode_invoice(
 		&self, request: DecodeInvoiceRequest,
 	) -> Result<DecodeInvoiceResponse, LdkServerError> {
