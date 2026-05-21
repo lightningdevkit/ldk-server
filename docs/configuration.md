@@ -151,7 +151,8 @@ Two resolution methods are supported via the `mode` field:
 
 ```
 <storage_dir>/
-  keys_seed              # Node entropy/seed
+  keys_mnemonic          # BIP39 mnemonic (default for new installs)
+  keys_seed              # Legacy raw seed (only used when explicitly configured)
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
@@ -161,6 +162,23 @@ Two resolution methods are supported via the `mode` field:
     ldk_server_data.sqlite # Payment and forwarding history
 ```
 
-The `keys_seed` file is the node's master secret, required to recover on-chain funds.
-`ldk_node_data.sqlite` holds channel state, both are required to recover channel funds. See
-[Operations - Backups](operations.md#backups) for backup guidance.
+The mnemonic (or, for legacy installs, the raw seed) is the node's master secret, required to
+recover on-chain funds. `ldk_node_data.sqlite` holds channel state, both are required to recover
+channel funds. See [Operations - Backups](operations.md#backups) for backup guidance.
+
+### Node entropy (`[node.entropy]`)
+
+By default, ldk-server reads or generates a 24-word BIP39 mnemonic at `<storage_dir>/keys_mnemonic`,
+which can be imported into any standard BIP39-compatible wallet to recover on-chain funds. The
+defaults can be overridden under `[node.entropy]`:
+
+- `mnemonic_file`: path to the BIP39 mnemonic file. Defaults to `<storage_dir>/keys_mnemonic`. If
+  the file does not exist on first start, a fresh 24-word mnemonic is generated and written.
+  CLI/env: `--node-entropy-mnemonic-file` / `LDK_SERVER_NODE_ENTROPY_MNEMONIC_FILE`.
+- `seed_file`: path to a raw 64-byte seed file. Provided for backwards compatibility with installs
+  initialized before BIP39 mnemonic support. Mutually exclusive with `mnemonic_file`.
+  CLI/env: `--node-entropy-seed-file` / `LDK_SERVER_NODE_ENTROPY_SEED_FILE`.
+
+Legacy raw-seed installs are not auto-detected. To keep using an existing
+`<storage_dir>/keys_seed`, set `seed_file` explicitly or use the corresponding CLI argument or
+environment variable.
