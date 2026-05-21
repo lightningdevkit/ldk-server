@@ -152,7 +152,7 @@ Two resolution methods are supported via the `mode` field:
 ```
 <storage_dir>/
   keys_mnemonic          # BIP39 mnemonic (default for new installs)
-  keys_seed              # Legacy raw seed (only present on installs initialized before mnemonic support)
+  keys_seed              # Legacy raw seed (only used when explicitly configured)
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
@@ -174,8 +174,11 @@ defaults can be overridden under `[node.entropy]`:
 
 - `mnemonic_file`: path to the BIP39 mnemonic file. Defaults to `<storage_dir>/keys_mnemonic`. If
   the file does not exist on first start, a fresh 24-word mnemonic is generated and written.
+  CLI/env: `--node-entropy-mnemonic-file` / `LDK_SERVER_NODE_ENTROPY_MNEMONIC_FILE`.
 - `seed_file`: path to a raw 64-byte seed file. Provided for backwards compatibility with installs
   initialized before BIP39 mnemonic support. Mutually exclusive with `mnemonic_file`.
+  CLI/env: `--node-entropy-seed-file` / `LDK_SERVER_NODE_ENTROPY_SEED_FILE`.
 
-For backwards compatibility, if neither field is configured and a `keys_seed` file exists at the
-storage root, ldk-server will continue to use it.
+Legacy raw-seed installs are not auto-detected. To keep using an existing
+`<storage_dir>/keys_seed`, set `seed_file` explicitly or use the corresponding CLI argument or
+environment variable.

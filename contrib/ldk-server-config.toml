@@ -11,11 +11,14 @@ alias = "ldk_server"                          # Lightning node alias
 
 # Node entropy settings
 [node.entropy]
-# Path to a BIP39 mnemonic file. If unset and no legacy `keys_seed` file exists, a fresh
-# 24-word mnemonic is generated on first start. Defaults to "<storage_dir>/keys_mnemonic".
+# Path to a BIP39 mnemonic file. If unset, a fresh 24-word mnemonic is generated on
+# first start. Defaults to "<storage_dir>/keys_mnemonic".
+# CLI/env: --node-entropy-mnemonic-file / LDK_SERVER_NODE_ENTROPY_MNEMONIC_FILE
 #mnemonic_file = "/tmp/ldk-server/keys_mnemonic"
 # Legacy: path to a raw 64-byte seed file used by ldk-server installs initialized before
-# BIP39 mnemonic support. Mutually exclusive with `mnemonic_file`.
+# BIP39 mnemonic support. Configure this explicitly to keep using an existing keys_seed file.
+# CLI/env: --node-entropy-seed-file / LDK_SERVER_NODE_ENTROPY_SEED_FILE
+# Mutually exclusive with `mnemonic_file`.
 #seed_file = "/tmp/ldk-server/keys_seed"
 
 # Storage settings
