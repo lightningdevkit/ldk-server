@@ -1123,7 +1123,8 @@ pub struct DecodeInvoiceRequest {
 }
 /// The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
 /// `kind` indicates which invoice type was decoded; fields that do not apply to that type
-/// are left empty (e.g. `payment_secret` and `route_hints` are BOLT11-only).
+/// are left empty (e.g. `payment_secret` and `route_hints` are BOLT11-only, `paths` is
+/// BOLT12-only).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
@@ -1178,6 +1179,9 @@ pub struct DecodeInvoiceResponse {
 	/// The kind of decoded invoice: "bolt11" or "bolt12".
 	#[prost(string, tag = "16")]
 	pub kind: ::prost::alloc::string::String,
+	/// Blinded payment paths to the recipient. Only present for BOLT12 invoices.
+	#[prost(message, repeated, tag = "17")]
+	pub paths: ::prost::alloc::vec::Vec<super::types::BlindedPath>,
 }
 /// Decode a BOLT12 offer and return its parsed fields.
 /// This does not require a running node — it only parses the offer string.

@@ -16,16 +16,12 @@ use ldk_node::lightning::bitcoin::Network;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_types::features::OfferFeatures;
 use ldk_server_grpc::api::{DecodeOfferRequest, DecodeOfferResponse};
-use ldk_server_grpc::types::blinded_path::IntroductionNode;
 use ldk_server_grpc::types::offer_amount::Amount;
 use ldk_server_grpc::types::offer_quantity::Quantity;
-use ldk_server_grpc::types::{
-	BlindedPath, ChannelDirection, CurrencyAmount, DirectedShortChannelId, OfferAmount,
-	OfferQuantity,
-};
+use ldk_server_grpc::types::{CurrencyAmount, OfferAmount, OfferQuantity};
 
-use crate::api::decode_features;
 use crate::api::error::LdkServerError;
+use crate::api::{blinded_path_to_proto, decode_features};
 use crate::service::Context;
 
 pub(crate) async fn handle_decode_offer_request(
@@ -74,33 +70,11 @@ pub(crate) async fn handle_decode_offer_request(
 		.paths()
 		.iter()
 		.map(|path| {
-			let introduction_node = match path.introduction_node() {
-				ldk_node::lightning::blinded_path::IntroductionNode::NodeId(pk) => {
-					IntroductionNode::NodeId(pk.to_string())
-				},
-				ldk_node::lightning::blinded_path::IntroductionNode::DirectedShortChannelId(
-					dir,
-					scid,
-				) => {
-					let direction = match dir {
-						ldk_node::lightning::blinded_path::Direction::NodeOne => {
-							ChannelDirection::NodeOne
-						},
-						ldk_node::lightning::blinded_path::Direction::NodeTwo => {
-							ChannelDirection::NodeTwo
-						},
-					};
-					IntroductionNode::DirectedScid(DirectedShortChannelId {
-						scid: *scid,
-						direction: direction as i32,
-					})
-				},
-			};
-			BlindedPath {
-				introduction_node: Some(introduction_node),
-				blinding_point: path.blinding_point().to_string(),
-				num_hops: path.blinded_hops().len() as u32,
-			}
+			blinded_path_to_proto(
+				path.introduction_node(),
+				path.blinding_point(),
+				path.blinded_hops().len(),
+			)
 		})
 		.collect();
 

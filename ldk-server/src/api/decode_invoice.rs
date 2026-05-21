@@ -17,8 +17,8 @@ use ldk_node::lightning_types::features::{Bolt11InvoiceFeatures, Bolt12InvoiceFe
 use ldk_server_grpc::api::{DecodeInvoiceRequest, DecodeInvoiceResponse};
 use ldk_server_grpc::types::{Bolt11HopHint, Bolt11RouteHint};
 
-use crate::api::decode_features;
 use crate::api::error::LdkServerError;
+use crate::api::{blinded_path_to_proto, decode_features};
 use crate::service::Context;
 
 const INVOICE_KIND_BOLT11: &str = "bolt11";
@@ -57,6 +57,18 @@ fn decode_bolt12_invoice(invoice: &str) -> Option<DecodeInvoiceResponse> {
 		Bolt12InvoiceFeatures::from_le_bytes(bytes).to_string()
 	});
 
+	let paths = invoice
+		.payment_paths()
+		.iter()
+		.map(|path| {
+			blinded_path_to_proto(
+				path.introduction_node(),
+				path.blinding_point(),
+				path.blinded_hops().len(),
+			)
+		})
+		.collect();
+
 	Some(DecodeInvoiceResponse {
 		destination: invoice.signing_pubkey().to_string(),
 		payment_hash: invoice.payment_hash().0.to_lower_hex_string(),
@@ -68,6 +80,7 @@ fn decode_bolt12_invoice(invoice: &str) -> Option<DecodeInvoiceResponse> {
 		features,
 		is_expired: invoice.is_expired(),
 		kind: INVOICE_KIND_BOLT12.to_string(),
+		paths,
 		..Default::default()
 	})
 }
@@ -149,6 +162,8 @@ fn decode_bolt11_invoice(invoice: &Bolt11Invoice) -> DecodeInvoiceResponse {
 		payment_metadata,
 		is_expired,
 		kind: INVOICE_KIND_BOLT11.to_string(),
+		// BOLT11 invoices carry route hints rather than blinded paths.
+		paths: Vec::new(),
 	}
 }
 
@@ -162,6 +177,7 @@ mod tests {
 	use ldk_node::lightning::types::features::BlindedHopFeatures;
 	use ldk_node::lightning::types::payment::PaymentHash;
 	use ldk_node::lightning::util::ser::Writeable;
+	use ldk_server_grpc::types::blinded_path::IntroductionNode;
 
 	use super::*;
 
@@ -237,5 +253,13 @@ mod tests {
 		assert_eq!(response.amount_msat, Some(1_000));
 		assert_eq!(response.expiry, 3600);
 		assert!(!response.is_expired);
+
+		// The sample invoice carries a single blinded payment path with two hops,
+		// introduced by `pubkey(40)` and blinded with `pubkey(41)`.
+		assert_eq!(response.paths.len(), 1);
+		let path = &response.paths[0];
+		assert_eq!(path.num_hops, 2);
+		assert_eq!(path.blinding_point, pubkey(41).to_string());
+		assert_eq!(path.introduction_node, Some(IntroductionNode::NodeId(pubkey(40).to_string())));
 	}
 }

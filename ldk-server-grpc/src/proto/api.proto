@@ -804,7 +804,8 @@ message DecodeInvoiceRequest {
 
 // The response for the `DecodeInvoice` RPC. On failure, a gRPC error status is returned.
 // `kind` indicates which invoice type was decoded; fields that do not apply to that type
-// are left empty (e.g. `payment_secret` and `route_hints` are BOLT11-only).
+// are left empty (e.g. `payment_secret` and `route_hints` are BOLT11-only, `paths` is
+// BOLT12-only).
 message DecodeInvoiceResponse {
   // The hex-encoded public key of the destination node.
   string destination = 1;
@@ -853,6 +854,9 @@ message DecodeInvoiceResponse {
 
   // The kind of decoded invoice: "bolt11" or "bolt12".
   string kind = 16;
+
+  // Blinded payment paths to the recipient. Only present for BOLT12 invoices.
+  repeated types.BlindedPath paths = 17;
 }
 
 // Decode a BOLT12 offer and return its parsed fields.
