@@ -70,7 +70,6 @@ pub fn cert_path_for_storage_dir(storage_dir: &str) -> PathBuf {
 
 /// Top-level structure of the `ldk-server` configuration TOML file.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Config {
 	/// Node-level configuration.
 	pub node: NodeConfig,
@@ -82,7 +81,6 @@ pub struct Config {
 
 /// `[tls]` section of the configuration file.
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct TlsConfig {
 	/// Path to the server's TLS certificate in PEM format.
 	pub cert_path: Option<String>,
@@ -90,7 +88,6 @@ pub struct TlsConfig {
 
 /// `[node]` section of the configuration file.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct NodeConfig {
 	/// Address of the `ldk-server` gRPC service.
 	#[serde(default = "default_grpc_service_address")]
@@ -100,7 +97,6 @@ pub struct NodeConfig {
 
 /// `[storage]` section of the configuration file.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct StorageConfig {
 	/// On-disk storage configuration.
 	pub disk: Option<DiskConfig>,
@@ -108,7 +104,6 @@ pub struct StorageConfig {
 
 /// `[storage.disk]` section of the configuration file.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct DiskConfig {
 	/// Directory used by the server to store its persistent data.
 	pub dir_path: Option<String>,
@@ -208,28 +203,62 @@ mod tests {
 	}
 
 	#[test]
-	fn config_rejects_unknown_fields() {
-		let top_level_err = toml::from_str::<Config>(
+	fn config_allows_server_config_fields() {
+		let config = toml::from_str::<Config>(
 			r#"
 				[node]
 				network = "regtest"
+				listening_addresses = ["localhost:3001"]
+				announcement_addresses = ["54.3.7.81:3001"]
+				grpc_service_address = "127.0.0.1:3002"
+				alias = "LDK Server"
+				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"
+				async_payments_role = "client"
 
-				[unknown]
-				option = true
+				[tls]
+				cert_path = "/path/to/tls.crt"
+				key_path = "/path/to/tls.key"
+				hosts = ["example.com", "ldk-server.local"]
+
+				[storage.disk]
+				dir_path = "/tmp"
+
+				[log]
+				level = "Trace"
+				file = "/var/log/ldk-server.log"
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+
+				[liquidity.lsps2_client]
+				node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+				address = "127.0.0.1:39735"
+				token = "lsps2-token"
+
+				[liquidity.lsps2_service]
+				advertise_service = false
+				channel_opening_fee_ppm = 1000
+				channel_over_provisioning_ppm = 500000
+				min_channel_opening_fee_msat = 10000000
+				min_channel_lifetime = 4320
+				max_client_to_self_delay = 1440
+				min_payment_size_msat = 10000000
+				max_payment_size_msat = 25000000000
+				client_trusts_lsp = true
+				disable_client_reserve = false
+
+				[tor]
+				proxy_address = "127.0.0.1:9050"
 			"#,
 		)
-		.unwrap_err();
-		assert!(top_level_err.to_string().contains("unknown field `unknown`"));
+		.unwrap();
 
-		let node_err = toml::from_str::<Config>(
-			r#"
-				[node]
-				network = "regtest"
-				unknown = true
-			"#,
-		)
-		.unwrap_err();
-		assert!(node_err.to_string().contains("unknown field `unknown`"));
+		assert_eq!(config.network().unwrap(), "regtest");
+		assert_eq!(config.node.grpc_service_address, "127.0.0.1:3002");
+		assert_eq!(config.tls.unwrap().cert_path.unwrap(), "/path/to/tls.crt");
+		assert_eq!(config.storage.unwrap().disk.unwrap().dir_path.unwrap(), "/tmp");
 	}
 
 	#[test]
