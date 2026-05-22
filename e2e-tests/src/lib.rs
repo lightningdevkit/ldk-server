@@ -91,6 +91,7 @@ pub struct LdkServerHandle {
 	pub grpc_port: u16,
 	pub p2p_port: u16,
 	pub storage_dir: PathBuf,
+	pub config_path: PathBuf,
 	pub api_key: String,
 	pub tls_cert_path: PathBuf,
 	pub node_id: String,
@@ -214,6 +215,7 @@ poll_metrics_interval = 1
 			grpc_port,
 			p2p_port,
 			storage_dir,
+			config_path,
 			api_key,
 			tls_cert_path,
 			node_id: String::new(),
@@ -381,9 +383,38 @@ pub fn run_cli_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
 	String::from_utf8(output.stdout).unwrap()
 }
 
+/// Run a CLI command using the server's config file for connection details.
+pub fn run_cli_with_config_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
+	let cli_path = cli_binary_path();
+	let output = Command::new(&cli_path)
+		.arg("--config")
+		.arg(handle.config_path.to_str().unwrap())
+		.args(args)
+		.output()
+		.unwrap_or_else(|e| panic!("Failed to run CLI at {:?}: {}", cli_path, e));
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		let stdout = String::from_utf8_lossy(&output.stdout);
+		panic!(
+			"CLI command {:?} failed with status {}\nstdout: {}\nstderr: {}",
+			args, output.status, stdout, stderr
+		);
+	}
+
+	String::from_utf8(output.stdout).unwrap()
+}
+
 /// Run a CLI command against the given server handle and return parsed JSON output.
 pub fn run_cli(handle: &LdkServerHandle, args: &[&str]) -> serde_json::Value {
 	let stdout = run_cli_raw(handle, args);
+	serde_json::from_str(&stdout)
+		.unwrap_or_else(|e| panic!("Failed to parse CLI output as JSON: {e}\nOutput: {stdout}"))
+}
+
+/// Run a CLI command using the server's config file and return parsed JSON output.
+pub fn run_cli_with_config(handle: &LdkServerHandle, args: &[&str]) -> serde_json::Value {
+	let stdout = run_cli_with_config_raw(handle, args);
 	serde_json::from_str(&stdout)
 		.unwrap_or_else(|e| panic!("Failed to parse CLI output as JSON: {e}\nOutput: {stdout}"))
 }

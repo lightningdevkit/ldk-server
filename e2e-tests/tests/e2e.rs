@@ -11,9 +11,9 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use e2e_tests::{
-	find_available_port, mine_and_sync, run_cli, run_cli_raw, setup_funded_channel,
-	wait_for_onchain_balance, wait_for_usable_channel, LdkServerConfig, LdkServerHandle,
-	TestBitcoind,
+	find_available_port, mine_and_sync, run_cli, run_cli_raw, run_cli_with_config,
+	setup_funded_channel, wait_for_onchain_balance, wait_for_usable_channel, LdkServerConfig,
+	LdkServerHandle, TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -54,6 +54,15 @@ async fn test_cli_get_node_info() {
 
 	let output = run_cli(&server, &["get-node-info"]);
 	assert!(output.get("node_id").is_some());
+	assert_eq!(output["node_id"], server.node_id());
+}
+
+#[tokio::test]
+async fn test_cli_get_node_info_with_server_config() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let output = run_cli_with_config(&server, &["get-node-info"]);
 	assert_eq!(output["node_id"], server.node_id());
 }
 
