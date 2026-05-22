@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
+use ldk_node::payment::{PaymentDetails, PaymentKind};
 use ldk_server_grpc::api::{ListPaymentsRequest, ListPaymentsResponse};
 use ldk_server_grpc::types::{PageToken, Payment};
 use prost::Message;
@@ -20,10 +21,16 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE, PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::Context;
+use crate::util::proto_adapter::payment_to_proto;
 
 pub(crate) async fn handle_list_payments_request(
 	context: Arc<Context>, request: ListPaymentsRequest,
 ) -> Result<ListPaymentsResponse, LdkServerError> {
+	// TODO: Remove this backfill once LDK Node owns paginated payment listing. Today our
+	// paginated store is populated from Lightning events only, while on-chain payments live in
+	// LDK Node's payment store.
+	sync_onchain_payments_to_paginated_store(&context)?;
+
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context
 		.paginated_kv_store
@@ -63,4 +70,33 @@ pub(crate) async fn handle_list_payments_request(
 			.map(|(token, index)| PageToken { token, index }),
 	};
 	Ok(response)
+}
+
+// TODO: Delete this temporary bridge when on-chain and Lightning payments are served from the
+// same paginated LDK Node source.
+fn sync_onchain_payments_to_paginated_store(context: &Context) -> Result<(), LdkServerError> {
+	for payment_details in context.node.list_payments_with_filter(is_onchain_payment).into_iter() {
+		let payment = payment_to_proto(payment_details);
+		context
+			.paginated_kv_store
+			.write(
+				PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
+				PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+				&payment.id,
+				payment.latest_update_timestamp as i64,
+				&payment.encode_to_vec(),
+			)
+			.map_err(|e| {
+				LdkServerError::new(
+					InternalServerError,
+					format!("Failed to write on-chain payment data: {e}"),
+				)
+			})?;
+	}
+
+	Ok(())
+}
+
+fn is_onchain_payment(payment: &&PaymentDetails) -> bool {
+	matches!(payment.kind, PaymentKind::Onchain { .. })
 }

@@ -22,7 +22,8 @@ use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
-	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest, OpenChannelRequest,
+	Bolt11ReceiveRequest, Bolt12ReceiveRequest, ListPaymentsRequest, OnchainReceiveRequest,
+	OnchainSendRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -359,6 +360,54 @@ async fn test_cli_onchain_send() {
 
 	let output = run_cli(&server, &["onchain-send", dest_addr, "50000sat"]);
 	assert!(!output["txid"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_list_payments_includes_onchain_send() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let addr = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr, 1.0);
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
+
+	let dest_addr =
+		server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	let send_output = server
+		.client()
+		.onchain_send(OnchainSendRequest {
+			address: dest_addr,
+			amount_sats: Some(50_000),
+			send_all: None,
+			fee_rate_sat_per_vb: None,
+		})
+		.await
+		.unwrap();
+
+	let mut found_payment = false;
+	for _ in 0..30 {
+		let output =
+			server.client().list_payments(ListPaymentsRequest { page_token: None }).await.unwrap();
+		found_payment = output.payments.iter().any(|payment| {
+			matches!(
+				payment.kind.as_ref().and_then(|kind| kind.kind.as_ref()),
+				Some(ldk_server_grpc::types::payment_kind::Kind::Onchain(
+					onchain
+				)) if onchain.txid == send_output.txid
+			)
+		});
+		if found_payment {
+			break;
+		}
+		tokio::time::sleep(Duration::from_secs(1)).await;
+	}
+	assert!(found_payment);
+
+	let output =
+		server.client().list_payments(ListPaymentsRequest { page_token: None }).await.unwrap();
+
+	assert_eq!(output.payments.len(), 2, "Expected two payments in list");
 }
 
 #[tokio::test]
