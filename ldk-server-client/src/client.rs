@@ -73,6 +73,10 @@ type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>,
 
 const GRPC_FRAME_HEADER_LEN: usize = 5;
 
+// Applies to complete unary gRPC responses. The server applies the same cap to unary request
+// bodies before protobuf decoding.
+const MAX_GRPC_UNARY_RESPONSE_LEN: usize = 10 * 1024 * 1024;
+
 // Applies to each server-streaming gRPC message. Graph RPCs use the unary client path and are not
 // constrained by this limit.
 const MAX_GRPC_STREAM_MESSAGE_LEN: usize = 4 * 1024 * 1024;
@@ -456,10 +460,7 @@ impl LdkServerClient {
 			return Err(error);
 		}
 
-		// Read the response body
-		let payload = response.bytes().await.map_err(|e| {
-			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
-		})?;
+		let payload = read_grpc_unary_response_body(response).await?;
 
 		let proto_bytes = decode_grpc_body(&payload)
 			.map_err(|e| LdkServerError::new(InternalError, e.message))?;
@@ -512,6 +513,42 @@ impl LdkServerClient {
 			_marker: std::marker::PhantomData,
 		})
 	}
+}
+
+async fn read_grpc_unary_response_body(
+	mut response: reqwest::Response,
+) -> Result<Vec<u8>, LdkServerError> {
+	let capacity = if let Some(content_length) = response.content_length() {
+		check_grpc_unary_response_len(content_length)?;
+		content_length as usize
+	} else {
+		0
+	};
+
+	let mut payload = Vec::with_capacity(capacity);
+	while let Some(chunk) = response.chunk().await.map_err(|e| {
+		LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
+	})? {
+		let len = payload.len().checked_add(chunk.len()).ok_or_else(|| {
+			LdkServerError::new(InternalError, "gRPC unary response body length overflow")
+		})?;
+		check_grpc_unary_response_len(len as u64)?;
+		payload.extend_from_slice(&chunk);
+	}
+	Ok(payload)
+}
+
+fn check_grpc_unary_response_len(len: u64) -> Result<(), LdkServerError> {
+	if len > MAX_GRPC_UNARY_RESPONSE_LEN as u64 {
+		return Err(LdkServerError::new(
+			InternalError,
+			format!(
+				"gRPC unary response exceeds maximum size of {} bytes",
+				MAX_GRPC_UNARY_RESPONSE_LEN
+			),
+		));
+	}
+	Ok(())
 }
 
 /// Map a gRPC status code to an LdkServerError.
@@ -719,6 +756,25 @@ mod tests {
 		let err = grpc_code_to_error(GRPC_STATUS_UNAVAILABLE, "server shutting down".to_string());
 		assert_eq!(err.error_code, InternalError);
 		assert_eq!(err.message, "gRPC stream became unavailable: server shutting down");
+	}
+
+	#[test]
+	fn test_grpc_unary_response_len_allows_limit() {
+		assert!(check_grpc_unary_response_len(MAX_GRPC_UNARY_RESPONSE_LEN as u64).is_ok());
+	}
+
+	#[test]
+	fn test_grpc_unary_response_len_rejects_oversized() {
+		let err =
+			check_grpc_unary_response_len(MAX_GRPC_UNARY_RESPONSE_LEN as u64 + 1).unwrap_err();
+		assert_eq!(err.error_code, InternalError);
+		assert_eq!(
+			err.message,
+			format!(
+				"gRPC unary response exceeds maximum size of {} bytes",
+				MAX_GRPC_UNARY_RESPONSE_LEN
+			)
+		);
 	}
 
 	#[tokio::test]
