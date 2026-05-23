@@ -71,6 +71,12 @@ use crate::error::LdkServerErrorCode::{
 
 type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
 
+const GRPC_FRAME_HEADER_LEN: usize = 5;
+
+// Applies to each server-streaming gRPC message. Graph RPCs use the unary client path and are not
+// constrained by this limit.
+const MAX_GRPC_STREAM_MESSAGE_LEN: usize = 4 * 1024 * 1024;
+
 /// Client to access a hosted instance of LDK Server via gRPC.
 ///
 /// The client requires the server's TLS certificate to be provided for verification.
@@ -568,19 +574,43 @@ impl<M: Message + Default> GrpcStream<M> {
 	pub async fn next_message(&mut self) -> Option<Result<M, LdkServerError>> {
 		loop {
 			// Try to decode a complete gRPC frame from the buffer
-			if self.buf.len() >= 5 {
+			if self.buf.len() >= GRPC_FRAME_HEADER_LEN {
+				if self.buf[0] != 0 {
+					return Some(Err(LdkServerError::new(
+						InternalError,
+						"gRPC stream compression is not supported",
+					)));
+				}
 				let msg_len =
 					u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]])
 						as usize;
-				if self.buf.len() >= 5 + msg_len {
-					let proto_bytes = &self.buf[5..5 + msg_len];
+				if msg_len > MAX_GRPC_STREAM_MESSAGE_LEN {
+					return Some(Err(LdkServerError::new(
+						InternalError,
+						format!(
+							"gRPC stream message exceeds maximum size of {} bytes",
+							MAX_GRPC_STREAM_MESSAGE_LEN
+						),
+					)));
+				}
+				let frame_len = match GRPC_FRAME_HEADER_LEN.checked_add(msg_len) {
+					Some(frame_len) => frame_len,
+					None => {
+						return Some(Err(LdkServerError::new(
+							InternalError,
+							"gRPC stream frame length overflow",
+						)));
+					},
+				};
+				if self.buf.len() >= frame_len {
+					let proto_bytes = &self.buf[GRPC_FRAME_HEADER_LEN..frame_len];
 					let result = M::decode(proto_bytes).map_err(|e| {
 						LdkServerError::new(
 							InternalError,
 							format!("Failed to decode gRPC stream message: {}", e),
 						)
 					});
-					self.buf.drain(..5 + msg_len);
+					self.buf.drain(..frame_len);
 					return Some(result);
 				}
 			}
@@ -711,6 +741,48 @@ mod tests {
 		assert_eq!(result.error_code, InternalError);
 		assert_eq!(result.message, "gRPC stream became unavailable: server restarting");
 		assert!(stream.next_message().await.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_rejects_oversized_frame_header() {
+		let (mut sender, body) = Body::channel();
+		sender.send_data(vec![0u8, 0xff, 0xff, 0xff, 0xff].into()).await.unwrap();
+		drop(sender);
+
+		let mut stream: EventStream = GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		};
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert_eq!(
+			result.message,
+			format!(
+				"gRPC stream message exceeds maximum size of {} bytes",
+				MAX_GRPC_STREAM_MESSAGE_LEN
+			)
+		);
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_rejects_compressed_frame() {
+		let (mut sender, body) = Body::channel();
+		sender.send_data(vec![1u8, 0, 0, 0, 0].into()).await.unwrap();
+		drop(sender);
+
+		let mut stream: EventStream = GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		};
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert_eq!(result.message, "gRPC stream compression is not supported");
 	}
 
 	#[test]
