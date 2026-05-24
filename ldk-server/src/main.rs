@@ -53,9 +53,8 @@ use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::ServerLogger;
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
-use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
-use crate::util::write_new;
+use crate::util::{systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
 
@@ -843,8 +842,9 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use ldk_server_grpc::events::channel_state_change_reason::Details;
+
+	use super::*;
 
 	#[test]
 	fn test_is_channel_open_failure_classification() {
