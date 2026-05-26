@@ -618,7 +618,7 @@ async fn main() {
 			);
 		},
 		Commands::OnchainSend { address, amount, send_all, fee_rate_sat_per_vb } => {
-			let amount_sats = amount.map(|a| a.to_sat().unwrap_or_else(|e| handle_error_msg(&e)));
+			let amount_sats = amount.map(|a| a.to_sat().unwrap_or_else(|e| handle_error_msg(e)));
 			handle_response_result::<_, OnchainSendResponse>(
 				client
 					.onchain_send(OnchainSendRequest {
@@ -904,7 +904,7 @@ async fn main() {
 			cltv_expiry_delta,
 		} => {
 			let channel_amount_sats =
-				channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
+				channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e));
 			let push_to_counterparty_msat = push_to_counterparty.map(|a| a.to_msat());
 			let channel_config = build_open_channel_config(
 				forwarding_fee_proportional_millionths,
@@ -933,8 +933,7 @@ async fn main() {
 			);
 		},
 		Commands::SpliceIn { user_channel_id, counterparty_node_id, splice_amount } => {
-			let splice_amount_sats =
-				splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
+			let splice_amount_sats = splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e));
 			handle_response_result::<_, SpliceInResponse>(
 				client
 					.splice_in(SpliceInRequest {
@@ -946,8 +945,7 @@ async fn main() {
 			);
 		},
 		Commands::SpliceOut { user_channel_id, counterparty_node_id, address, splice_amount } => {
-			let splice_amount_sats =
-				splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(&e));
+			let splice_amount_sats = splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e));
 			handle_response_result::<_, SpliceOutResponse>(
 				client
 					.splice_out(SpliceOutRequest {
@@ -1251,8 +1249,8 @@ fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
 	Ok(PageToken { token: parts[0].to_string(), index })
 }
 
-fn handle_error_msg(msg: &str) -> ! {
-	eprintln!("Error: {msg}");
+fn handle_error_msg(msg: String) -> ! {
+	eprintln!("Error: {}", sanitize_for_terminal(msg));
 	std::process::exit(1);
 }
 
