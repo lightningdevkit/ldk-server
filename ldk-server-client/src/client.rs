@@ -436,6 +436,7 @@ impl LdkServerClient {
 		&self, request: &Rq, method: &str,
 	) -> Result<Rs, LdkServerError> {
 		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
+		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
 		let auth_header = self.compute_auth_header(&grpc_body);
@@ -444,6 +445,7 @@ impl LdkServerClient {
 			.client
 			.post(&url)
 			.header("content-type", "application/grpc+proto")
+			.header("content-length", content_length)
 			.header("te", "trailers")
 			.header("x-auth", auth_header)
 			.body(grpc_body)
@@ -476,6 +478,7 @@ impl LdkServerClient {
 		&self, request: &Rq, method: &str,
 	) -> Result<GrpcStream<Rs>, LdkServerError> {
 		let grpc_body = encode_grpc_frame(&request.encode_to_vec()).to_vec();
+		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
 		let auth_header = self.compute_auth_header(&grpc_body);
@@ -486,6 +489,7 @@ impl LdkServerClient {
 				HyperRequest::post(&url)
 					.version(Version::HTTP_2)
 					.header("content-type", "application/grpc+proto")
+					.header("content-length", content_length)
 					.header("te", "trailers")
 					.header("x-auth", auth_header)
 					.body(HyperBody::from(grpc_body))

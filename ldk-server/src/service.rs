@@ -14,7 +14,7 @@ use std::sync::Arc;
 use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
 use hyper::service::Service;
-use hyper::{Request, Response};
+use hyper::{HeaderMap, Request, Response};
 use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
@@ -256,7 +256,11 @@ impl Service<Request<Incoming>> for NodeService {
 		let shutdown_rx = self.shutdown_rx.clone();
 		let (request_parts, request_body) = req.into_parts();
 		let future: Self::Future = Box::pin(async move {
-			let body_bytes = match read_request_body(request_body).await {
+			let content_length = match request_content_length(&request_parts.headers) {
+				Ok(content_length) => content_length,
+				Err(status) => return Ok(grpc_error_response(status)),
+			};
+			let body_bytes = match read_request_body(request_body, content_length).await {
 				Ok(bytes) => bytes,
 				Err(status) => return Ok(grpc_error_response(status)),
 			};
@@ -499,7 +503,39 @@ async fn handle_grpc_unary<
 	}
 }
 
-async fn read_request_body(body: Incoming) -> Result<bytes::Bytes, GrpcStatus> {
+fn request_content_length(headers: &HeaderMap) -> Result<Option<u64>, GrpcStatus> {
+	let Some(content_length) = headers.get("content-length") else {
+		return Ok(None);
+	};
+	let len = content_length.to_str().ok().and_then(|value| value.parse::<u64>().ok()).ok_or_else(
+		|| GrpcStatus::new(GRPC_STATUS_INVALID_ARGUMENT, "Invalid content-length header"),
+	)?;
+	if len > MAX_BODY_SIZE as u64 {
+		return Err(GrpcStatus::new(
+			GRPC_STATUS_INVALID_ARGUMENT,
+			"Request body too large or failed to read",
+		));
+	}
+	Ok(Some(len))
+}
+
+fn validate_request_body_len(
+	content_length: Option<u64>, actual_len: usize,
+) -> Result<(), GrpcStatus> {
+	if let Some(expected_len) = content_length {
+		if expected_len != actual_len as u64 {
+			return Err(GrpcStatus::new(
+				GRPC_STATUS_INVALID_ARGUMENT,
+				"Request body length does not match content-length",
+			));
+		}
+	}
+	Ok(())
+}
+
+async fn read_request_body(
+	body: Incoming, content_length: Option<u64>,
+) -> Result<bytes::Bytes, GrpcStatus> {
 	let limited_body = Limited::new(body, MAX_BODY_SIZE);
 	let bytes = match limited_body.collect().await {
 		Ok(collected) => collected.to_bytes(),
@@ -510,6 +546,7 @@ async fn read_request_body(body: Incoming) -> Result<bytes::Bytes, GrpcStatus> {
 			));
 		},
 	};
+	validate_request_body_len(content_length, bytes.len())?;
 	Ok(bytes)
 }
 
@@ -605,5 +642,56 @@ mod tests {
 		let result = validate_auth(&req, "test_api_key", b"test body");
 		assert!(result.is_err());
 		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
+	}
+
+	#[test]
+	fn test_request_content_length_missing() {
+		let headers = HeaderMap::new();
+		assert_eq!(request_content_length(&headers).unwrap(), None);
+	}
+
+	#[test]
+	fn test_request_content_length_parses_value() {
+		let mut headers = HeaderMap::new();
+		headers.insert("content-length", "42".parse().unwrap());
+
+		assert_eq!(request_content_length(&headers).unwrap(), Some(42));
+	}
+
+	#[test]
+	fn test_request_content_length_rejects_invalid_value() {
+		let mut headers = HeaderMap::new();
+		headers.insert("content-length", "not-a-number".parse().unwrap());
+
+		let err = request_content_length(&headers).unwrap_err();
+		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+		assert_eq!(err.message, "Invalid content-length header");
+	}
+
+	#[test]
+	fn test_request_content_length_rejects_oversized_value() {
+		let mut headers = HeaderMap::new();
+		headers.insert("content-length", (MAX_BODY_SIZE as u64 + 1).to_string().parse().unwrap());
+
+		let err = request_content_length(&headers).unwrap_err();
+		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+		assert_eq!(err.message, "Request body too large or failed to read");
+	}
+
+	#[test]
+	fn test_validate_request_body_len_allows_matching_length() {
+		assert!(validate_request_body_len(Some(5), 5).is_ok());
+	}
+
+	#[test]
+	fn test_validate_request_body_len_allows_missing_length() {
+		assert!(validate_request_body_len(None, 5).is_ok());
+	}
+
+	#[test]
+	fn test_validate_request_body_len_rejects_mismatch() {
+		let err = validate_request_body_len(Some(6), 5).unwrap_err();
+		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+		assert_eq!(err.message, "Request body length does not match content-length");
 	}
 }
