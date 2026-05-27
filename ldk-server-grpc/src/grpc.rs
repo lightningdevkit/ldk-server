@@ -191,6 +191,7 @@ pub fn grpc_error_response(status: GrpcStatus) -> http::Response<GrpcBody> {
 		.status(200)
 		.header("content-type", "application/grpc+proto")
 		.header("grpc-accept-encoding", "identity")
+		.header("content-length", "0")
 		.header("grpc-status", status.code.to_string());
 	if !status.message.is_empty() {
 		let encoded = percent_encode(&status.message);
@@ -203,12 +204,15 @@ pub fn grpc_error_response(status: GrpcStatus) -> http::Response<GrpcBody> {
 
 /// Build an HTTP 200 response with gRPC content-type and the given body.
 pub fn grpc_response(body: GrpcBody) -> http::Response<GrpcBody> {
-	http::Response::builder()
+	let mut builder = http::Response::builder()
 		.status(200)
 		.header("content-type", "application/grpc+proto")
-		.header("grpc-accept-encoding", "identity")
-		.body(body)
-		.unwrap()
+		.header("grpc-accept-encoding", "identity");
+	if let GrpcBody::Unary { data, .. } = &body {
+		let len = data.as_ref().map_or(0, Bytes::len);
+		builder = builder.header("content-length", len.to_string());
+	}
+	builder.body(body).unwrap()
 }
 
 /// Validate that the request looks like a gRPC call.
@@ -320,6 +324,30 @@ mod tests {
 		assert_eq!(&encoded[..5], &[0, 0, 0, 0, 0]);
 		let decoded = decode_grpc_body(&encoded).unwrap();
 		assert!(decoded.is_empty());
+	}
+
+	#[test]
+	fn test_grpc_response_sets_unary_content_length() {
+		let data = encode_grpc_frame(b"hello");
+		let expected_len = data.len().to_string();
+		let response = grpc_response(GrpcBody::Unary { data: Some(data), trailers_sent: false });
+
+		assert_eq!(response.headers().get("content-length").unwrap(), expected_len.as_str());
+	}
+
+	#[test]
+	fn test_grpc_response_omits_stream_content_length() {
+		let (_tx, rx) = tokio::sync::mpsc::channel(1);
+		let response = grpc_response(GrpcBody::Stream { rx, done: false });
+
+		assert!(response.headers().get("content-length").is_none());
+	}
+
+	#[test]
+	fn test_grpc_error_response_sets_zero_content_length() {
+		let response = grpc_error_response(GrpcStatus::new(GRPC_STATUS_INVALID_ARGUMENT, "bad"));
+
+		assert_eq!(response.headers().get("content-length").unwrap(), "0");
 	}
 
 	#[test]
