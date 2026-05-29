@@ -1244,6 +1244,20 @@ pub struct Bolt11Feature {
 	#[prost(bool, tag = "3")]
 	pub is_known: bool,
 }
+/// Custom TLV record attached to a payment.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CustomTlvRecord {
+	/// TLV type number.
+	#[prost(uint64, tag = "1")]
+	pub type_num: u64,
+	/// Raw TLV value.
+	#[prost(bytes = "bytes", tag = "2")]
+	pub value: ::prost::bytes::Bytes,
+}
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

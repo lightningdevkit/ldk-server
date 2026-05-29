@@ -470,6 +470,9 @@ pub struct SpontaneousSendRequest {
 	/// Configuration options for payment routing and pathfinding.
 	#[prost(message, optional, tag = "3")]
 	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
+	/// Custom TLV records to attach to the outgoing payment.
+	#[prost(message, repeated, tag = "4")]
+	pub custom_tlvs: ::prost::alloc::vec::Vec<super::types::CustomTlvRecord>,
 }
 /// The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

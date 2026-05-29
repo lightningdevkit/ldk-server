@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
-use hex_conservative::DisplayHex;
+use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
 	get_default_config_path, load_config, resolve_api_key, resolve_base_url, resolve_cert_path,
@@ -45,8 +45,8 @@ use ldk_server_client::ldk_server_grpc::api::{
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
-	RouteParametersConfig,
+	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
+	PageToken, RouteParametersConfig,
 };
 use ldk_server_client::{
 	DEFAULT_EXPIRY_SECS, DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF, DEFAULT_MAX_PATH_COUNT,
@@ -314,6 +314,12 @@ enum Commands {
 			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
+		#[arg(
+			long = "custom-tlv",
+			value_parser = parse_custom_tlv,
+			help = "Custom TLV record to attach, format: <type_num>:<hex_value>. Repeatable. type_num must be >= 65536."
+		)]
+		custom_tlvs: Vec<(u64, Vec<u8>)>,
 	},
 	#[command(
 		about = "Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer"
@@ -810,6 +816,7 @@ async fn main() {
 			max_total_cltv_expiry_delta,
 			max_path_count,
 			max_channel_saturation_power_of_half,
+			custom_tlvs,
 		} => {
 			let amount_msat = amount.to_msat();
 			let max_total_routing_fee_msat = max_total_routing_fee.map(|a| a.to_msat());
@@ -822,12 +829,18 @@ async fn main() {
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
 
+			let proto_custom_tlvs: Vec<_> = custom_tlvs
+				.into_iter()
+				.map(|(type_num, value)| CustomTlvRecord { type_num, value: value.into() })
+				.collect();
+
 			handle_response_result::<_, SpontaneousSendResponse>(
 				client
 					.spontaneous_send(SpontaneousSendRequest {
 						amount_msat,
 						node_id,
 						route_parameters: Some(route_parameters),
+						custom_tlvs: proto_custom_tlvs,
 					})
 					.await,
 			);
@@ -1249,6 +1262,19 @@ fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
 	Ok(PageToken { token: parts[0].to_string(), index })
 }
 
+fn parse_custom_tlv(s: &str) -> Result<(u64, Vec<u8>), String> {
+	let (type_str, hex_str) =
+		s.split_once(':').ok_or_else(|| format!("expected <type_num>:<hex_value>, got '{s}'"))?;
+	let type_num: u64 =
+		type_str.parse().map_err(|e| format!("invalid type number '{type_str}': {e}"))?;
+	if type_num < 65536 {
+		return Err(format!("type number must be >= 65536, got {type_num}"));
+	}
+	let value =
+		Vec::<u8>::from_hex(hex_str).map_err(|e| format!("invalid hex value '{hex_str}': {e}"))?;
+	Ok((type_num, value))
+}
+
 fn handle_error_msg(msg: String) -> ! {
 	eprintln!("Error: {}", sanitize_for_terminal(msg));
 	std::process::exit(1);
@@ -1264,4 +1290,34 @@ fn handle_error(e: LdkServerError) -> ! {
 	};
 	eprintln!("Error ({}): {}", error_type, e.message);
 	std::process::exit(1); // Exit with status code 1 on error.
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn parse_custom_tlv_accepts_valid_record() {
+		let (type_num, value) = parse_custom_tlv("65537:deadbeef").unwrap();
+		assert_eq!(type_num, 65537);
+		assert_eq!(value, vec![0xde, 0xad, 0xbe, 0xef]);
+	}
+
+	#[test]
+	fn parse_custom_tlv_rejects_missing_separator() {
+		let err = parse_custom_tlv("65537").unwrap_err();
+		assert!(err.contains("expected <type_num>:<hex_value>"));
+	}
+
+	#[test]
+	fn parse_custom_tlv_rejects_reserved_type() {
+		let err = parse_custom_tlv("65535:00").unwrap_err();
+		assert!(err.contains("type number must be >= 65536"));
+	}
+
+	#[test]
+	fn parse_custom_tlv_rejects_invalid_hex() {
+		let err = parse_custom_tlv("65537:not-hex").unwrap_err();
+		assert!(err.contains("invalid hex value"));
+	}
 }

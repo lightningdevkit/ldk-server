@@ -30,6 +30,7 @@ use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::events::ClosureReason;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
+use ldk_node::CustomTlvRecord;
 use ldk_node::{Builder, Event, Node};
 use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
@@ -41,6 +42,7 @@ use tokio::select;
 use tokio::signal::unix::SignalKind;
 use tokio::sync::broadcast;
 
+use crate::api::node_to_proto_custom_tlv;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
@@ -446,20 +448,36 @@ fn main() {
 								metrics.update_channels_count(true);
 							}
 						}
-						Event::PaymentReceived { payment_id, payment_hash, amount_msat, .. } => {
+						Event::PaymentReceived {
+							payment_id,
+							payment_hash,
+							amount_msat,
+							custom_records,
+							..
+						} => {
 							info!(
 								"PAYMENT_RECEIVED: with id {:?}, hash {}, amount_msat {}",
 								payment_id, payment_hash, amount_msat
 							);
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
-							send_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentReceived(events::PaymentReceived {
-									payment: Some(payment_ref.clone()),
-								}),
+							let proto_custom_records: Vec<_> = custom_records
+								.iter()
+								.map(node_to_proto_custom_tlv)
+								.collect();
+
+							send_event_and_upsert_payment(
+								&payment_id,
+								move |payment_ref| {
+									event_envelope::Event::PaymentReceived(events::PaymentReceived {
+										payment: Some(payment_ref.clone()),
+										custom_records: proto_custom_records,
+									})
+								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store));
+								Arc::clone(&paginated_store),
+							);
 
 							if let Some(metrics) = &metrics {
 								metrics.update_all_balances(&event_node);
@@ -496,14 +514,18 @@ fn main() {
 								metrics.update_payments_count(false);
 							}
 						},
-						Event::PaymentClaimable {payment_id, ..} => {
-							send_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentClaimable(events::PaymentClaimable {
-									payment: Some(payment_ref.clone()),
-								}),
+						Event::PaymentClaimable { payment_id, custom_records, .. } => {
+							send_event_and_upsert_payment(
+								&payment_id,
+								|payment_ref| {
+									event_envelope::Event::PaymentClaimable(
+										build_payment_claimable_proto(payment_ref, &custom_records),
+									)
+								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store));
+								Arc::clone(&paginated_store),
+							);
 						},
 						Event::PaymentForwarded {
 							prev_channel_id,
@@ -623,7 +645,7 @@ fn main() {
 }
 
 fn send_event_and_upsert_payment(
-	payment_id: &PaymentId, payment_to_event: fn(&Payment) -> event_envelope::Event,
+	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
 	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
@@ -840,6 +862,17 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 	}
 }
 
+fn build_payment_claimable_proto(
+	payment_ref: &Payment, custom_records: &[CustomTlvRecord],
+) -> events::PaymentClaimable {
+	let proto_custom_records: Vec<_> =
+		custom_records.iter().map(node_to_proto_custom_tlv).collect();
+	events::PaymentClaimable {
+		payment: Some(payment_ref.clone()),
+		custom_records: proto_custom_records,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use ldk_server_grpc::events::channel_state_change_reason::Details;
@@ -939,5 +972,20 @@ mod tests {
 		let proto = closure_reason_to_proto(&ClosureReason::FundingTimedOut);
 		assert_eq!(proto.kind, events::ChannelStateChangeReasonKind::FundingTimedOut as i32);
 		assert!(proto.details.is_none());
+	}
+
+	#[test]
+	fn payment_claimable_proto_contains_custom_records() {
+		let payment = ldk_server_grpc::types::Payment::default();
+		let records = vec![
+			CustomTlvRecord { type_num: 65537, value: vec![1, 2, 3] },
+			CustomTlvRecord { type_num: 65538, value: Vec::new() },
+		];
+		let proto = build_payment_claimable_proto(&payment, &records);
+		assert_eq!(proto.custom_records.len(), 2);
+		assert_eq!(proto.custom_records[0].type_num, 65537);
+		assert_eq!(proto.custom_records[0].value.to_vec(), vec![1, 2, 3]);
+		assert_eq!(proto.custom_records[1].type_num, 65538);
+		assert!(proto.custom_records[1].value.to_vec().is_empty());
 	}
 }

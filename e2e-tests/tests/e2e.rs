@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -899,6 +900,47 @@ async fn test_cli_spontaneous_send() {
 
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
 	assert!(matches!(&event_b.event, Some(Event::PaymentReceived(_))));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_cli_spontaneous_send_with_custom_tlvs() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let mut events_b = server_b.client().subscribe_events().await.unwrap();
+
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Two odd-type custom TLVs (even types are rejected at the receiver).
+	let output = run_cli(
+		&server_a,
+		&[
+			"spontaneous-send",
+			server_b.node_id(),
+			"10000sat",
+			"--custom-tlv",
+			"65537:deadbeef",
+			"--custom-tlv",
+			"65539:cafe",
+		],
+	);
+	assert!(!output["payment_id"].as_str().unwrap().is_empty());
+
+	// The receiver must observe both TLVs in PaymentReceived.
+	let event_b =
+		wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
+	let Some(Event::PaymentReceived(pr)) = event_b.event else {
+		panic!("expected PaymentReceived");
+	};
+	assert_eq!(pr.custom_records.len(), 2);
+	let by_type: HashMap<u64, Vec<u8>> = pr
+		.custom_records
+		.into_iter()
+		.map(|r| (r.type_num, r.value.to_vec()))
+		.collect();
+	assert_eq!(by_type.get(&65537).cloned(), Some(vec![0xde, 0xad, 0xbe, 0xef]));
+	assert_eq!(by_type.get(&65539).cloned(), Some(vec![0xca, 0xfe]));
 }
 
 #[tokio::test]

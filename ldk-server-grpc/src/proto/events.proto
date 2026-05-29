@@ -96,6 +96,8 @@ message ChannelStateChanged {
 message PaymentReceived {
   // The payment details for the payment in event.
   types.Payment payment = 1;
+  // Custom TLV records attached to the incoming payment, if any.
+  repeated types.CustomTlvRecord custom_records = 2;
 }
 
 // PaymentSuccessful indicates a sent payment was successful.
@@ -115,6 +117,8 @@ message PaymentFailed {
 message PaymentClaimable {
   // The payment details for the claimable payment.
   types.Payment payment = 1;
+  // Custom TLV records attached to the claimable payment, if any.
+  repeated types.CustomTlvRecord custom_records = 2;
 }
 
 // PaymentForwarded indicates a payment was forwarded through the node.

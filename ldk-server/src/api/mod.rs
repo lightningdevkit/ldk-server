@@ -11,8 +11,9 @@ use std::collections::HashMap;
 
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::routing::router::RouteParametersConfig;
+use ldk_node::CustomTlvRecord as NodeCustomTlvRecord;
 use ldk_server_grpc::types::channel_config::MaxDustHtlcExposure;
-use ldk_server_grpc::types::Bolt11Feature;
+use ldk_server_grpc::types::{Bolt11Feature, CustomTlvRecord as ProtoCustomTlvRecord};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -129,6 +130,14 @@ pub(crate) fn build_route_parameters_config_from_proto(
 	}
 }
 
+pub(crate) fn proto_to_node_custom_tlv(proto: &ProtoCustomTlvRecord) -> NodeCustomTlvRecord {
+	NodeCustomTlvRecord { type_num: proto.type_num, value: proto.value.to_vec() }
+}
+
+pub(crate) fn node_to_proto_custom_tlv(node: &NodeCustomTlvRecord) -> ProtoCustomTlvRecord {
+	ProtoCustomTlvRecord { type_num: node.type_num, value: node.value.clone().into() }
+}
+
 /// Decodes feature flags into a map keyed by bit number. Feature names are derived
 /// from LDK's `Features::Display` impl, so they stay in sync automatically.
 ///
@@ -181,4 +190,44 @@ fn parse_feature_name(display: &str) -> (&str, bool) {
 		}
 	}
 	("unknown", false)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn proto_to_node_custom_tlv_preserves_fields() {
+		let proto =
+			ProtoCustomTlvRecord { type_num: 65537, value: vec![0xde, 0xad, 0xbe, 0xef].into() };
+		let node = proto_to_node_custom_tlv(&proto);
+		assert_eq!(node.type_num, 65537);
+		assert_eq!(node.value, vec![0xde, 0xad, 0xbe, 0xef]);
+	}
+
+	#[test]
+	fn node_to_proto_custom_tlv_preserves_fields() {
+		let node = NodeCustomTlvRecord { type_num: 65537, value: vec![0xde, 0xad, 0xbe, 0xef] };
+		let proto = node_to_proto_custom_tlv(&node);
+		assert_eq!(proto.type_num, 65537);
+		assert_eq!(proto.value.to_vec(), vec![0xde, 0xad, 0xbe, 0xef]);
+	}
+
+	#[test]
+	fn empty_custom_tlv_value_round_trips() {
+		let proto = ProtoCustomTlvRecord { type_num: 70000, value: Vec::new().into() };
+		let node = proto_to_node_custom_tlv(&proto);
+		let back = node_to_proto_custom_tlv(&node);
+		assert_eq!(back.type_num, 70000);
+		assert!(back.value.is_empty());
+	}
+
+	#[test]
+	fn non_empty_custom_tlv_value_round_trips() {
+		let proto = ProtoCustomTlvRecord { type_num: 70001, value: vec![1, 2, 3, 4].into() };
+		let node = proto_to_node_custom_tlv(&proto);
+		let back = node_to_proto_custom_tlv(&node);
+		assert_eq!(back.type_num, 70001);
+		assert_eq!(back.value.to_vec(), vec![1, 2, 3, 4]);
+	}
 }

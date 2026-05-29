@@ -368,6 +368,9 @@ message SpontaneousSendRequest {
 
   // Configuration options for payment routing and pathfinding.
   optional types.RouteParametersConfig route_parameters = 3;
+
+  // Custom TLV records to attach to the outgoing payment.
+  repeated types.CustomTlvRecord custom_tlvs = 4;
 }
 
 // The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.

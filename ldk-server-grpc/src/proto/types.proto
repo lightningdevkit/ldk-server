@@ -945,3 +945,11 @@ message Bolt11Feature {
   // Whether this feature is known.
   bool is_known = 3;
 }
+
+// Custom TLV record attached to a payment.
+message CustomTlvRecord {
+  // TLV type number.
+  uint64 type_num = 1;
+  // Raw TLV value.
+  bytes value = 2;
+}
