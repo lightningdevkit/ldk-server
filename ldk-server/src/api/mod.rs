@@ -10,9 +10,14 @@
 use std::collections::HashMap;
 
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
+use ldk_node::lightning::bitcoin::secp256k1::PublicKey;
+use ldk_node::lightning::blinded_path::{Direction, IntroductionNode};
 use ldk_node::lightning::routing::router::RouteParametersConfig;
+use ldk_server_grpc::types::blinded_path::IntroductionNode as ProtoIntroductionNode;
 use ldk_server_grpc::types::channel_config::MaxDustHtlcExposure;
-use ldk_server_grpc::types::Bolt11Feature;
+use ldk_server_grpc::types::{
+	BlindedPath, Bolt11Feature, ChannelDirection, DirectedShortChannelId,
+};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
@@ -126,6 +131,33 @@ pub(crate) fn build_route_parameters_config_from_proto(
 			}))
 		},
 		None => Ok(None),
+	}
+}
+
+/// Converts a blinded path into its proto representation. Shared by BOLT12 offer and
+/// invoice decoding: offers expose blinded message paths and invoices expose blinded
+/// payment paths, but both carry the same introduction node, blinding point, and hop
+/// count surfaced here.
+pub(crate) fn blinded_path_to_proto(
+	introduction_node: &IntroductionNode, blinding_point: PublicKey, num_hops: usize,
+) -> BlindedPath {
+	let introduction_node = match introduction_node {
+		IntroductionNode::NodeId(node_id) => ProtoIntroductionNode::NodeId(node_id.to_string()),
+		IntroductionNode::DirectedShortChannelId(direction, scid) => {
+			let direction = match direction {
+				Direction::NodeOne => ChannelDirection::NodeOne,
+				Direction::NodeTwo => ChannelDirection::NodeTwo,
+			};
+			ProtoIntroductionNode::DirectedScid(DirectedShortChannelId {
+				scid: *scid,
+				direction: direction as i32,
+			})
+		},
+	};
+	BlindedPath {
+		introduction_node: Some(introduction_node),
+		blinding_point: blinding_point.to_string(),
+		num_hops: num_hops as u32,
 	}
 }
 

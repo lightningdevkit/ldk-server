@@ -341,9 +341,9 @@ enum Commands {
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
 	},
-	#[command(about = "Decode a BOLT11 invoice and display its fields")]
+	#[command(about = "Decode a BOLT11 or BOLT12 invoice and display its fields")]
 	DecodeInvoice {
-		#[arg(help = "The BOLT11 invoice string to decode")]
+		#[arg(help = "A BOLT11 invoice string or a hex-encoded BOLT12 invoice to decode")]
 		invoice: String,
 	},
 	#[command(about = "Decode a BOLT12 offer and display its fields")]

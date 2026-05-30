@@ -84,4 +84,5 @@ async fn test_mcp_live_tool_calls() {
 	assert_eq!(decode_invoice_json["destination"], server.node_id());
 	assert_eq!(decode_invoice_json["description"], "mcp decode");
 	assert_eq!(decode_invoice_json["amount_msat"], 50_000_000u64);
+	assert_eq!(decode_invoice_json["kind"], "bolt11");
 }
