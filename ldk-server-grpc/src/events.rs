@@ -150,6 +150,9 @@ pub struct PaymentReceived {
 	/// The payment details for the payment in event.
 	#[prost(message, optional, tag = "1")]
 	pub payment: ::core::option::Option<super::types::Payment>,
+	/// Custom TLV records attached to the incoming payment, if any.
+	#[prost(message, repeated, tag = "2")]
+	pub custom_records: ::prost::alloc::vec::Vec<super::types::CustomTlvRecord>,
 }
 /// PaymentSuccessful indicates a sent payment was successful.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -184,6 +187,9 @@ pub struct PaymentClaimable {
 	/// The payment details for the claimable payment.
 	#[prost(message, optional, tag = "1")]
 	pub payment: ::core::option::Option<super::types::Payment>,
+	/// Custom TLV records attached to the claimable payment, if any.
+	#[prost(message, repeated, tag = "2")]
+	pub custom_records: ::prost::alloc::vec::Vec<super::types::CustomTlvRecord>,
 }
 /// PaymentForwarded indicates a payment was forwarded through the node.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
