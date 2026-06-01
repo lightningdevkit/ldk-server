@@ -1177,8 +1177,9 @@ async fn test_forwarded_payment_event() {
 	let b_addr = SocketAddress::from_str(&format!("127.0.0.1:{}", server_b.p2p_port)).unwrap();
 	builder_c.set_liquidity_source_lsps2(b_node_id, b_addr, None);
 
-	let seed_path_c = storage_dir_c.join("keys_seed").to_str().unwrap().to_string();
-	let node_entropy_c = ldk_node::entropy::NodeEntropy::from_seed_path(seed_path_c).unwrap();
+	let mnemonic_c = ldk_node::entropy::generate_entropy_mnemonic(None);
+	let node_entropy_c =
+		ldk_node::entropy::NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
 	let node_c = builder_c.build(node_entropy_c).unwrap();
 
 	node_c.start().unwrap();
