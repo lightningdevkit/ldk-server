@@ -930,6 +930,7 @@ fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
 mod tests {
 	use std::str::FromStr;
 
+	use clap::Parser;
 	use ldk_node::bitcoin::secp256k1::PublicKey;
 	use ldk_node::bitcoin::Network;
 	use ldk_node::lightning::ln::msgs::SocketAddress;
@@ -1860,5 +1861,80 @@ mod tests {
 			SocketAddress::from_str("[2001:db8::1]:53").unwrap()
 		);
 		assert!(parse_dns_server_address("invalid@address").is_err());
+	}
+
+	#[test]
+	fn test_rejects_node_entropy_config() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rejects_node_entropy_config.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			grpc_service_address = "127.0.0.1:3002"
+
+			[node.entropy]
+			mnemonic_file = "/some/path/keys_mnemonic"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+		assert!(err.to_string().contains("unknown field `entropy`"));
+	}
+
+	#[test]
+	fn test_rejects_seed_file_config() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rejects_seed_file_config.toml";
+
+		let toml_config = r#"
+			[node]
+			network = "regtest"
+			grpc_service_address = "127.0.0.1:3002"
+
+			[node.entropy]
+			seed_file = "/some/path/keys_seed"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			"#;
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+		assert!(err.to_string().contains("unknown field `entropy`"));
+	}
+
+	#[test]
+	fn test_rejects_node_entropy_args() {
+		let mnemonic_result = ArgsConfig::try_parse_from([
+			"ldk-server",
+			"--node-entropy-mnemonic-file",
+			"/some/path/keys_mnemonic",
+		]);
+		let seed_result = ArgsConfig::try_parse_from([
+			"ldk-server",
+			"--node-entropy-seed-file",
+			"/old/keys_seed",
+		]);
+
+		assert!(mnemonic_result.is_err());
+		assert!(seed_result.is_err());
 	}
 }
