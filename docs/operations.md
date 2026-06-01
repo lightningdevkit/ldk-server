@@ -48,7 +48,7 @@ setup):
 
 | File                                   | Priority     | Description                                                                |
 | -------------------------------------- | ------------ | -------------------------------------------------------------------------- |
-| `<storage_dir>/keys_seed`              | **Critical** | Node identity and master secret. Required to recover on-chain funds.       |
+| `<storage_dir>/keys_mnemonic`          | **Critical** | BIP39 mnemonic. Required to recover on-chain funds. Default for new installs. |
 | `<network_dir>/ldk_node_data.sqlite`   | **Critical** | Channel state and on-chain wallet data. Required to recover channel funds. |
 | `<network_dir>/ldk_server_data.sqlite` | Nice-to-have | Payment and forwarding history                                             |
 
@@ -195,6 +195,6 @@ Data is stored in per-network subdirectories (`bitcoin/`, `testnet/`, `signet/`,
 etc.) under the storage root. This means you can run multiple networks from one storage
 directory without conflicts.
 
-The `keys_seed` file is shared across networks (stored at the storage root, not per-network).
-Keys are split by network at the derivation path level, so the same seed will produce
+The `keys_mnemonic` file is shared across networks (stored at the storage root, not per-network).
+Keys are split by network at the derivation path level, so the same mnemonic will produce
 different keys.

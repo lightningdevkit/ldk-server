@@ -151,7 +151,7 @@ Two resolution methods are supported via the `mode` field:
 
 ```
 <storage_dir>/
-  keys_seed              # Node entropy/seed
+  keys_mnemonic          # BIP39 mnemonic (default for new installs)
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
@@ -161,6 +161,7 @@ Two resolution methods are supported via the `mode` field:
     ldk_server_data.sqlite # Payment and forwarding history
 ```
 
-The `keys_seed` file is the node's master secret, required to recover on-chain funds.
-`ldk_node_data.sqlite` holds channel state, both are required to recover channel funds. See
-[Operations - Backups](operations.md#backups) for backup guidance.
+The mnemonic is the node's master secret, required to recover on-chain funds. On first start,
+ldk-server generates a fresh 24-word BIP39 mnemonic at `<storage_dir>/keys_mnemonic` if the file
+does not already exist. `ldk_node_data.sqlite` holds channel state, both are required to recover
+channel funds. See [Operations - Backups](operations.md#backups) for backup guidance.
