@@ -376,7 +376,7 @@ fn main() {
 							} => {
 								info!(
 									"CHANNEL_READY: {} from counterparty {:?}",
-									channel_id, counterparty_node_id
+									channel_id, counterparty_node_id.map(|p| p.to_string()),
 								);
 
 								let channel_id_hex = channel_id.0.to_lower_hex_string();
@@ -412,7 +412,7 @@ fn main() {
 							} => {
 								info!(
 									"CHANNEL_CLOSED: {} from counterparty {:?}",
-									channel_id, counterparty_node_id
+									channel_id, counterparty_node_id.map(|p| p.to_string()),
 								);
 
 								let channel_id_hex = channel_id.0.to_lower_hex_string();
