@@ -58,6 +58,7 @@ use crate::util::tls::get_or_generate_tls_config;
 use crate::util::{systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
+const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -241,7 +242,7 @@ fn main() {
 	let (event_sender, _) = broadcast::channel::<EventEnvelope>(1024);
 	let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-	info!("Starting up...");
+	info!("Starting ldk-server version {FULL_VERSION}");
 	match node.start() {
 		Ok(()) => {},
 		Err(e) => {
