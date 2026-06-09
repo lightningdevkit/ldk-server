@@ -29,11 +29,10 @@ use ldk_node::config::Config;
 use ldk_node::lightning::events::ClosureReason;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
-use ldk_node::CustomTlvRecord;
-use ldk_node::{Builder, Event, Node};
+use ldk_node::{Builder, CustomTlvRecord, Event, Node};
 use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
-use ldk_server_grpc::types::Payment;
+use ldk_server_grpc::types::{HtlcLocator, Payment};
 use log::{debug, error, info};
 use prost::Message;
 use tokio::net::TcpListener;
@@ -526,29 +525,41 @@ fn main() {
 							);
 						},
 						Event::PaymentForwarded {
-							prev_channel_id,
-							next_channel_id,
-							prev_user_channel_id,
-							next_user_channel_id,
-							prev_node_id,
-							next_node_id,
+							prev_htlcs,
+							next_htlcs,
 							total_fee_earned_msat,
 							skimmed_fee_msat,
 							claim_from_onchain_tx,
 							outbound_amount_forwarded_msat
 						} => {
-
-							info!("PAYMENT_FORWARDED: with outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound channel: {}, outbound channel: {}",
-								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
+							info!(
+								"PAYMENT_FORWARDED: outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound HTLCs: {}, outbound HTLCs: {}",
+								outbound_amount_forwarded_msat.unwrap_or(0),
+								total_fee_earned_msat.unwrap_or(0),
+								prev_htlcs.len(),
+								next_htlcs.len(),
 							);
 
+							let prev_htlcs = prev_htlcs
+								.into_iter()
+								.map(|htlc| HtlcLocator {
+									channel_id: htlc.channel_id.to_string(),
+									user_channel_id: htlc.user_channel_id.map(|u| u.0.to_string()),
+									node_id: htlc.node_id.map(|n| n.to_string()),
+								})
+								.collect();
+							let next_htlcs = next_htlcs
+								.into_iter()
+								.map(|htlc| HtlcLocator {
+									channel_id: htlc.channel_id.to_string(),
+									user_channel_id: htlc.user_channel_id.map(|u| u.0.to_string()),
+									node_id: htlc.node_id.map(|n| n.to_string()),
+								})
+								.collect();
+
 							let forwarded_payment = forwarded_payment_to_proto(
-								prev_channel_id,
-								next_channel_id,
-								prev_user_channel_id,
-								next_user_channel_id,
-								prev_node_id,
-								next_node_id,
+								prev_htlcs,
+								next_htlcs,
 								total_fee_earned_msat,
 								skimmed_fee_msat,
 								claim_from_onchain_tx,
