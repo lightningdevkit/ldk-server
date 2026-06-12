@@ -54,7 +54,7 @@ pub struct Payment {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaymentKind {
-	#[prost(oneof = "payment_kind::Kind", tags = "1, 2, 3, 4, 5, 6")]
+	#[prost(oneof = "payment_kind::Kind", tags = "1, 2, 3, 4, 5")]
 	pub kind: ::core::option::Option<payment_kind::Kind>,
 }
 /// Nested message and enum types in `PaymentKind`.
@@ -69,12 +69,10 @@ pub mod payment_kind {
 		#[prost(message, tag = "2")]
 		Bolt11(super::Bolt11),
 		#[prost(message, tag = "3")]
-		Bolt11Jit(super::Bolt11Jit),
-		#[prost(message, tag = "4")]
 		Bolt12Offer(super::Bolt12Offer),
-		#[prost(message, tag = "5")]
+		#[prost(message, tag = "4")]
 		Bolt12Refund(super::Bolt12Refund),
-		#[prost(message, tag = "6")]
+		#[prost(message, tag = "5")]
 		Spontaneous(super::Spontaneous),
 	}
 }
@@ -158,40 +156,14 @@ pub struct Bolt11 {
 		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
 	)]
 	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
-}
-/// Represents a BOLT 11 payment intended to open an LSPS 2 just-in-time channel.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "serde", serde(default))]
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11Jit {
-	/// The payment hash, i.e., the hash of the preimage.
-	#[prost(string, tag = "1")]
-	pub hash: ::prost::alloc::string::String,
-	/// The pre-image used by the payment.
-	#[prost(string, optional, tag = "2")]
-	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
-	/// The secret used by the payment.
-	#[prost(bytes = "bytes", optional, tag = "3")]
-	#[cfg_attr(
-		feature = "serde",
-		serde(serialize_with = "crate::serde_utils::serialize_opt_bytes_hex")
-	)]
-	pub secret: ::core::option::Option<::prost::bytes::Bytes>,
-	/// Limits applying to how much fee we allow an LSP to deduct from the payment amount.
-	///
-	/// Allowing them to deduct this fee from the first inbound payment will pay for the LSP’s channel opening fees.
-	///
-	/// See \[`LdkChannelConfig::accept_underpaying_htlcs`\](<https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html#structfield.accept_underpaying_htlcs>)
-	/// for more information.
-	#[prost(message, optional, tag = "4")]
-	pub lsp_fee_limits: ::core::option::Option<LspFeeLimits>,
 	/// The value, in thousands of a satoshi, that was deducted from this payment as an extra
 	/// fee taken by our channel counterparty.
 	///
-	/// Will only be `Some` once we received the payment.
-	#[prost(uint64, optional, tag = "5")]
+	/// Will only ever be `Some` for inbound payments received via an [bLIP-52 / LSPS 2]
+	/// just-in-time channel, and only after the payment is observed; `None` otherwise.
+	///
+	/// [bLIP-52 / LSPS 2]: <https://github.com/lightning/blips/blob/master/blip-0052.md>
+	#[prost(uint64, optional, tag = "4")]
 	pub counterparty_skimmed_fee_msat: ::core::option::Option<u64>,
 }
 /// Represents a BOLT 12 ‘offer’ payment, i.e., a payment for an Offer.
@@ -292,7 +264,32 @@ pub struct LspFeeLimits {
 	#[prost(uint64, optional, tag = "2")]
 	pub max_proportional_opening_fee_ppm_msat: ::core::option::Option<u64>,
 }
+/// Identifies the channel and counterparty that an HTLC was processed with.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HtlcLocator {
+	/// The channel that the HTLC was sent or received on.
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+	/// The `user_channel_id` for the channel.
+	/// This can be unset for older serialized events or if the payment was settled on-chain.
+	#[prost(string, optional, tag = "2")]
+	pub user_channel_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The node id of the counterparty for this HTLC.
+	/// This can be unset for older serialized events.
+	#[prost(string, optional, tag = "3")]
+	pub node_id: ::core::option::Option<::prost::alloc::string::String>,
+}
 /// A forwarded payment through our node.
+///
+/// A forwarded payment can involve multiple incoming and outgoing HTLCs, e.g. when acting as a
+/// trampoline router. The `prev_htlcs` and `next_htlcs` fields are the canonical representation of
+/// the HTLCs associated with this forwarding event. Their indices do not imply pairwise
+/// correspondence.
+///
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -300,26 +297,6 @@ pub struct LspFeeLimits {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForwardedPayment {
-	/// The channel id of the incoming channel between the previous node and us.
-	#[prost(string, tag = "1")]
-	pub prev_channel_id: ::prost::alloc::string::String,
-	/// The channel id of the outgoing channel between the next node and us.
-	#[prost(string, tag = "2")]
-	pub next_channel_id: ::prost::alloc::string::String,
-	/// The `user_channel_id` of the incoming channel between the previous node and us.
-	#[prost(string, tag = "3")]
-	pub prev_user_channel_id: ::prost::alloc::string::String,
-	/// The node id of the previous node.
-	#[prost(string, tag = "9")]
-	pub prev_node_id: ::prost::alloc::string::String,
-	/// The node id of the next node.
-	#[prost(string, tag = "10")]
-	pub next_node_id: ::prost::alloc::string::String,
-	/// The `user_channel_id` of the outgoing channel between the next node and us.
-	/// This will be `None` if the payment was settled via an on-chain transaction.
-	/// See the caveat described for the `total_fee_earned_msat` field.
-	#[prost(string, optional, tag = "4")]
-	pub next_user_channel_id: ::core::option::Option<::prost::alloc::string::String>,
 	/// The total fee, in milli-satoshis, which was earned as a result of the payment.
 	///
 	/// Note that if we force-closed the channel over which we forwarded an HTLC while the HTLC was pending, the amount the
@@ -329,23 +306,31 @@ pub struct ForwardedPayment {
 	///
 	/// If the channel which sent us the payment has been force-closed, we will claim the funds via an on-chain transaction.
 	/// In that case we do not yet know the on-chain transaction fees which we will spend and will instead set this to `None`.
-	#[prost(uint64, optional, tag = "5")]
+	#[prost(uint64, optional, tag = "1")]
 	pub total_fee_earned_msat: ::core::option::Option<u64>,
 	/// The share of the total fee, in milli-satoshis, which was withheld in addition to the forwarding fee.
 	/// This will only be set if we forwarded an intercepted HTLC with less than the expected amount. This means our
 	/// counterparty accepted to receive less than the invoice amount.
 	///
 	/// The caveat described above the `total_fee_earned_msat` field applies here as well.
-	#[prost(uint64, optional, tag = "6")]
+	#[prost(uint64, optional, tag = "2")]
 	pub skimmed_fee_msat: ::core::option::Option<u64>,
 	/// If this is true, the forwarded HTLC was claimed by our counterparty via an on-chain transaction.
-	#[prost(bool, tag = "7")]
+	#[prost(bool, tag = "3")]
 	pub claim_from_onchain_tx: bool,
 	/// The final amount forwarded, in milli-satoshis, after the fee is deducted.
 	///
 	/// The caveat described above the `total_fee_earned_msat` field applies here as well.
-	#[prost(uint64, optional, tag = "8")]
+	#[prost(uint64, optional, tag = "4")]
 	pub outbound_amount_forwarded_msat: ::core::option::Option<u64>,
+	/// The set of incoming HTLCs forwarded to our node that will be claimed by this forward.
+	/// This is the canonical incoming HTLC representation.
+	#[prost(message, repeated, tag = "5")]
+	pub prev_htlcs: ::prost::alloc::vec::Vec<HtlcLocator>,
+	/// The set of outgoing HTLCs forwarded by our node that have been claimed by this forward.
+	/// This is the canonical outgoing HTLC representation.
+	#[prost(message, repeated, tag = "6")]
+	pub next_htlcs: ::prost::alloc::vec::Vec<HtlcLocator>,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

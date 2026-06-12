@@ -7,10 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::fs;
-use std::io;
 use std::path::Path;
 use std::str::FromStr;
+use std::{fs, io};
 
 use ldk_node::bip39::Mnemonic;
 use ldk_node::entropy::{generate_entropy_mnemonic, NodeEntropy};
@@ -49,9 +48,10 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use std::os::unix::fs::{MetadataExt, PermissionsExt};
 	use std::path::PathBuf;
+
+	use super::*;
 
 	const STALE_SEED_FILE: &str = "keys_seed";
 	const KNOWN_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";

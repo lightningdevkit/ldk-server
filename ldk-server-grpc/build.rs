@@ -47,10 +47,6 @@ fn generate_protos() {
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_opt_bytes_hex\"))]",
 		)
 		.field_attribute(
-			"types.Bolt11Jit.secret",
-			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_opt_bytes_hex\"))]",
-		)
-		.field_attribute(
 			"types.Bolt12Offer.secret",
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_opt_bytes_hex\"))]",
 		)

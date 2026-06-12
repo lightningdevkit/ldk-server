@@ -33,10 +33,9 @@ message PaymentKind {
   oneof kind {
     Onchain onchain = 1;
     Bolt11 bolt11 = 2;
-    Bolt11Jit bolt11_jit = 3;
-    Bolt12Offer bolt12_offer = 4;
-    Bolt12Refund bolt12_refund = 5;
-    Spontaneous spontaneous = 6;
+    Bolt12Offer bolt12_offer = 3;
+    Bolt12Refund bolt12_refund = 4;
+    Spontaneous spontaneous = 5;
   }
 }
 
@@ -81,32 +80,15 @@ message Bolt11 {
 
   // The secret used by the payment.
   optional bytes secret = 3;
-}
-
-// Represents a BOLT 11 payment intended to open an LSPS 2 just-in-time channel.
-message Bolt11Jit {
-  // The payment hash, i.e., the hash of the preimage.
-  string hash = 1;
-
-  // The pre-image used by the payment.
-  optional string preimage = 2;
-
-  // The secret used by the payment.
-  optional bytes secret = 3;
-
-  // Limits applying to how much fee we allow an LSP to deduct from the payment amount.
-  //
-  // Allowing them to deduct this fee from the first inbound payment will pay for the LSP’s channel opening fees.
-  //
-  // See [`LdkChannelConfig::accept_underpaying_htlcs`](https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html#structfield.accept_underpaying_htlcs)
-  // for more information.
-  LSPFeeLimits lsp_fee_limits = 4;
 
   // The value, in thousands of a satoshi, that was deducted from this payment as an extra
   // fee taken by our channel counterparty.
   //
-  // Will only be `Some` once we received the payment.
-  optional uint64 counterparty_skimmed_fee_msat = 5;
+  // Will only ever be `Some` for inbound payments received via an [bLIP-52 / LSPS 2]
+  // just-in-time channel, and only after the payment is observed; `None` otherwise.
+  //
+  // [bLIP-52 / LSPS 2]: https://github.com/lightning/blips/blob/master/blip-0052.md 
+  optional uint64 counterparty_skimmed_fee_msat = 4;
 }
 
 // Represents a BOLT 12 ‘offer’ payment, i.e., a payment for an Offer.
@@ -219,29 +201,29 @@ enum Network {
   REGTEST = 4;
 }
 
+// Identifies the channel and counterparty that an HTLC was processed with.
+message HtlcLocator {
+  // The channel that the HTLC was sent or received on.
+  string channel_id = 1;
+
+  // The `user_channel_id` for the channel.
+  // This can be unset for older serialized events or if the payment was settled on-chain.
+  optional string user_channel_id = 2;
+
+  // The node id of the counterparty for this HTLC.
+  // This can be unset for older serialized events.
+  optional string node_id = 3;
+}
+
 // A forwarded payment through our node.
+//
+// A forwarded payment can involve multiple incoming and outgoing HTLCs, e.g. when acting as a
+// trampoline router. The `prev_htlcs` and `next_htlcs` fields are the canonical representation of
+// the HTLCs associated with this forwarding event. Their indices do not imply pairwise
+// correspondence.
+//
 // See more: https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded
 message ForwardedPayment{
-  // The channel id of the incoming channel between the previous node and us.
-  string prev_channel_id = 1;
-
-  // The channel id of the outgoing channel between the next node and us.
-  string next_channel_id = 2;
-
-  // The `user_channel_id` of the incoming channel between the previous node and us.
-  string prev_user_channel_id = 3;
-
-  // The node id of the previous node.
-  string prev_node_id = 9;
-
-  // The node id of the next node.
-  string next_node_id = 10;
-
-  // The `user_channel_id` of the outgoing channel between the next node and us.
-  // This will be `None` if the payment was settled via an on-chain transaction.
-  // See the caveat described for the `total_fee_earned_msat` field.
-  optional string next_user_channel_id = 4;
-
   // The total fee, in milli-satoshis, which was earned as a result of the payment.
   //
   // Note that if we force-closed the channel over which we forwarded an HTLC while the HTLC was pending, the amount the
@@ -251,22 +233,30 @@ message ForwardedPayment{
   //
   // If the channel which sent us the payment has been force-closed, we will claim the funds via an on-chain transaction.
   // In that case we do not yet know the on-chain transaction fees which we will spend and will instead set this to `None`.
-  optional uint64 total_fee_earned_msat = 5;
+  optional uint64 total_fee_earned_msat = 1;
 
   // The share of the total fee, in milli-satoshis, which was withheld in addition to the forwarding fee.
   // This will only be set if we forwarded an intercepted HTLC with less than the expected amount. This means our
   // counterparty accepted to receive less than the invoice amount.
   //
   // The caveat described above the `total_fee_earned_msat` field applies here as well.
-  optional uint64 skimmed_fee_msat = 6;
+  optional uint64 skimmed_fee_msat = 2;
 
   // If this is true, the forwarded HTLC was claimed by our counterparty via an on-chain transaction.
-  bool claim_from_onchain_tx = 7;
+  bool claim_from_onchain_tx = 3;
 
   // The final amount forwarded, in milli-satoshis, after the fee is deducted.
   //
   // The caveat described above the `total_fee_earned_msat` field applies here as well.
-  optional uint64 outbound_amount_forwarded_msat = 8;
+  optional uint64 outbound_amount_forwarded_msat = 4;
+
+  // The set of incoming HTLCs forwarded to our node that will be claimed by this forward.
+  // This is the canonical incoming HTLC representation.
+  repeated HtlcLocator prev_htlcs = 5;
+
+  // The set of outgoing HTLCs forwarded by our node that have been claimed by this forward.
+  // This is the canonical outgoing HTLC representation.
+  repeated HtlcLocator next_htlcs = 6;
 
 }
 

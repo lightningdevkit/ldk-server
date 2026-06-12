@@ -242,15 +242,14 @@ async fn test_cli_decode_invoice() {
 	assert_eq!(decoded_var["description"], "no amount");
 
 	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
-	// serde_json escapes control chars (U+0000–U+001F) as \uXXXX in JSON.
 	let desc_with_ansi = "pay me\x1b[31m RED \x1b[0m";
 	let output_ansi = run_cli(&server, &["bolt11-receive", "-d", desc_with_ansi]);
 	let raw_decoded =
 		run_cli_raw(&server, &["decode-invoice", output_ansi["invoice"].as_str().unwrap()]);
 	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
-	// Test that Unicode bidi override characters in the description are escaped
-	// (sanitize_for_terminal replaces them with \uXXXX in CLI output)
+	// LDK exposes invoice descriptions through UntrustedString, which may replace
+	// bidi controls before the CLI sanitizer sees them.
 	let desc_with_bidi = "pay me\u{202E}evil";
 	let output_bidi = run_cli(&server, &["bolt11-receive", "-d", desc_with_bidi]);
 	let raw_bidi =
@@ -259,7 +258,6 @@ async fn test_cli_decode_invoice() {
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]
@@ -336,11 +334,12 @@ async fn test_cli_decode_offer() {
 	let output_bidi = run_cli(&server_a, &["bolt12-receive", desc_with_bidi]);
 	let raw_bidi =
 		run_cli_raw(&server_a, &["decode-offer", output_bidi["offer"].as_str().unwrap()]);
+	// LDK exposes offer descriptions through PrintableString, which may replace
+	// control characters before the CLI sanitizer sees them.
 	assert!(
 		!raw_bidi.contains('\u{202E}'),
 		"Raw CLI output must not contain bidi override characters"
 	);
-	assert!(raw_bidi.contains("\\u202E"), "Bidi characters should be escaped as \\uXXXX in output");
 }
 
 #[tokio::test]

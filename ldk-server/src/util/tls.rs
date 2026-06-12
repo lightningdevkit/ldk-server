@@ -14,6 +14,7 @@ use std::path::Path;
 use base64::Engine;
 use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
+use tokio_rustls::rustls::crypto::ring::default_provider;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::ServerConfig;
 
@@ -409,7 +410,9 @@ fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, Stri
 
 	let key = parse_pem_private_key(&key_pem)?;
 
-	let mut config = ServerConfig::builder()
+	let mut config = ServerConfig::builder_with_provider(default_provider().into())
+		.with_safe_default_protocol_versions()
+		.map_err(|e| format!("Failed to set TLS protocol versions: {e}"))?
 		.with_no_client_auth()
 		.with_single_cert(certs, key)
 		.map_err(|e| format!("Failed to build TLS server config: {e}"))?;

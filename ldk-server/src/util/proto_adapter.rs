@@ -10,11 +10,9 @@
 use bytes::Bytes;
 use hex::prelude::*;
 use ldk_node::bitcoin::hashes::sha256;
-use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::chain::channelmonitor::BalanceSource;
-use ldk_node::lightning::ln::types::ChannelId;
 use ldk_node::lightning::routing::gossip::{
 	ChannelInfo, ChannelUpdateInfo, NodeAnnouncementInfo, NodeInfo, RoutingFees,
 };
@@ -22,20 +20,20 @@ use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256}
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
-use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance, UserChannelId};
+use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance};
 use ldk_server_grpc::types::confirmation_status::Status::{Confirmed, Unconfirmed};
 use ldk_server_grpc::types::lightning_balance::BalanceType::{
 	ClaimableAwaitingConfirmations, ClaimableOnChannelClose, ContentiousClaimable,
 	CounterpartyRevokedOutputClaimable, MaybePreimageClaimableHtlc, MaybeTimeoutClaimableHtlc,
 };
 use ldk_server_grpc::types::payment_kind::Kind::{
-	Bolt11, Bolt11Jit, Bolt12Offer, Bolt12Refund, Onchain, Spontaneous,
+	Bolt11, Bolt12Offer, Bolt12Refund, Onchain, Spontaneous,
 };
 use ldk_server_grpc::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
 use ldk_server_grpc::types::{
-	bolt11_invoice_description, Channel, ForwardedPayment, LspFeeLimits, OutPoint, Payment, Peer,
+	bolt11_invoice_description, Channel, ForwardedPayment, HtlcLocator, OutPoint, Payment, Peer,
 };
 
 use crate::api::error::LdkServerError;
@@ -154,31 +152,15 @@ pub(crate) fn payment_kind_to_proto(
 				status: Some(confirmation_status_to_proto(status)),
 			})),
 		},
-		PaymentKind::Bolt11 { hash, preimage, secret } => ldk_server_grpc::types::PaymentKind {
-			kind: Some(Bolt11(ldk_server_grpc::types::Bolt11 {
-				hash: hash.to_string(),
-				preimage: preimage.map(|p| p.to_string()),
-				secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
-			})),
-		},
-		PaymentKind::Bolt11Jit {
-			hash,
-			preimage,
-			secret,
-			lsp_fee_limits,
-			counterparty_skimmed_fee_msat,
-		} => ldk_server_grpc::types::PaymentKind {
-			kind: Some(Bolt11Jit(ldk_server_grpc::types::Bolt11Jit {
-				hash: hash.to_string(),
-				preimage: preimage.map(|p| p.to_string()),
-				secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
-				lsp_fee_limits: Some(LspFeeLimits {
-					max_total_opening_fee_msat: lsp_fee_limits.max_total_opening_fee_msat,
-					max_proportional_opening_fee_ppm_msat: lsp_fee_limits
-						.max_proportional_opening_fee_ppm_msat,
-				}),
-				counterparty_skimmed_fee_msat,
-			})),
+		PaymentKind::Bolt11 { hash, preimage, secret, counterparty_skimmed_fee_msat } => {
+			ldk_server_grpc::types::PaymentKind {
+				kind: Some(Bolt11(ldk_server_grpc::types::Bolt11 {
+					hash: hash.to_string(),
+					preimage: preimage.map(|p| p.to_string()),
+					secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
+					counterparty_skimmed_fee_msat,
+				})),
+			}
 		},
 		PaymentKind::Bolt12Offer { hash, preimage, secret, offer_id, payer_note, quantity } => {
 			ldk_server_grpc::types::PaymentKind {
@@ -404,28 +386,18 @@ pub(crate) fn pending_sweep_balance_to_proto(
 	}
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn forwarded_payment_to_proto(
-	prev_channel_id: ChannelId, next_channel_id: ChannelId,
-	prev_user_channel_id: Option<UserChannelId>, next_user_channel_id: Option<UserChannelId>,
-	prev_node_id: Option<PublicKey>, next_node_id: Option<PublicKey>,
-	total_fee_earned_msat: Option<u64>, skimmed_fee_msat: Option<u64>, claim_from_onchain_tx: bool,
+	prev_htlcs: Vec<HtlcLocator>, next_htlcs: Vec<HtlcLocator>, total_fee_earned_msat: Option<u64>,
+	skimmed_fee_msat: Option<u64>, claim_from_onchain_tx: bool,
 	outbound_amount_forwarded_msat: Option<u64>,
 ) -> ForwardedPayment {
 	ForwardedPayment {
-		prev_channel_id: prev_channel_id.to_string(),
-		next_channel_id: next_channel_id.to_string(),
-		prev_user_channel_id: prev_user_channel_id
-			.expect("prev_user_channel_id expected for ldk-server >=0.1")
-			.0
-			.to_string(),
-		next_user_channel_id: next_user_channel_id.map(|u| u.0.to_string()),
-		prev_node_id: prev_node_id.expect("prev_node_id expected for ldk-server >=0.1").to_string(),
-		next_node_id: next_node_id.expect("next_node_id expected for ldk-node >=0.1").to_string(),
 		total_fee_earned_msat,
 		skimmed_fee_msat,
 		claim_from_onchain_tx,
 		outbound_amount_forwarded_msat,
+		prev_htlcs,
+		next_htlcs,
 	}
 }
 
