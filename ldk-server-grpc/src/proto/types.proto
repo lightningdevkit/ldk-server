@@ -924,16 +924,27 @@ enum ChannelDirection {
   NODE_TWO = 1;
 }
 
-// A feature bit advertised in a BOLT11 invoice.
-message Bolt11Feature {
+// A feature advertised in a BOLT feature context.
+message Feature {
   // Human-readable feature name.
   string name = 1;
 
-  // Whether this feature is required.
-  bool is_required = 2;
+  // Whether this feature's support bit is set.
+  bool is_supported = 2;
 
-  // Whether this feature is known.
-  bool is_known = 3;
+  // Whether this feature's required bit is set.
+  bool is_required = 3;
+
+  // Whether this feature is known by LDK.
+  bool is_known = 4;
+
+  // The BOLT 9 bit that indicates support for this feature.
+  uint32 supported_bit = 5;
+
+  // The BOLT 9 bit that requires support for this feature, if one exists.
+  // Optional because some feature contexts include support-only features without 
+  // a corresponding required bit, e.g. `initial_routing_sync` in init features.
+  optional uint32 required_bit = 6;
 }
 
 // Custom TLV record attached to a payment.
@@ -947,6 +958,6 @@ message CustomTlvRecord {
 // The feature sets advertised by this node. Currently only node-announcement
 // features are populated.
 message Features {
-  // Serialized node-announcement features.
-  bytes node = 1;
+  // Node-announcement features keyed by feature name.
+  map<string, Feature> node = 1;
 }

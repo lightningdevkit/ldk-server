@@ -844,8 +844,8 @@ message DecodeInvoiceResponse {
   // Route hints for finding a path to the payee.
   repeated types.Bolt11RouteHint route_hints = 10;
 
-  // Feature bits advertised in the invoice, keyed by bit number.
-  map<uint32, types.Bolt11Feature> features = 11;
+  // Features advertised in the invoice, keyed by feature name.
+  map<string, types.Feature> features = 11;
 
   // The currency or network (e.g., "bitcoin", "testnet", "signet", "regtest").
   string currency = 12;
@@ -890,8 +890,8 @@ message DecodeOfferResponse {
   // Blinded paths to the offer recipient.
   repeated types.BlindedPath paths = 8;
 
-  // Feature bits advertised in the offer, keyed by bit number.
-  map<uint32, types.Bolt11Feature> features = 9;
+  // Features advertised in the offer, keyed by feature name.
+  map<string, types.Feature> features = 9;
 
   // Supported blockchain networks (e.g., "bitcoin", "testnet", "signet", "regtest").
   repeated string chains = 10;

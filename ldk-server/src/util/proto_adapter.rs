@@ -9,6 +9,8 @@
 
 use bytes::Bytes;
 use hex::prelude::*;
+use std::collections::HashMap;
+
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::Network;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
@@ -33,7 +35,8 @@ use ldk_server_grpc::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
 use ldk_server_grpc::types::{
-	bolt11_invoice_description, Channel, ForwardedPayment, HtlcLocator, OutPoint, Payment, Peer,
+	bolt11_invoice_description, Channel, Feature, ForwardedPayment, HtlcLocator, OutPoint, Payment,
+	Peer,
 };
 
 use crate::api::error::LdkServerError;
@@ -482,6 +485,84 @@ pub(crate) fn graph_node_to_proto(node: NodeInfo) -> ldk_server_grpc::types::Gra
 		channels: node.channels,
 		announcement_info: node.announcement_info.map(graph_node_announcement_to_proto),
 	}
+}
+
+/// Converts LDK feature flags into proto features keyed by feature name.
+///
+/// Feature names are derived from LDK's `Features::Display` impl, so they stay
+/// in sync automatically. If both the required and supported bits are set for
+/// the same feature, they are merged into a single proto `Feature`.
+pub(crate) fn features_to_proto(
+	le_flags: &[u8], make_display: impl Fn(Vec<u8>) -> String,
+) -> HashMap<String, Feature> {
+	let mut features = HashMap::new();
+	for (byte_idx, &byte) in le_flags.iter().enumerate() {
+		if byte == 0 {
+			continue;
+		}
+		for bit_pos in 0..8u32 {
+			if byte & (1 << bit_pos) != 0 {
+				let bit_number = (byte_idx as u32) * 8 + bit_pos;
+				let is_required = bit_number % 2 == 0;
+				let required_bit = if is_required {
+					Some(bit_number)
+				} else if bit_number == 3 {
+					// `initial_routing_sync` uses bit 3 and has no required/even bit per BOLT 9.
+					None
+				} else {
+					// BOLT 9 feature pairs use an even required bit followed by an odd support bit.
+					Some(bit_number - 1)
+				};
+				let supported_bit = if is_required { bit_number + 1 } else { bit_number };
+
+				// Create Features with just this bit set and use Display to get the name.
+				let mut single_bit = vec![0u8; byte_idx + 1];
+				single_bit[byte_idx] = 1 << bit_pos;
+				let display = make_display(single_bit);
+				let (parsed_name, is_known) = parse_feature_name(&display);
+				let name = if is_known {
+					parsed_name.to_string()
+				} else {
+					let required = required_bit
+						.map(|bit| bit.to_string())
+						.unwrap_or_else(|| "none".to_string());
+					format!("UnknownFeature{required}_{supported_bit}")
+				};
+
+				let feature = features.entry(name.clone()).or_insert_with(|| Feature {
+					name,
+					is_supported: false,
+					is_required: false,
+					is_known,
+					supported_bit,
+					required_bit,
+				});
+				feature.is_supported = true;
+				feature.is_required |= is_required;
+			}
+		}
+	}
+	features
+}
+
+/// Parse the Display output of a single-bit Features to find which feature is set.
+///
+/// LDK's Display format is: "Name: status, Name: status, ..., unknown flags: status"
+/// where status is "required", "supported", or "not supported".
+/// For a single-bit Features, exactly one entry will be "required" or "supported".
+fn parse_feature_name(display: &str) -> (&str, bool) {
+	for entry in display.split(", ") {
+		if let Some((name, status)) = entry.split_once(": ") {
+			if name == "unknown flags" {
+				if status == "required" || status == "supported" {
+					return ("unknown", false);
+				}
+			} else if status == "required" || status == "supported" {
+				return (name, true);
+			}
+		}
+	}
+	("unknown", false)
 }
 
 pub(crate) fn network_to_proto(network: Network) -> ldk_server_grpc::types::Network {

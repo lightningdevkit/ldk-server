@@ -24,9 +24,9 @@ use ldk_server_grpc::types::{
 	OfferQuantity,
 };
 
-use crate::api::decode_features;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use crate::util::proto_adapter::features_to_proto;
 
 pub(crate) async fn handle_decode_offer_request(
 	_context: Arc<Context>, request: DecodeOfferRequest,
@@ -104,7 +104,7 @@ pub(crate) async fn handle_decode_offer_request(
 		})
 		.collect();
 
-	let features = decode_features(offer.offer_features().le_flags(), |bytes| {
+	let features = features_to_proto(offer.offer_features().le_flags(), |bytes| {
 		OfferFeatures::from_le_bytes(bytes).to_string()
 	});
 

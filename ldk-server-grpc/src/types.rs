@@ -1212,22 +1212,33 @@ pub struct DirectedShortChannelId {
 	)]
 	pub direction: i32,
 }
-/// A feature bit advertised in a BOLT11 invoice.
+/// A feature advertised in a BOLT feature context.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11Feature {
+pub struct Feature {
 	/// Human-readable feature name.
 	#[prost(string, tag = "1")]
 	pub name: ::prost::alloc::string::String,
-	/// Whether this feature is required.
+	/// Whether this feature's support bit is set.
 	#[prost(bool, tag = "2")]
-	pub is_required: bool,
-	/// Whether this feature is known.
+	pub is_supported: bool,
+	/// Whether this feature's required bit is set.
 	#[prost(bool, tag = "3")]
+	pub is_required: bool,
+	/// Whether this feature is known by LDK.
+	#[prost(bool, tag = "4")]
 	pub is_known: bool,
+	/// The BOLT 9 bit that indicates support for this feature.
+	#[prost(uint32, tag = "5")]
+	pub supported_bit: u32,
+	/// The BOLT 9 bit that requires support for this feature, if one exists.
+	/// Optional because some feature contexts include support-only features without
+	/// a corresponding required bit, e.g. `initial_routing_sync` in init features.
+	#[prost(uint32, optional, tag = "6")]
+	pub required_bit: ::core::option::Option<u32>,
 }
 /// Custom TLV record attached to a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1251,9 +1262,9 @@ pub struct CustomTlvRecord {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Features {
-	/// Serialized node-announcement features.
-	#[prost(bytes = "bytes", tag = "1")]
-	pub node: ::prost::bytes::Bytes,
+	/// Node-announcement features keyed by feature name.
+	#[prost(map = "string, message", tag = "1")]
+	pub node: ::std::collections::HashMap<::prost::alloc::string::String, Feature>,
 }
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
