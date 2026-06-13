@@ -16,9 +16,9 @@ use ldk_node::lightning_types::features::Bolt11InvoiceFeatures;
 use ldk_server_grpc::api::{DecodeInvoiceRequest, DecodeInvoiceResponse};
 use ldk_server_grpc::types::{Bolt11HopHint, Bolt11RouteHint};
 
-use crate::api::decode_features;
 use crate::api::error::LdkServerError;
 use crate::service::Context;
+use crate::util::proto_adapter::features_to_proto;
 
 pub(crate) async fn handle_decode_invoice_request(
 	_context: Arc<Context>, request: DecodeInvoiceRequest,
@@ -66,7 +66,7 @@ pub(crate) async fn handle_decode_invoice_request(
 	let features = invoice
 		.features()
 		.map(|f| {
-			decode_features(f.le_flags(), |bytes| {
+			features_to_proto(f.le_flags(), |bytes| {
 				Bolt11InvoiceFeatures::from_le_bytes(bytes).to_string()
 			})
 		})

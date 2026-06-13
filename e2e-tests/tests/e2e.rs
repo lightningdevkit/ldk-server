@@ -56,6 +56,15 @@ async fn test_cli_get_node_info() {
 	let output = run_cli(&server, &["get-node-info"]);
 	assert!(output.get("node_id").is_some());
 	assert_eq!(output["node_id"], server.node_id());
+
+	// Ensure clients can inspect advertised node capabilities from get-node-info.
+	let keysend = &output["features"]["node"]["Keysend"];
+	assert_eq!(keysend["name"], "Keysend");
+	assert_eq!(keysend["is_supported"], true);
+	assert_eq!(keysend["is_required"], false);
+	assert_eq!(keysend["is_known"], true);
+	assert_eq!(keysend["supported_bit"], 55);
+	assert_eq!(keysend["required_bit"], 54);
 }
 
 #[tokio::test]
@@ -226,12 +235,14 @@ async fn test_cli_decode_invoice() {
 		feature_names
 	);
 
-	// Every entry should have the expected structure
-	for (bit, feature) in features {
-		assert!(bit.parse::<u32>().is_ok(), "Feature key should be a bit number: {}", bit);
+	// Every entry should have the expected structure.
+	for (name, feature) in features {
+		assert_eq!(feature["name"], *name);
 		assert!(feature.get("name").is_some(), "Feature missing name field");
+		assert!(feature.get("is_supported").is_some(), "Feature missing is_supported field");
 		assert!(feature.get("is_required").is_some(), "Feature missing is_required field");
 		assert!(feature.get("is_known").is_some(), "Feature missing is_known field");
+		assert!(feature.get("supported_bit").is_some(), "Feature missing supported_bit field");
 	}
 
 	// Also test a variable-amount invoice

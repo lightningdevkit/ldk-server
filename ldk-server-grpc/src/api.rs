@@ -85,6 +85,10 @@ pub struct GetNodeInfoResponse {
 	#[prost(enumeration = "super::types::Network", tag = "13")]
 	#[cfg_attr(feature = "serde", serde(serialize_with = "crate::serde_utils::serialize_network"))]
 	pub network: i32,
+	/// The feature sets advertised by this node. Currently only node-announcement
+	/// features are populated.
+	#[prost(message, optional, tag = "14")]
+	pub features: ::core::option::Option<super::types::Features>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>
@@ -1164,9 +1168,10 @@ pub struct DecodeInvoiceResponse {
 	/// Route hints for finding a path to the payee.
 	#[prost(message, repeated, tag = "10")]
 	pub route_hints: ::prost::alloc::vec::Vec<super::types::Bolt11RouteHint>,
-	/// Feature bits advertised in the invoice, keyed by bit number.
-	#[prost(map = "uint32, message", tag = "11")]
-	pub features: ::std::collections::HashMap<u32, super::types::Bolt11Feature>,
+	/// Features advertised in the invoice, keyed by feature name.
+	#[prost(map = "string, message", tag = "11")]
+	pub features:
+		::std::collections::HashMap<::prost::alloc::string::String, super::types::Feature>,
 	/// The currency or network (e.g., "bitcoin", "testnet", "signet", "regtest").
 	#[prost(string, tag = "12")]
 	pub currency: ::prost::alloc::string::String,
@@ -1220,9 +1225,10 @@ pub struct DecodeOfferResponse {
 	/// Blinded paths to the offer recipient.
 	#[prost(message, repeated, tag = "8")]
 	pub paths: ::prost::alloc::vec::Vec<super::types::BlindedPath>,
-	/// Feature bits advertised in the offer, keyed by bit number.
-	#[prost(map = "uint32, message", tag = "9")]
-	pub features: ::std::collections::HashMap<u32, super::types::Bolt11Feature>,
+	/// Features advertised in the offer, keyed by feature name.
+	#[prost(map = "string, message", tag = "9")]
+	pub features:
+		::std::collections::HashMap<::prost::alloc::string::String, super::types::Feature>,
 	/// Supported blockchain networks (e.g., "bitcoin", "testnet", "signet", "regtest").
 	#[prost(string, repeated, tag = "10")]
 	pub chains: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
