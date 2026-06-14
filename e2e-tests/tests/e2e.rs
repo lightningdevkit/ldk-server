@@ -23,7 +23,7 @@ use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
-	Bolt11ReceiveRequest, Bolt12ReceiveRequest, OnchainReceiveRequest, OpenChannelRequest,
+	Bolt11ReceiveRequest, Bolt12ReceiveRequest, EventKind, OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -584,6 +584,256 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 			| Some(ChannelStateChangeReasonKind::LegacyCooperativeClosure)
 	));
 	assert_eq!(closed_b.closure_initiator, ChannelClosureInitiator::Remote as i32);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_subscribe_events_no_filter() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let addr = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr, 1.0);
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
+
+	// Subscribe with no filter => all events delivered
+	let mut events = server.client().subscribe_events().await.unwrap();
+
+	let invoice = server
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(10_000),
+			description: Some(Bolt11InvoiceDescription {
+				description: Some("test".to_string()),
+				description_hash: None,
+			}),
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+
+	// Trigger a payment from an external node
+	let payment_node = ldk_node::Builder::from_config(ldk_node::config::Config {
+		network: ldk_node::bitcoin::Network::Regtest,
+		..Default::default()
+	})
+	.set_chain_source_bitcoind_rpc(
+		bitcoind.rpc_host(),
+		bitcoind.rpc_port(),
+		bitcoind.rpc_user(),
+		bitcoind.rpc_password(),
+	)
+	.set_log_facade_logger()
+	.build(ldk_node::entropy::generate_entropy_mnemonic(None))
+	.unwrap();
+	payment_node.start().unwrap();
+	payment_node.sync_wallets().unwrap();
+	payment_node
+		.bolt11_payment()
+		.send(&invoice.invoice.parse().unwrap(), None, None)
+		.unwrap();
+
+	// Should receive a payment event (no filter = all events)
+	tokio::time::timeout(Duration::from_secs(15), async {
+		while let Some(Ok(ev)) = events.next_message().await {
+			if matches!(&ev.event, Some(Event::PaymentReceived(_))) {
+				return;
+			}
+		}
+		panic!("Event stream ended without PaymentReceived");
+	})
+	.await
+	.expect("Timed out waiting for PaymentReceived");
+
+	payment_node.stop().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_subscribe_events_payment_only_filter() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let addr = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr, 1.0);
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
+
+	// Subscribe with payment-only filter
+	let mut events = server.client().subscribe_events_filtered(&[EventKind::Payment]).await.unwrap();
+
+	let invoice = server
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(10_000),
+			description: Some(Bolt11InvoiceDescription {
+				description: Some("test".to_string()),
+				description_hash: None,
+			}),
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+
+	// Trigger a payment from an external node
+	let payment_node = ldk_node::Builder::from_config(ldk_node::config::Config {
+		network: ldk_node::bitcoin::Network::Regtest,
+		..Default::default()
+	})
+	.set_chain_source_bitcoind_rpc(
+		bitcoind.rpc_host(),
+		bitcoind.rpc_port(),
+		bitcoind.rpc_user(),
+		bitcoind.rpc_password(),
+	)
+	.set_log_facade_logger()
+	.build(ldk_node::entropy::generate_entropy_mnemonic(None))
+	.unwrap();
+	payment_node.start().unwrap();
+	payment_node.sync_wallets().unwrap();
+	payment_node
+		.bolt11_payment()
+		.send(&invoice.invoice.parse().unwrap(), None, None)
+		.unwrap();
+
+	// Should receive a payment event
+	tokio::time::timeout(Duration::from_secs(15), async {
+		while let Some(Ok(ev)) = events.next_message().await {
+			if matches!(&ev.event, Some(Event::PaymentReceived(_))) {
+				return;
+			}
+		}
+		panic!("Event stream ended without PaymentReceived");
+	})
+	.await
+	.expect("Timed out waiting for PaymentReceived");
+
+	payment_node.stop().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_subscribe_events_channel_only_filter_receives_channel_events() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_a, 1.0);
+	bitcoind.fund_address(&addr_b, 0.1);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_onchain_balance(server_a.client(), Duration::from_secs(30)).await;
+	wait_for_onchain_balance(server_b.client(), Duration::from_secs(30)).await;
+
+	// Subscribe with channel-only filter
+	let mut events_a = server_a.client().subscribe_events_filtered(&[EventKind::Channel]).await.unwrap();
+	let mut events_b = server_b.client().subscribe_events_filtered(&[EventKind::Channel]).await.unwrap();
+
+	let open_resp = server_a
+		.client()
+		.open_channel(OpenChannelRequest {
+			node_pubkey: server_b.node_id().to_string(),
+			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			channel_amount_sats: 100_000,
+			push_to_counterparty_msat: None,
+			channel_config: None,
+			announce_channel: true,
+			disable_counterparty_reserve: false,
+		})
+		.await
+		.unwrap();
+
+	let pending_a = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Pending as i32
+		)
+	})
+	.await;
+	assert!(matches!(
+		pending_a.event,
+		Some(Event::ChannelStateChanged(_))
+	));
+
+	// Drain remaining events and verify none are payment events
+	tokio::time::timeout(Duration::from_secs(3), async {
+		loop {
+			match events_a.next_message().await {
+				Some(Ok(ev)) => {
+					assert!(!matches!(&ev.event, Some(Event::PaymentReceived(_))));
+					assert!(!matches!(&ev.event, Some(Event::PaymentSuccessful(_))));
+					assert!(!matches!(&ev.event, Some(Event::PaymentFailed(_))));
+				},
+				_ => break,
+			}
+		}
+	})
+	.ok();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_subscribe_events_multiple_filters() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_a, 1.0);
+	bitcoind.fund_address(&addr_b, 0.1);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_onchain_balance(server_a.client(), Duration::from_secs(30)).await;
+	wait_for_onchain_balance(server_b.client(), Duration::from_secs(30)).await;
+
+	// Subscribe with both payment and channel filters
+	let mut events_a = server_a.client()
+		.subscribe_events_filtered(&[EventKind::Payment, EventKind::Channel])
+		.await
+		.unwrap();
+	let mut events_b = server_b.client()
+		.subscribe_events_filtered(&[EventKind::Payment, EventKind::Channel])
+		.await
+		.unwrap();
+
+	let open_resp = server_a
+		.client()
+		.open_channel(OpenChannelRequest {
+			node_pubkey: server_b.node_id().to_string(),
+			address: format!("127.0.0.1:{}", server_b.p2p_port),
+			channel_amount_sats: 100_000,
+			push_to_counterparty_msat: None,
+			channel_config: None,
+			announce_channel: true,
+			disable_counterparty_reserve: false,
+		})
+		.await
+		.unwrap();
+
+	// We should receive channel events with multiple filters
+	let pending_a = wait_for_event(&mut events_a, |e| {
+		matches!(
+			e,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == open_resp.user_channel_id
+					&& channel_event.state == ChannelState::Pending as i32
+		)
+	})
+	.await;
+	assert!(matches!(
+		pending_a.event,
+		Some(Event::ChannelStateChanged(_))
+	));
+
+	// Also verify server_b receives the channel event
+	let pending_b = wait_for_event(&mut events_b, |e| {
+		matches!(e, Event::ChannelStateChanged(_))
+	})
+	.await;
+	assert!(matches!(
+		pending_b.event,
+		Some(Event::ChannelStateChanged(_))
+	));
 }
 
 #[tokio::test]
