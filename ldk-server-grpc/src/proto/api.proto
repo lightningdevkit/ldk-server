@@ -899,8 +899,22 @@ message DecodeOfferResponse {
   bool is_expired = 12;
 }
 
+// EventKind represents the category of events a client can subscribe to.
+enum EventKind {
+  // Default value, not used for filtering.
+  EVENT_KIND_UNSPECIFIED = 0;
+  // Payment events (received, successful, failed, forwarded, claimable).
+  EVENT_KIND_PAYMENT = 1;
+  // Channel lifecycle events (pending, ready, closed).
+  EVENT_KIND_CHANNEL = 2;
+}
+
 // Subscribe to a stream of server events.
-message SubscribeEventsRequest {}
+message SubscribeEventsRequest {
+  // If empty, all events are subscribed to (backward-compatible default).
+  // If non-empty, only events matching these kinds will be delivered.
+  repeated EventKind event_kinds = 1;
+}
 
 service LightningNode {
   // Retrieve the latest node info.

@@ -24,7 +24,7 @@ use ldk_server_grpc::api::{
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse,
 	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
 	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	DisconnectPeerRequest, DisconnectPeerResponse, EventKind, ExportPathfindingScoresRequest,
 	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
 	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
@@ -424,11 +424,27 @@ impl LdkServerClient {
 		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
 	}
 
-	/// Subscribe to a stream of server events via server-streaming gRPC.
+	/// Subscribe to a stream of all server events via server-streaming gRPC.
 	///
 	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
+	/// All event types are delivered.
 	pub async fn subscribe_events(&self) -> Result<EventStream, LdkServerError> {
-		self.grpc_server_streaming(&SubscribeEventsRequest {}, SUBSCRIBE_EVENTS_PATH).await
+		self.subscribe_events_filtered(&[]).await
+	}
+
+	/// Subscribe to a filtered stream of server events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
+	///
+	/// If `event_kinds` is empty, all events are delivered (backward compatible).
+	/// If non-empty, only events matching the given kinds are delivered.
+	pub async fn subscribe_events_filtered(
+		&self, event_kinds: &[EventKind],
+	) -> Result<EventStream, LdkServerError> {
+		let request = SubscribeEventsRequest {
+			event_kinds: event_kinds.iter().map(|k| *k as i32).collect(),
+		};
+		self.grpc_server_streaming(&request, SUBSCRIBE_EVENTS_PATH).await
 	}
 
 	/// Send a unary gRPC request and decode the response.

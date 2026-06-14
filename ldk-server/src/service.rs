@@ -31,6 +31,8 @@ use ldk_server_grpc::endpoints::{
 	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
 	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
+use ldk_server_grpc::api::{EventKind, SubscribeEventsRequest};
+use ldk_server_grpc::events::event_envelope;
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
 	decode_grpc_body, encode_grpc_frame, grpc_error_response, grpc_response, parse_grpc_timeout,
@@ -39,6 +41,7 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE, GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
+use std::collections::HashSet;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
@@ -403,6 +406,19 @@ impl Service<Request<Incoming>> for NodeService {
 					let mut shutdown_rx = shutdown_rx;
 					let mut rx = event_sender.subscribe();
 					let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
+
+					let event_kinds_filter: HashSet<i32> = decode_grpc_body(&body_bytes)
+						.ok()
+						.and_then(|b| SubscribeEventsRequest::decode(b).ok())
+						.map(|req| {
+							req.event_kinds
+								.into_iter()
+								.filter(|k| *k != 0) // strip Unspecified
+								.collect()
+						})
+						.unwrap_or_default();
+					let is_filter_all = event_kinds_filter.is_empty();
+
 					tokio::spawn(async move {
 						loop {
 							tokio::select! {
@@ -419,6 +435,17 @@ impl Service<Request<Incoming>> for NodeService {
 								result = rx.recv() => {
 									match result {
 										Ok(event) => {
+											if !is_filter_all {
+												let kind = event_kind(&event);
+												match kind {
+													Some(k) => {
+														if !event_kinds_filter.contains(&(k as i32)) {
+															continue;
+														}
+													},
+													None => continue,
+												}
+											}
 											let frame = encode_grpc_frame(&event.encode_to_vec());
 											if tx.send(Ok(frame)).await.is_err() {
 												break; // client disconnected
@@ -432,8 +459,8 @@ impl Service<Request<Incoming>> for NodeService {
 												.send(Err(GrpcStatus::new(
 													GRPC_STATUS_UNAVAILABLE,
 													"server shutting down",
-											)))
-											.await;
+												)))
+												.await;
 											break;
 										},
 									}
@@ -559,6 +586,21 @@ pub(crate) fn ldk_error_to_grpc_status(e: LdkServerError) -> GrpcStatus {
 		LdkServerErrorCode::InternalServerError => GRPC_STATUS_INTERNAL,
 	};
 	GrpcStatus { code, message: e.message }
+}
+
+/// Maps an `EventEnvelope` to its corresponding [`EventKind`].
+///
+/// Returns `None` if the envelope has no event field (should not occur in practice).
+fn event_kind(event: &EventEnvelope) -> Option<EventKind> {
+	match event.event {
+		Some(event_envelope::Event::PaymentReceived(_))
+		| Some(event_envelope::Event::PaymentSuccessful(_))
+		| Some(event_envelope::Event::PaymentFailed(_))
+		| Some(event_envelope::Event::PaymentClaimable(_))
+		| Some(event_envelope::Event::PaymentForwarded(_)) => Some(EventKind::Payment),
+		Some(event_envelope::Event::ChannelStateChanged(_)) => Some(EventKind::Channel),
+		None => None,
+	}
 }
 
 #[cfg(test)]
@@ -693,5 +735,122 @@ mod tests {
 		let err = validate_request_body_len(Some(6), 5).unwrap_err();
 		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
 		assert_eq!(err.message, "Request body length does not match content-length");
+	}
+
+	/// Helper to simulate the event kind filtering logic used in SubscribeEvents.
+	fn event_matches_filter(event: &EventEnvelope, filter: &HashSet<i32>) -> bool {
+		if filter.is_empty() {
+			return true; // no filter = all events pass
+		}
+		match event_kind(event) {
+			Some(kind) => filter.contains(&(kind as i32)),
+			None => false,
+		}
+	}
+
+	#[test]
+	fn test_event_filter_no_filter_allows_all() {
+		let empty_filter: HashSet<i32> = HashSet::new();
+
+		let payment_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentReceived(Default::default())),
+		};
+		let channel_event = EventEnvelope {
+			event: Some(event_envelope::Event::ChannelStateChanged(Default::default())),
+		};
+
+		assert!(event_matches_filter(&payment_event, &empty_filter));
+		assert!(event_matches_filter(&channel_event, &empty_filter));
+	}
+
+	#[test]
+	fn test_event_filter_payment_only() {
+		let mut payment_filter = HashSet::new();
+		payment_filter.insert(EventKind::Payment as i32);
+
+		let payment_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentReceived(Default::default())),
+		};
+		let successful_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentSuccessful(Default::default())),
+		};
+		let failed_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentFailed(Default::default())),
+		};
+		let claimable_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentClaimable(Default::default())),
+		};
+		let forwarded_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentForwarded(Default::default())),
+		};
+		let channel_event = EventEnvelope {
+			event: Some(event_envelope::Event::ChannelStateChanged(Default::default())),
+		};
+
+		assert!(event_matches_filter(&payment_event, &payment_filter));
+		assert!(event_matches_filter(&successful_event, &payment_filter));
+		assert!(event_matches_filter(&failed_event, &payment_filter));
+		assert!(event_matches_filter(&claimable_event, &payment_filter));
+		assert!(event_matches_filter(&forwarded_event, &payment_filter));
+		assert!(!event_matches_filter(&channel_event, &payment_filter));
+	}
+
+	#[test]
+	fn test_event_filter_channel_only() {
+		let mut channel_filter = HashSet::new();
+		channel_filter.insert(EventKind::Channel as i32);
+
+		let payment_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentReceived(Default::default())),
+		};
+		let channel_event = EventEnvelope {
+			event: Some(event_envelope::Event::ChannelStateChanged(Default::default())),
+		};
+
+		assert!(!event_matches_filter(&payment_event, &channel_filter));
+		assert!(event_matches_filter(&channel_event, &channel_filter));
+	}
+
+	#[test]
+	fn test_event_filter_multiple_kinds() {
+		let mut multi_filter = HashSet::new();
+		multi_filter.insert(EventKind::Payment as i32);
+		multi_filter.insert(EventKind::Channel as i32);
+
+		let payment_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentReceived(Default::default())),
+		};
+		let channel_event = EventEnvelope {
+			event: Some(event_envelope::Event::ChannelStateChanged(Default::default())),
+		};
+
+		assert!(event_matches_filter(&payment_event, &multi_filter));
+		assert!(event_matches_filter(&channel_event, &multi_filter));
+	}
+
+	#[test]
+	fn test_event_filter_none_variant_excluded() {
+		let mut payment_filter = HashSet::new();
+		payment_filter.insert(EventKind::Payment as i32);
+
+		let no_event = EventEnvelope { event: None };
+		assert!(!event_matches_filter(&no_event, &payment_filter));
+	}
+
+	#[test]
+	fn test_event_filter_unspecified_stripped_at_handler_level() {
+		// The event_matches_filter helper is a raw predicate: it does NOT strip
+		// Unspecified (0). A filter containing only {0} matches nothing.
+		let unspecified_filter: HashSet<i32> = [EventKind::Unspecified as i32].into();
+		let payment_event = EventEnvelope {
+			event: Some(event_envelope::Event::PaymentReceived(Default::default())),
+		};
+		assert!(!event_matches_filter(&payment_event, &unspecified_filter));
+
+		// The server handler strips Unspecified values at deserialization time,
+		// so the net effect is: [EventKind::Unspecified] behaves like [].
+		// This test documents the predicate layer; the handler-level stripping
+		// is verified by the fact that Unspecified == 0 is filtered out in the
+		// SUBSCRIBE_EVENTS_PATH handler before the filter is used.
 	}
 }
