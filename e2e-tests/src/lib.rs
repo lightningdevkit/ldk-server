@@ -16,11 +16,11 @@ use std::time::Duration;
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
-use serde_json::Value;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_grpc::api::{
 	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
+use serde_json::Value;
 
 /// Wrapper around a managed bitcoind process for regtest.
 pub struct TestBitcoind {
