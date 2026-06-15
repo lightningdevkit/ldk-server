@@ -473,6 +473,10 @@ pub struct SpontaneousSendRequest {
 	/// Custom TLV records to attach to the outgoing payment.
 	#[prost(message, repeated, tag = "4")]
 	pub custom_tlvs: ::prost::alloc::vec::Vec<super::types::CustomTlvRecord>,
+	/// An optional hex-encoded 32-byte payment preimage. If provided, it will be used instead of
+	/// generating a random one. The payment hash will be the SHA256 of this value.
+	#[prost(string, optional, tag = "5")]
+	pub preimage: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

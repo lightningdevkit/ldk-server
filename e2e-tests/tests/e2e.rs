@@ -32,7 +32,7 @@ use ldk_server_client::ldk_server_grpc::events::{
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
 };
-
+use ldk_server_grpc::types::payment_kind;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 
 async fn wait_for_event(events: &mut EventStream, pred: impl Fn(&Event) -> bool) -> EventEnvelope {
@@ -1461,4 +1461,41 @@ async fn test_metrics_endpoint_with_auth() {
 	assert!(metrics.contains("ldk_server_spendable_onchain_balance_sats 0"));
 	assert!(metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
 	assert!(metrics.contains("ldk_server_total_lightning_balance_sats 0"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_cli_spontaneous_send_with_preimage() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let mut events_b = server_b.client().subscribe_events().await.unwrap();
+
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Generate a known preimage and compute its payment hash
+	let preimage_bytes = [43u8; 32];
+	let preimage_hex = preimage_bytes.to_lower_hex_string();
+	let payment_hash = sha256::Hash::hash(&preimage_bytes);
+	let payment_hash_hex = payment_hash.to_byte_array().to_lower_hex_string();
+
+	let output = run_cli(
+		&server_a,
+		&["spontaneous-send", server_b.node_id(), "10000sat", "--preimage", &preimage_hex],
+	);
+
+	assert!(!output["payment_id"].as_str().unwrap().is_empty());
+
+	// The receiver must observe in PaymentReceived for checking on Spontaneous payment.
+	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
+	let Some(Event::PaymentReceived(pr)) = event_b.event else {
+		panic!("expected PaymentReceived");
+	};
+
+	let payment = pr.payment.unwrap();
+
+	let Some(payment_kind::Kind::Spontaneous(spont)) = payment.kind.unwrap().kind else {
+		panic!("expected spontaneous kind");
+	};
+	assert_eq!(spont.hash, payment_hash_hex);
 }

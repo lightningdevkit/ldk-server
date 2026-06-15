@@ -371,6 +371,10 @@ message SpontaneousSendRequest {
 
   // Custom TLV records to attach to the outgoing payment.
   repeated types.CustomTlvRecord custom_tlvs = 4;
+
+  // An optional hex-encoded 32-byte payment preimage. If provided, it will be used instead of
+  // generating a random one. The payment hash will be the SHA256 of this value.
+  optional string preimage = 5;
 }
 
 // The response for the `SpontaneousSend` RPC. On failure, a gRPC error status is returned.

@@ -320,6 +320,8 @@ enum Commands {
 			help = "Custom TLV record to attach, format: <type_num>:<hex_value>. Repeatable. type_num must be >= 65536."
 		)]
 		custom_tlvs: Vec<(u64, Vec<u8>)>,
+		#[arg(long)]
+		preimage: Option<String>,
 	},
 	#[command(
 		about = "Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer"
@@ -817,6 +819,7 @@ async fn main() {
 			max_path_count,
 			max_channel_saturation_power_of_half,
 			custom_tlvs,
+			preimage,
 		} => {
 			let amount_msat = amount.to_msat();
 			let max_total_routing_fee_msat = max_total_routing_fee.map(|a| a.to_msat());
@@ -841,6 +844,7 @@ async fn main() {
 						node_id,
 						route_parameters: Some(route_parameters),
 						custom_tlvs: proto_custom_tlvs,
+						preimage,
 					})
 					.await,
 			);

@@ -374,7 +374,11 @@ pub fn spontaneous_send_schema() -> Value {
 				"type": "string",
 				"description": "The hex-encoded public key of the destination node"
 			},
-			"route_parameters": route_parameters_config_schema()
+			"route_parameters": route_parameters_config_schema(),
+			"preimage": {
+				"type": "string",
+				"description": "The hex-encoded 32-byte payment preimage"
+			}
 		},
 		"required": ["amount_msat", "node_id"]
 	})
