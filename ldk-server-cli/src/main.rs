@@ -60,6 +60,8 @@ use types::{
 
 mod types;
 
+const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
+
 const DEFAULT_DIR: &str = if cfg!(target_os = "macos") {
 	"~/Library/Application Support/ldk-server"
 } else if cfg!(target_os = "windows") {
@@ -71,7 +73,7 @@ const DEFAULT_DIR: &str = if cfg!(target_os = "macos") {
 #[derive(Parser, Debug)]
 #[command(
 	name = "ldk-server-cli",
-	version,
+	version = FULL_VERSION,
 	about = "CLI for interacting with an LDK Server node",
 	override_usage = "ldk-server-cli [OPTIONS] <COMMAND>"
 )]
