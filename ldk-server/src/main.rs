@@ -511,12 +511,12 @@ fn main() {
 								metrics.update_payments_count(false);
 							}
 						},
-						Event::PaymentClaimable { payment_id, custom_records, .. } => {
+						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, .. } => {
 							send_event_and_upsert_payment(
 								&payment_id,
 								|payment_ref| {
 									event_envelope::Event::PaymentClaimable(
-										build_payment_claimable_proto(payment_ref, &custom_records),
+										build_payment_claimable_proto(payment_ref, &custom_records, claim_deadline),
 									)
 								},
 								&event_node,
@@ -872,13 +872,14 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 }
 
 fn build_payment_claimable_proto(
-	payment_ref: &Payment, custom_records: &[CustomTlvRecord],
+	payment_ref: &Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
 ) -> events::PaymentClaimable {
 	let proto_custom_records: Vec<_> =
 		custom_records.iter().map(node_to_proto_custom_tlv).collect();
 	events::PaymentClaimable {
 		payment: Some(payment_ref.clone()),
 		custom_records: proto_custom_records,
+		claim_deadline,
 	}
 }
 
