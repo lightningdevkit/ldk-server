@@ -49,7 +49,7 @@ jobs:
         if: matrix.msrv
         run: cargo clippy --all-features -- -D warnings
       - name: Test on Rust ${{ matrix.toolchain }}
-        run: cargo test
+        run: cargo test --all-features
       - name: Cargo check release on Rust ${{ matrix.toolchain }}
         run: cargo check --release
       - name: Cargo check doc on Rust ${{ matrix.toolchain }}
