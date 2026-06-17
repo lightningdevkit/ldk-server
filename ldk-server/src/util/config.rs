@@ -1347,8 +1347,22 @@ mod tests {
 
 		#[cfg(feature = "experimental-lsps2-support")]
 		{
-			validate_missing!(
-				"[liquidity.lsps2_service]",
+			let toml_config = r#"
+				[node]
+				network = "regtest"
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+			"#;
+			fs::write(storage_path.join(config_file_name), &toml_config).unwrap();
+			let result = load_config(&args_config);
+			assert!(result.is_err());
+			let err = result.unwrap_err();
+			assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+			assert_eq!(
+				err.to_string(),
 				"`liquidity.lsps2_service` must be defined in config if enabling `experimental-lsps2-support` feature."
 			);
 		}
