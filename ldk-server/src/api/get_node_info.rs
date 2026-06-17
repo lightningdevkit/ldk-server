@@ -9,12 +9,13 @@
 
 use std::sync::Arc;
 
+use ldk_node::lightning_types::features::NodeFeatures;
 use ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_grpc::types::BestBlock;
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use crate::util::proto_adapter::network_to_proto;
+use crate::util::proto_adapter::{features_to_proto, network_to_proto};
 
 pub(crate) async fn handle_get_node_info_request(
 	context: Arc<Context>, _request: GetNodeInfoRequest,
@@ -25,6 +26,10 @@ pub(crate) async fn handle_get_node_info_request(
 		block_hash: node_status.current_best_block.block_hash.to_string(),
 		height: node_status.current_best_block.height,
 	};
+
+	let features = features_to_proto(node_status.node_features.le_flags(), |bytes| {
+		NodeFeatures::from_le_bytes(bytes).to_string()
+	});
 
 	let listening_addresses: Vec<String> = context
 		.node
@@ -66,6 +71,7 @@ pub(crate) async fn handle_get_node_info_request(
 		node_alias,
 		node_uris,
 		network,
+		features,
 	};
 	Ok(response)
 }

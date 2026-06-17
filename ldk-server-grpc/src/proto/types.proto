@@ -924,16 +924,13 @@ enum ChannelDirection {
   NODE_TWO = 1;
 }
 
-// A feature bit advertised in a BOLT11 invoice.
-message Bolt11Feature {
+// A feature advertised in a BOLT feature context.
+message Feature {
   // Human-readable feature name.
   string name = 1;
 
-  // Whether this feature is required.
+  // Whether the signaled feature bit is required.
   bool is_required = 2;
-
-  // Whether this feature is known.
-  bool is_known = 3;
 }
 
 // Custom TLV record attached to a payment.

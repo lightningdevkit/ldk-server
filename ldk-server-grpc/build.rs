@@ -36,6 +36,11 @@ fn main() {
 fn generate_protos() {
 	prost_build::Config::new()
 		.bytes(&["."])
+		.btree_map(&[
+			"api.GetNodeInfoResponse.features",
+			"api.DecodeInvoiceResponse.features",
+			"api.DecodeOfferResponse.features",
+		])
 		.type_attribute(
 			".",
 			"#[cfg_attr(feature = \"serde\", derive(serde::Serialize, serde::Deserialize))]",
