@@ -190,6 +190,9 @@ pub struct PaymentClaimable {
 	/// Custom TLV records attached to the claimable payment, if any.
 	#[prost(message, repeated, tag = "2")]
 	pub custom_records: ::prost::alloc::vec::Vec<super::types::CustomTlvRecord>,
+	/// The block height by which this payment must be claimed before it is failed back.
+	#[prost(uint32, optional, tag = "3")]
+	pub claim_deadline: ::core::option::Option<u32>,
 }
 /// PaymentForwarded indicates a payment was forwarded through the node.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

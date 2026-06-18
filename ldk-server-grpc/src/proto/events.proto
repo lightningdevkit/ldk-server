@@ -119,6 +119,8 @@ message PaymentClaimable {
   types.Payment payment = 1;
   // Custom TLV records attached to the claimable payment, if any.
   repeated types.CustomTlvRecord custom_records = 2;
+  // The block height by which this payment must be claimed before it is failed back.
+  optional uint32 claim_deadline = 3;
 }
 
 // PaymentForwarded indicates a payment was forwarded through the node.

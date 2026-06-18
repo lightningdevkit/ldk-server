@@ -1262,7 +1262,10 @@ async fn test_hodl_invoice_claim() {
 		// Wait for PaymentClaimable event on B (drain other events)
 		let claimable =
 			wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentClaimable(_))).await;
-		assert!(matches!(&claimable.event, Some(Event::PaymentClaimable(_))));
+		assert!(matches!(
+			&claimable.event,
+			Some(Event::PaymentClaimable(event)) if event.claim_deadline.is_some()
+		));
 
 		// Claim the payment on B
 		let mut args: Vec<&str> = vec!["bolt11-claim-for-hash", &preimage_hex];
