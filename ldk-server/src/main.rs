@@ -991,7 +991,7 @@ mod tests {
 			CustomTlvRecord { type_num: 65537, value: vec![1, 2, 3] },
 			CustomTlvRecord { type_num: 65538, value: Vec::new() },
 		];
-		let proto = build_payment_claimable_proto(&payment, &records);
+		let proto = build_payment_claimable_proto(&payment, &records, None);
 		assert_eq!(proto.custom_records.len(), 2);
 		assert_eq!(proto.custom_records[0].type_num, 65537);
 		assert_eq!(proto.custom_records[0].value.to_vec(), vec![1, 2, 3]);
