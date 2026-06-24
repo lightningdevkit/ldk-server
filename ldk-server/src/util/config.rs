@@ -790,7 +790,7 @@ impl TryFrom<&LSPSClientTomlConfig> for LSPSClientConfig {
 
 #[derive(Parser, Debug)]
 #[command(
-	version,
+	version = crate::FULL_VERSION,
 	about = "LDK Server Configuration",
 	long_about = None,
 	override_usage = "ldk-server [config_path]"
