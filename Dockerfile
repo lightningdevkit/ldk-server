@@ -2,6 +2,8 @@ FROM rust:1.85 AS builder
 
 WORKDIR /app
 ARG ENABLE_LSPS2=false
+ARG GIT_HASH
+ENV GIT_HASH=$GIT_HASH
 
 # Copy manifests and lock file first for dependency caching
 COPY Cargo.toml Cargo.lock ./
