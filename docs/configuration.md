@@ -66,8 +66,16 @@ Where persistent data is stored. Defaults to `~/.ldk-server/` on Linux and
 
 ### `[log]`
 
-Log level and file path. The server reopens the log file on `SIGHUP`, which integrates with
-standard `logrotate` setups.
+Controls logging behavior. By default, `log_to_file` is `true` and logs are also written 
+to `stdout`/`stderr`.
+
+If `log_to_file` is enabled, logs are written to the configured file while still keeping 
+the `stdout`/`stderr` logs available too. Logs files are automatically rotated at 
+`max_size_mb` or `rotation_interval_hours`. To disable the internal rotation and keep 
+logging to file, set `max_size_mb` and `rotation_interval_hours` params to `0`.
+
+The server will also reopen the log file on `SIGHUP` for compatibility with external 
+tools like `logrotate`.
 
 ### `[tls]`
 
