@@ -1111,11 +1111,47 @@ async fn test_cli_graph_with_channel() {
 	assert!(node_ids.contains(&server_a.node_id()), "Expected server_a in graph nodes");
 	assert!(node_ids.contains(&server_b.node_id()), "Expected server_b in graph nodes");
 
-	// Test GraphGetNode: should return node info with at least one channel.
-	let output = run_cli(&server_a, &["graph-get-node", server_b.node_id()]);
+	// Test GraphGetNode: should return node info with at least one channel and
+	// node announcement features once the node announcement reaches the graph.
+	let output = {
+		let start = std::time::Instant::now();
+		loop {
+			let output = run_cli(&server_a, &["graph-get-node", server_b.node_id()]);
+			let node = &output["node"];
+			let has_channel =
+				node["channels"].as_array().is_some_and(|channels| !channels.is_empty());
+			let has_announcement_features = node["announcement_info"]["features"]
+				.as_object()
+				.is_some_and(|features| !features.is_empty());
+
+			if has_channel && has_announcement_features {
+				break output;
+			}
+			if start.elapsed() > Duration::from_secs(30) {
+				panic!("Timed out waiting for node announcement features in network graph");
+			}
+			tokio::time::sleep(Duration::from_secs(1)).await;
+		}
+	};
 	let node = &output["node"];
 	let channels = node["channels"].as_array().unwrap();
 	assert!(!channels.is_empty(), "Expected node to have at least one channel");
+
+	let announcement_info = &node["announcement_info"];
+	let features = announcement_info["features"].as_object().unwrap();
+	assert!(!features.is_empty(), "Expected node announcement features");
+
+	// Every entry should be keyed by the signaled bit and expose the decoded name
+	// plus whether that bit is required.
+	for (bit, feature) in features {
+		assert!(bit.parse::<u32>().is_ok(), "Feature key is not a bit number: {bit}");
+		assert!(feature.get("name").is_some(), "Feature missing name field");
+		assert!(feature.get("is_required").is_some(), "Feature missing is_required field");
+	}
+
+	let keysend = &features["55"];
+	assert_eq!(keysend["name"], "Keysend");
+	assert_eq!(keysend["is_required"], false);
 }
 
 #[tokio::test]

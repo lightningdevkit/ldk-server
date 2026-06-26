@@ -798,6 +798,9 @@ message GraphNodeAnnouncement {
 
   // List of addresses on which this node is reachable.
   repeated string addresses = 4;
+
+  // Features signaled in this node announcement, keyed by feature bit.
+  map<uint32, Feature> features = 5;
 }
 
 // Details of a known Lightning peer.
