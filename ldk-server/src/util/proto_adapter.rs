@@ -7,10 +7,10 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bytes::Bytes;
-use hex::prelude::*;
 use std::collections::BTreeMap;
 
+use bytes::Bytes;
+use hex::prelude::*;
 use ldk_node::bitcoin::hashes::sha256;
 use ldk_node::bitcoin::Network;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
@@ -19,6 +19,7 @@ use ldk_node::lightning::routing::gossip::{
 	ChannelInfo, ChannelUpdateInfo, NodeAnnouncementInfo, NodeInfo, RoutingFees,
 };
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
+use ldk_node::lightning_types::features::NodeFeatures;
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
@@ -472,11 +473,16 @@ pub(crate) fn graph_node_announcement_to_proto(
 	announcement: NodeAnnouncementInfo,
 ) -> ldk_server_grpc::types::GraphNodeAnnouncement {
 	let rgb = announcement.rgb();
+	let features = features_to_proto(announcement.features().le_flags(), |bytes| {
+		NodeFeatures::from_le_bytes(bytes).to_string()
+	});
+
 	ldk_server_grpc::types::GraphNodeAnnouncement {
 		last_update: announcement.last_update(),
 		alias: announcement.alias().to_string(),
 		rgb: format!("{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]),
 		addresses: announcement.addresses().iter().map(|a| a.to_string()).collect(),
+		features,
 	}
 }
 

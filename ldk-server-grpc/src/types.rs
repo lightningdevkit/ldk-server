@@ -1019,6 +1019,9 @@ pub struct GraphNodeAnnouncement {
 	/// List of addresses on which this node is reachable.
 	#[prost(string, repeated, tag = "4")]
 	pub addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// Features signaled in this node announcement, keyed by feature bit.
+	#[prost(btree_map = "uint32, message", tag = "5")]
+	pub features: ::prost::alloc::collections::BTreeMap<u32, Feature>,
 }
 /// Details of a known Lightning peer.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_peers>
