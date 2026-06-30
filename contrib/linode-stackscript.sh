@@ -55,7 +55,12 @@ MIN_RAM_MB=7800   # require ~8GB; fat-LTO link must fit in RAM (OQ6)
 
 # --- Helpers ----------------------------------------------------------------
 log()  { echo "[stackscript $(date -u +%H:%M:%S)] $*"; }
-die()  { echo "[stackscript FATAL] $*" >&2; echo "FAILED: $*" > /root/STACKSCRIPT_FAILED.txt; exit 1; }
+die()  { trap - ERR; echo "[stackscript FATAL] $*" >&2; echo "FAILED: $*" > /root/STACKSCRIPT_FAILED.txt; rm -f /root/STACKSCRIPT_OK 2>/dev/null || true; exit 1; }
+
+# Any UNGUARDED failure (apt/rustup/clone/cargo/systemctl with no explicit `|| die`)
+# must leave a clear failure marker — never a silently half-provisioned box that
+# looks done. The trap disables itself inside die() to avoid recursion.
+trap 'die "unexpected failure (rc=$?) near line $LINENO"' ERR
 
 # Accept either lower- or upper-case env var for a UDF (Linode injects the name
 # verbatim; be defensive about case). Usage: v=$(udf network mainnet)
@@ -103,6 +108,29 @@ esac
 for v in "$LSPS2_FEE_PPM" "$LSPS2_MIN_FEE_MSAT" "$LSPS2_MAX_PAYMENT_MSAT"; do
 	[[ "$v" =~ ^[0-9]+$ ]] || die "LSPS2 numeric field has a non-numeric value: '$v'."
 done
+# min_payment_size_msat is hard-coded to 10000000 in the config; reject a smaller max.
+[ "$LSPS2_MAX_PAYMENT_MSAT" -ge 10000000 ] || die "lsps2_max_payment_size_msat must be >= 10000000 (the min payment size)."
+
+# Free-text UDFs flow into config.toml / bitcoin.conf / sshd / ufw. Reject quotes,
+# backslashes, and newlines (TOML/config injection) and enforce per-field shapes.
+# Without this, e.g. a require_token containing a quote+newline could inject a
+# funds-relevant LSPS2 setting into the rendered TOML.
+reject_special() { case "$2" in *['"'\\]*|*$'\n'*|*$'\r'*) die "$1 must not contain quotes, backslashes, or newlines." ;; esac; }
+reject_special "ssh_user" "$SSH_USER"
+reject_special "lsp_alias" "$LSP_ALIAS"
+reject_special "esplora_url" "$ESPLORA_URL"
+reject_special "lsps2_require_token" "$LSPS2_REQUIRE_TOKEN"
+
+[[ "$SSH_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "ssh_user must match ^[a-z_][a-z0-9_-]*$ (got '$SSH_USER')."
+[ "${#LSP_ALIAS}" -le 32 ] || die "lsp_alias must be at most 32 bytes."
+_alias_re='^[A-Za-z0-9 ._-]+$'
+[[ "$LSP_ALIAS" =~ $_alias_re ]] || die "lsp_alias may only contain letters, digits, space, '.', '_', '-'."
+if [ -n "$LSPS2_REQUIRE_TOKEN" ]; then
+	[[ "$LSPS2_REQUIRE_TOKEN" =~ ^[A-Za-z0-9._-]+$ ]] || die "lsps2_require_token may only contain [A-Za-z0-9._-]."
+fi
+if [ -n "$ESPLORA_URL" ]; then
+	[[ "$ESPLORA_URL" =~ ^https?://[A-Za-z0-9./:_-]+$ ]] || die "esplora_url must be an http(s) URL."
+fi
 
 # Hard-block mainnet + remote chain backend: gossip UTXO verification is
 # disabled for esplora/electrum (as_utxo_source() -> None), so a mainnet LSP
@@ -132,6 +160,7 @@ if [ -z "$ANNOUNCE_IP" ]; then
 	[ -n "$ANNOUNCE_IP" ] || ANNOUNCE_IP=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)
 fi
 [ -n "$ANNOUNCE_IP" ] || die "Could not determine a public IPv4 for announcement_addresses; set the announce_ip UDF."
+[[ "$ANNOUNCE_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "announce_ip is not a valid IPv4 address: '$ANNOUNCE_IP'."
 log "Announcement address: ${ANNOUNCE_IP}:9735"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -186,8 +215,20 @@ ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 if [ -n "$SSH_ALLOWED_IPS" ]; then
+	_valid=0
 	IFS=',' read -ra _ips <<< "$SSH_ALLOWED_IPS"
-	for ip in "${_ips[@]}"; do ip=$(echo "$ip" | xargs); [ -n "$ip" ] && ufw allow from "$ip" to any port 22 proto tcp >/dev/null; done
+	for ip in "${_ips[@]}"; do
+		ip=$(echo "$ip" | xargs)
+		[ -n "$ip" ] || continue
+		if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$ ]] || [[ "$ip" =~ ^[0-9A-Fa-f:]+(/[0-9]{1,3})?$ ]]; then
+			ufw allow from "$ip" to any port 22 proto tcp >/dev/null
+			_valid=$((_valid + 1))
+		else
+			log "WARNING: ignoring invalid ssh_allowed_ips entry '$ip'."
+		fi
+	done
+	# Never lock the operator out: if nothing valid parsed, fall back to open SSH.
+	[ "$_valid" -gt 0 ] || { log "WARNING: no valid ssh_allowed_ips entries; allowing SSH from any IP."; ufw allow 22/tcp >/dev/null; }
 else
 	ufw allow 22/tcp >/dev/null
 fi
@@ -441,9 +482,14 @@ chmod 0755 /opt/ldk-server-ops/backup-ldk-server.sh
 
 log "First start (backend=${CHAIN_BACKEND})"
 systemctl enable ldk-server
+START_FAILED=0
 if [ "$CHAIN_BACKEND" = "esplora" ]; then
 	# Backend reachable immediately → start now (generates keys_mnemonic, NODE_URI).
-	systemctl start ldk-server || log "ldk-server start returned non-zero (check: journalctl -u ldk-server)."
+	# Do NOT mask a real failure: a broken node must not look like a successful deploy.
+	if ! systemctl start ldk-server; then
+		START_FAILED=1
+		log "WARNING: ldk-server failed to start (check: journalctl -u ldk-server). Writing handoff anyway."
+	fi
 else
 	log "bitcoind path: leaving ldk-server enabled-but-stopped until IBD completes (see NEXT_STEPS)."
 fi
@@ -491,4 +537,12 @@ EOF
 chmod 600 /root/NEXT_STEPS.txt
 printf '\n*** ldk-server LSP deployed and UNFUNDED. Read /root/NEXT_STEPS.txt before funding. ***\n\n' > /etc/motd
 
+# Honest end-state: only write the OK marker if nothing failed. Don't report
+# success when the esplora node failed to start.
+if [ "$START_FAILED" -eq 1 ]; then
+	echo "FAILED: ldk-server did not start; see 'journalctl -u ldk-server'." > /root/STACKSCRIPT_FAILED.txt
+	log "Provisioning finished but ldk-server did NOT start — see /root/STACKSCRIPT_FAILED.txt and /root/NEXT_STEPS.txt"
+	exit 1
+fi
+: > /root/STACKSCRIPT_OK
 log "Done. Node is UNFUNDED. See /root/NEXT_STEPS.txt"
