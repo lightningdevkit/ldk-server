@@ -60,6 +60,7 @@ See [Getting Started](docs/getting-started.md) for a full walkthrough.
 | [API Guide](docs/api-guide.md) | gRPC transport, authentication, and endpoint reference |
 | [Tor](docs/tor.md) | Connecting to and receiving connections over Tor |
 | [Operations](docs/operations.md) | Production deployment, backups, and monitoring |
+| [Linode StackScript](docs/linode-stackscript.md) | One-click deploy as an LSPS2 LSP on a Linode VPS |
 
 ### API
 

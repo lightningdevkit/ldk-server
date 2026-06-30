@@ -3,6 +3,9 @@
 This guide covers running LDK Server in production: process management, backups, security,
 monitoring, and remote access.
 
+> For an automated VPS deploy as an LSPS2 LSP, see the
+> [Linode StackScript](linode-stackscript.md), which applies much of this guide.
+
 ## Process Management
 
 ### systemd
