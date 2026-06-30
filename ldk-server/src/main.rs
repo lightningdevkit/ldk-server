@@ -25,7 +25,7 @@ use hex::DisplayHex;
 use hyper::server::conn::http2;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
-use ldk_node::config::Config;
+use ldk_node::config::{Config, ElectrumSyncConfig, EsploraSyncConfig};
 use ldk_node::lightning::events::ClosureReason;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
@@ -183,11 +183,19 @@ fn main() {
 				wallet_rescan_from_height,
 			);
 		},
-		ChainSource::Electrum { server_url } => {
-			builder.set_chain_source_electrum(server_url, None);
+		ChainSource::Electrum { server_url, force_wallet_full_scan } => {
+			let sync_config = force_wallet_full_scan.then(|| ElectrumSyncConfig {
+				force_wallet_full_scan: true,
+				..ElectrumSyncConfig::default()
+			});
+			builder.set_chain_source_electrum(server_url, sync_config);
 		},
-		ChainSource::Esplora { server_url } => {
-			builder.set_chain_source_esplora(server_url, None);
+		ChainSource::Esplora { server_url, force_wallet_full_scan } => {
+			let sync_config = force_wallet_full_scan.then(|| EsploraSyncConfig {
+				force_wallet_full_scan: true,
+				..EsploraSyncConfig::default()
+			});
+			builder.set_chain_source_esplora(server_url, sync_config);
 		},
 	}
 
