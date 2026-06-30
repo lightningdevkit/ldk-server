@@ -169,7 +169,7 @@ fn main() {
 
 	match config_file.chain_source {
 		ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } => {
-			builder.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password);
+			builder.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password, None);
 		},
 		ChainSource::Electrum { server_url } => {
 			builder.set_chain_source_electrum(server_url, None);
@@ -193,10 +193,11 @@ fn main() {
 	}
 
 	if let Some(lsps2_client_config) = config_file.lsps2_client_config {
-		builder.set_liquidity_source_lsps2(
+		builder.add_liquidity_source(
 			lsps2_client_config.node_id,
 			lsps2_client_config.address,
 			lsps2_client_config.token,
+			false,
 		);
 	}
 
@@ -210,7 +211,7 @@ fn main() {
 
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
-	builder.set_liquidity_provider_lsps2(
+	builder.enable_liquidity_provider(
 		config_file.lsps2_service_config.expect("Missing liquidity.lsps2_server config"),
 	);
 
