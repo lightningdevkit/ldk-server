@@ -53,9 +53,11 @@ pub(crate) fn peer_to_proto(peer: PeerDetails) -> Peer {
 }
 
 pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
+	let counterparty = channel.counterparty;
+
 	Channel {
 		channel_id: channel.channel_id.0.to_lower_hex_string(),
-		counterparty_node_id: channel.counterparty_node_id.to_string(),
+		counterparty_node_id: counterparty.node_id.to_string(),
 		funding_txo: channel
 			.funding_txo
 			.map(|o| OutPoint { txid: o.txid.to_string(), vout: o.vout }),
@@ -75,17 +77,21 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 		next_outbound_htlc_limit_msat: channel.next_outbound_htlc_limit_msat,
 		next_outbound_htlc_minimum_msat: channel.next_outbound_htlc_minimum_msat,
 		force_close_spend_delay: channel.force_close_spend_delay.map(|x| x as u32),
-		counterparty_outbound_htlc_minimum_msat: channel.counterparty_outbound_htlc_minimum_msat,
-		counterparty_outbound_htlc_maximum_msat: channel.counterparty_outbound_htlc_maximum_msat,
-		counterparty_unspendable_punishment_reserve: channel
-			.counterparty_unspendable_punishment_reserve,
-		counterparty_forwarding_info_fee_base_msat: channel
-			.counterparty_forwarding_info_fee_base_msat,
-		counterparty_forwarding_info_fee_proportional_millionths: channel
-			.counterparty_forwarding_info_fee_proportional_millionths,
-		counterparty_forwarding_info_cltv_expiry_delta: channel
-			.counterparty_forwarding_info_cltv_expiry_delta
-			.map(|x| x as u32),
+		counterparty_outbound_htlc_minimum_msat: counterparty.outbound_htlc_minimum_msat,
+		counterparty_outbound_htlc_maximum_msat: counterparty.outbound_htlc_maximum_msat,
+		counterparty_unspendable_punishment_reserve: counterparty.unspendable_punishment_reserve,
+		counterparty_forwarding_info_fee_base_msat: counterparty
+			.forwarding_info
+			.as_ref()
+			.map(|info| info.fee_base_msat),
+		counterparty_forwarding_info_fee_proportional_millionths: counterparty
+			.forwarding_info
+			.as_ref()
+			.map(|info| info.fee_proportional_millionths),
+		counterparty_forwarding_info_cltv_expiry_delta: counterparty
+			.forwarding_info
+			.as_ref()
+			.map(|info| info.cltv_expiry_delta as u32),
 	}
 }
 
@@ -150,7 +156,7 @@ pub(crate) fn payment_kind_to_proto(
 	payment_kind: PaymentKind,
 ) -> ldk_server_grpc::types::PaymentKind {
 	match payment_kind {
-		PaymentKind::Onchain { txid, status } => ldk_server_grpc::types::PaymentKind {
+		PaymentKind::Onchain { txid, status, .. } => ldk_server_grpc::types::PaymentKind {
 			kind: Some(Onchain(ldk_server_grpc::types::Onchain {
 				txid: txid.to_string(),
 				status: Some(confirmation_status_to_proto(status)),

@@ -13,7 +13,7 @@ keywords = ["bitcoin", "lightning", "ldk", "server"]
 categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
-ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "00dba456a10cb60172eaa74e0a8b11c5e0473dcc" }
+ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "f2e44fdd21490ff3fa90445d7a28b19cfd020c3d" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 hyper = { version = "1", default-features = false, features = ["server", "http2"] }
 http-body-util = { version = "0.1", default-features = false }

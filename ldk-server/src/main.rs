@@ -25,7 +25,7 @@ use hex::DisplayHex;
 use hyper::server::conn::http2;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
-use ldk_node::config::Config;
+use ldk_node::config::{Config, ElectrumSyncConfig, EsploraSyncConfig};
 use ldk_node::lightning::events::ClosureReason;
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
@@ -168,14 +168,34 @@ fn main() {
 	}
 
 	match config_file.chain_source {
-		ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } => {
-			builder.set_chain_source_bitcoind_rpc(rpc_host, rpc_port, rpc_user, rpc_password);
+		ChainSource::Rpc {
+			rpc_host,
+			rpc_port,
+			rpc_user,
+			rpc_password,
+			wallet_rescan_from_height,
+		} => {
+			builder.set_chain_source_bitcoind_rpc(
+				rpc_host,
+				rpc_port,
+				rpc_user,
+				rpc_password,
+				wallet_rescan_from_height,
+			);
 		},
-		ChainSource::Electrum { server_url } => {
-			builder.set_chain_source_electrum(server_url, None);
+		ChainSource::Electrum { server_url, force_wallet_full_scan } => {
+			let sync_config = force_wallet_full_scan.then(|| ElectrumSyncConfig {
+				force_wallet_full_scan: true,
+				..ElectrumSyncConfig::default()
+			});
+			builder.set_chain_source_electrum(server_url, sync_config);
 		},
-		ChainSource::Esplora { server_url } => {
-			builder.set_chain_source_esplora(server_url, None);
+		ChainSource::Esplora { server_url, force_wallet_full_scan } => {
+			let sync_config = force_wallet_full_scan.then(|| EsploraSyncConfig {
+				force_wallet_full_scan: true,
+				..EsploraSyncConfig::default()
+			});
+			builder.set_chain_source_esplora(server_url, sync_config);
 		},
 	}
 
@@ -193,10 +213,11 @@ fn main() {
 	}
 
 	if let Some(lsps2_client_config) = config_file.lsps2_client_config {
-		builder.set_liquidity_source_lsps2(
+		builder.add_liquidity_source(
 			lsps2_client_config.node_id,
 			lsps2_client_config.address,
 			lsps2_client_config.token,
+			false,
 		);
 	}
 
@@ -210,7 +231,7 @@ fn main() {
 
 	// LSPS2 support is highly experimental and for testing purposes only.
 	#[cfg(feature = "experimental-lsps2-support")]
-	builder.set_liquidity_provider_lsps2(
+	builder.enable_liquidity_provider(
 		config_file.lsps2_service_config.expect("Missing liquidity.lsps2_server config"),
 	);
 

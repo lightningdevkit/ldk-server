@@ -89,9 +89,21 @@ pub struct TlsConfig {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChainSource {
-	Rpc { rpc_host: String, rpc_port: u16, rpc_user: String, rpc_password: String },
-	Electrum { server_url: String },
-	Esplora { server_url: String },
+	Rpc {
+		rpc_host: String,
+		rpc_port: u16,
+		rpc_user: String,
+		rpc_password: String,
+		wallet_rescan_from_height: Option<u32>,
+	},
+	Electrum {
+		server_url: String,
+		force_wallet_full_scan: bool,
+	},
+	Esplora {
+		server_url: String,
+		force_wallet_full_scan: bool,
+	},
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -114,6 +126,8 @@ struct ConfigBuilder {
 	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
+	rescan_from_height: Option<u32>,
+	force_wallet_full_scan: bool,
 	rgs_server_url: Option<String>,
 	lsps2: Option<LiquidityConfig>,
 	log_level: Option<String>,
@@ -242,6 +256,14 @@ impl ConfigBuilder {
 			self.bitcoind_rpc_password = Some(bitcoind_rpc_password.clone());
 		}
 
+		if let Some(rescan_from_height) = args.rescan_from_height {
+			self.rescan_from_height = Some(rescan_from_height);
+		}
+
+		if args.force_wallet_full_scan {
+			self.force_wallet_full_scan = true;
+		}
+
 		if let Some(storage_dir_path) = &args.storage_dir_path {
 			self.storage_dir_path = Some(storage_dir_path.clone());
 		}
@@ -363,6 +385,13 @@ impl ConfigBuilder {
 		}
 
 		let chain_source = if rpc_configured {
+			if self.force_wallet_full_scan {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`--force-wallet-full-scan` requires the Electrum or Esplora chain source.",
+				));
+			}
+
 			let rpc_address = self
 				.bitcoind_rpc_address
 				.ok_or_else(|| missing_field_err("bitcoind_rpc_address"))?;
@@ -375,11 +404,35 @@ impl ConfigBuilder {
 				.bitcoind_rpc_password
 				.ok_or_else(|| missing_field_err("bitcoind_rpc_password"))?;
 
-			ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password }
+			ChainSource::Rpc {
+				rpc_host,
+				rpc_port,
+				rpc_user,
+				rpc_password,
+				wallet_rescan_from_height: self.rescan_from_height,
+			}
 		} else if let Some(url) = self.electrum_url {
-			ChainSource::Electrum { server_url: url }
+			if self.rescan_from_height.is_some() {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`--rescan-from-height` requires the bitcoind RPC chain source.",
+				));
+			}
+			ChainSource::Electrum {
+				server_url: url,
+				force_wallet_full_scan: self.force_wallet_full_scan,
+			}
 		} else if let Some(url) = self.esplora_url {
-			ChainSource::Esplora { server_url: url }
+			if self.rescan_from_height.is_some() {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`--rescan-from-height` requires the bitcoind RPC chain source.",
+				));
+			}
+			ChainSource::Esplora {
+				server_url: url,
+				force_wallet_full_scan: self.force_wallet_full_scan,
+			}
 		} else {
 			return Err(io::Error::new(io::ErrorKind::InvalidInput, "No valid Chain Source configured. Provide Bitcoind RPC, Electrum, or Esplora details."));
 		};
@@ -885,6 +938,20 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_RESCAN_FROM_HEIGHT",
+		help = "Rescan the wallet from this block height on first startup. Only supported with the bitcoind RPC chain source."
+	)]
+	rescan_from_height: Option<u32>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_FORCE_WALLET_FULL_SCAN",
+		help = "Force wallet full scans until one succeeds. Only supported with Electrum and Esplora chain sources."
+	)]
+	force_wallet_full_scan: bool,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_STORAGE_DIR_PATH",
 		help = "The path where the underlying LDK and BDK persist their data."
 	)]
@@ -1075,6 +1142,8 @@ mod tests {
 			bitcoind_rpc_address: Some(String::from("127.0.1.9:18443")),
 			bitcoind_rpc_user: Some(String::from("bitcoind-testuser_cli")),
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
+			rescan_from_height: None,
+			force_wallet_full_scan: false,
 			storage_dir_path: Some(String::from("/tmp_cli")),
 			node_alias: Some(String::from("LDK Server CLI")),
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
@@ -1102,6 +1171,8 @@ mod tests {
 			bitcoind_rpc_address: None,
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
+			rescan_from_height: None,
+			force_wallet_full_scan: false,
 			storage_dir_path: None,
 			pathfinding_scores_source_url: None,
 			node_async_payments_role: None,
@@ -1122,6 +1193,29 @@ mod tests {
 			"Missing `{}`. Please provide it via config file, CLI argument, or environment variable.",
 			field
 		)
+	}
+
+	fn lsps2_service_config_for_feature() -> &'static str {
+		#[cfg(feature = "experimental-lsps2-support")]
+		{
+			r#"
+			[liquidity.lsps2_service]
+			advertise_service = false
+			channel_opening_fee_ppm = 1000
+			channel_over_provisioning_ppm = 500000
+			min_channel_opening_fee_msat = 10000000
+			min_channel_lifetime = 4320
+			max_client_to_self_delay = 1440
+			min_payment_size_msat = 10000000
+			max_payment_size_msat = 25000000000
+			client_trusts_lsp = true
+			disable_client_reserve = false
+			"#
+		}
+		#[cfg(not(feature = "experimental-lsps2-support"))]
+		{
+			""
+		}
 	}
 
 	#[test]
@@ -1156,6 +1250,7 @@ mod tests {
 				rpc_port: 8332,
 				rpc_user: "bitcoind-testuser".to_string(),
 				rpc_password: "bitcoind-testpassword".to_string(),
+				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
 			lsps2_client_config: Some(LSPSClientConfig {
@@ -1261,11 +1356,13 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let config = load_config(&args_config).unwrap();
 
-		let ChainSource::Electrum { server_url } = config.chain_source else {
+		let ChainSource::Electrum { server_url, force_wallet_full_scan } = config.chain_source
+		else {
 			panic!("unexpected chain source");
 		};
 
 		assert_eq!(server_url, "ssl://electrum.blockstream.info:50002");
+		assert!(!force_wallet_full_scan);
 
 		// Test case where only bitcoind is set
 
@@ -1315,7 +1412,13 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let config = load_config(&args_config).unwrap();
 
-		let ChainSource::Rpc { rpc_host, rpc_port, rpc_user, rpc_password } = config.chain_source
+		let ChainSource::Rpc {
+			rpc_host,
+			rpc_port,
+			rpc_user,
+			rpc_password,
+			wallet_rescan_from_height,
+		} = config.chain_source
 		else {
 			panic!("unexpected chain source");
 		};
@@ -1324,6 +1427,7 @@ mod tests {
 		assert_eq!(rpc_port, 8332);
 		assert_eq!(rpc_user, "bitcoind-testuser");
 		assert_eq!(rpc_password, "bitcoind-testpassword");
+		assert_eq!(wallet_rescan_from_height, None);
 
 		// Test case where both bitcoind and esplora are set, resulting in an error
 
@@ -1570,6 +1674,7 @@ mod tests {
 				rpc_port: port,
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
+				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: None,
 			lsps2_client_config: None,
@@ -1669,6 +1774,7 @@ mod tests {
 				rpc_port: port,
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
+				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
 			lsps2_client_config: Some(LSPSClientConfig {
@@ -2054,5 +2160,144 @@ mod tests {
 
 		assert!(mnemonic_result.is_err());
 		assert!(seed_result.is_err());
+	}
+
+	#[test]
+	fn test_accepts_rescan_from_height_arg() {
+		let args_config =
+			ArgsConfig::try_parse_from(["ldk-server", "--rescan-from-height", "144"]).unwrap();
+
+		assert_eq!(args_config.rescan_from_height, Some(144));
+	}
+
+	#[test]
+	fn test_rescan_from_height_configures_bitcoind() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rescan_from_height_bitcoind.toml";
+		let toml_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			{}
+			"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		args_config.rescan_from_height = Some(144);
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rpc { wallet_rescan_from_height, .. } = config.chain_source else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(wallet_rescan_from_height, Some(144));
+	}
+
+	#[test]
+	fn test_rescan_from_height_rejects_non_bitcoind_chain_sources() {
+		for (config_file_name, chain_config) in [
+			(
+				"test_rescan_from_height_rejects_electrum.toml",
+				r#"
+				[node]
+				network = "regtest"
+
+				[electrum]
+				server_url = "ssl://electrum.blockstream.info:50002"
+				"#,
+			),
+			(
+				"test_rescan_from_height_rejects_esplora.toml",
+				r#"
+				[node]
+				network = "regtest"
+
+				[esplora]
+				server_url = "https://mempool.space/api"
+				"#,
+			),
+		] {
+			let storage_path = std::env::temp_dir();
+			fs::write(storage_path.join(config_file_name), chain_config).unwrap();
+			let mut args_config = empty_args_config();
+			args_config.config_file =
+				Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+			args_config.rescan_from_height = Some(144);
+
+			let err = load_config(&args_config).unwrap_err();
+			assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+			assert!(err.to_string().contains("--rescan-from-height"));
+		}
+	}
+
+	#[test]
+	fn test_accepts_force_wallet_full_scan_arg() {
+		let args_config =
+			ArgsConfig::try_parse_from(["ldk-server", "--force-wallet-full-scan"]).unwrap();
+
+		assert!(args_config.force_wallet_full_scan);
+	}
+
+	#[test]
+	fn test_force_wallet_full_scan_configures_electrum_and_esplora() {
+		for (config_file_name, chain_config) in [
+			(
+				"test_force_wallet_full_scan_electrum.toml",
+				r#"
+				[node]
+				network = "regtest"
+
+				[electrum]
+				server_url = "ssl://electrum.blockstream.info:50002"
+				"#,
+			),
+			(
+				"test_force_wallet_full_scan_esplora.toml",
+				r#"
+				[node]
+				network = "regtest"
+
+				[esplora]
+				server_url = "https://mempool.space/api"
+				"#,
+			),
+		] {
+			let storage_path = std::env::temp_dir();
+			let chain_config = format!("{}{}", chain_config, lsps2_service_config_for_feature());
+			fs::write(storage_path.join(config_file_name), chain_config).unwrap();
+			let mut args_config = empty_args_config();
+			args_config.config_file =
+				Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+			args_config.force_wallet_full_scan = true;
+
+			let config = load_config(&args_config).unwrap();
+			let force_wallet_full_scan = match config.chain_source {
+				ChainSource::Electrum { force_wallet_full_scan, .. }
+				| ChainSource::Esplora { force_wallet_full_scan, .. } => force_wallet_full_scan,
+				ChainSource::Rpc { .. } => panic!("unexpected chain source"),
+			};
+
+			assert!(force_wallet_full_scan);
+		}
+	}
+
+	#[test]
+	fn test_force_wallet_full_scan_rejects_bitcoind() {
+		let mut args_config = default_args_config();
+		args_config.force_wallet_full_scan = true;
+
+		let err = load_config(&args_config).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("--force-wallet-full-scan"));
 	}
 }
