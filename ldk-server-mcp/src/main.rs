@@ -124,6 +124,11 @@ async fn main() {
 				let resp = JsonRpcResponse::new(id, serde_json::json!({ "tools": tools }));
 				serde_json::to_string(&resp).unwrap()
 			},
+			"ping" => {
+				// Per the MCP spec, a ping must be answered with an empty result object.
+				let resp = JsonRpcResponse::new(id, serde_json::json!({}));
+				serde_json::to_string(&resp).unwrap()
+			},
 			"tools/call" => {
 				let params = request.params.unwrap_or(Value::Null);
 				match params.get("name").and_then(|v| v.as_str()) {

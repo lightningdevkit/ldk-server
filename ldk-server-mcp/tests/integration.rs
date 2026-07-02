@@ -186,6 +186,25 @@ fn test_tools_list() {
 }
 
 #[test]
+fn test_ping() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "ping"
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["jsonrpc"], "2.0");
+	assert_eq!(resp["id"], 1);
+	// Per the MCP spec, ping is answered with an empty result object.
+	assert!(resp["result"].is_object(), "Expected result object, got: {}", resp["result"]);
+	assert_eq!(resp["result"].as_object().unwrap().len(), 0, "Expected empty result object");
+	assert!(resp.get("error").is_none(), "Ping must not return an error");
+}
+
+#[test]
 fn test_tools_call_unknown_tool() {
 	let mut proc = McpProcess::spawn();
 

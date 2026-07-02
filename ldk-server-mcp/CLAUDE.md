@@ -35,7 +35,7 @@ src/
 - **Version**: `2025-11-25`
 - **Spec**: https://spec.modelcontextprotocol.io/
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods implemented**: `initialize`, `tools/list`, `tools/call`
+- **Methods implemented**: `initialize`, `tools/list`, `tools/call`, `ping`
 - **Notifications handled**: `notifications/initialized` (ignored, no response)
 
 ## Config
