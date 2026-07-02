@@ -101,7 +101,7 @@ Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `me
 
 - **Protocol version**: `2025-11-25`
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods**: `initialize`, `tools/list`, `tools/call`
+- **Methods**: `initialize`, `tools/list`, `tools/call`, `ping`
 
 ## Testing
 
