@@ -30,7 +30,12 @@ pub(crate) async fn handle_onchain_send_request(
 			)
 		})?;
 
-	let fee_rate = request.fee_rate_sat_per_vb.and_then(FeeRate::from_sat_per_vb);
+	let fee_rate = match request.fee_rate_sat_per_vb {
+		Some(rate) => Some(FeeRate::from_sat_per_vb(rate).ok_or_else(|| {
+			LdkServerError::new(InvalidRequestError, format!("Invalid fee rate: {} sat/vB", rate))
+		})?),
+		None => None,
+	};
 	let txid = match (request.amount_sats, request.send_all) {
 		(Some(amount_sats), None) => {
 			context.node.onchain_payment().send_to_address(&address, amount_sats, fee_rate)?
