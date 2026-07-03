@@ -14,7 +14,7 @@ use std::{fs, io};
 use ldk_node::lightning::types::string::PrintableString;
 use rusqlite::{named_params, Connection};
 
-use crate::io::persist::paginated_kv_store::{ListResponse, PaginatedKVStore};
+use crate::io::persist::paginated_kv_store::{ListResponse, ListValuesResponse, PaginatedKVStore};
 use crate::io::utils::check_namespace_key_validity;
 
 /// The default database file name.
@@ -127,6 +127,7 @@ impl SqliteStore {
 		Ok(Self { connection, paginated_kv_table_name })
 	}
 
+	#[cfg_attr(not(test), allow(dead_code))]
 	fn read_internal(
 		&self, kv_table_name: &str, primary_namespace: &str, secondary_namespace: &str, key: &str,
 	) -> io::Result<Vec<u8>> {
@@ -290,6 +291,74 @@ impl PaginatedKVStore for SqliteStore {
 
 		Ok(ListResponse { keys, next_page_token })
 	}
+
+	fn list_values(
+		&self, primary_namespace: &str, secondary_namespace: &str,
+		page_token: Option<(String, i64)>,
+	) -> io::Result<ListValuesResponse> {
+		check_namespace_key_validity(primary_namespace, secondary_namespace, None, "list_values")?;
+
+		let locked_conn = self.connection.lock().unwrap();
+
+		// The cursor predicate is paired with this exact ordering: newer creation times first,
+		// then keys ascending to make rows with the same creation time deterministic.
+		let sql = format!(
+			"SELECT key, creation_time, value FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace \
+			AND ( creation_time < :creation_time_token OR (creation_time = :creation_time_token AND key > :key_token) ) \
+			ORDER BY creation_time DESC, key ASC LIMIT :page_size",
+			self.paginated_kv_table_name
+		);
+
+		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
+			let msg = format!("Failed to prepare statement: {}", e);
+			io::Error::other(msg)
+		})?;
+
+		let mut items: Vec<(String, Vec<u8>)> = Vec::new();
+		let page_token = page_token.unwrap_or(("".to_string(), i64::MAX));
+
+		let rows_iter = stmt
+			.query_map(
+				named_params! {
+						":primary_namespace": primary_namespace,
+						":secondary_namespace": secondary_namespace,
+						":key_token": page_token.0,
+						":creation_time_token": page_token.1,
+						":page_size": LIST_KEYS_MAX_PAGE_SIZE,
+				},
+				|row| {
+					let key: String = row.get(0)?;
+					let creation_time: i64 = row.get(1)?;
+					let value: Vec<u8> = row.get(2)?;
+					Ok((key, creation_time, value))
+				},
+			)
+			.map_err(|e| {
+				let msg = format!("Failed to retrieve queried rows: {}", e);
+				io::Error::other(msg)
+			})?;
+
+		let mut last_creation_time: Option<i64> = None;
+		for r in rows_iter {
+			let (k, ct, value) = r.map_err(|e| {
+				let msg = format!("Failed to retrieve queried rows: {}", e);
+				io::Error::other(msg)
+			})?;
+			items.push((k, value));
+			last_creation_time = Some(ct);
+		}
+
+		let last_key = items.last().map(|(key, _)| key.clone());
+		// Match list's token behavior: EOF is confirmed by a following empty page, not by
+		// withholding the token from a short non-empty page.
+		let next_page_token = if let (Some(k), Some(ct)) = (last_key, last_creation_time) {
+			Some((k, ct))
+		} else {
+			None
+		};
+
+		Ok(ListValuesResponse { items, next_page_token })
+	}
 }
 
 #[cfg(test)]
@@ -348,6 +417,24 @@ mod tests {
 			all_keys
 		};
 
+		let list_all_items =
+			|primary_namespace: &str, secondary_namespace: &str| -> Vec<(String, Vec<u8>)> {
+				let mut all_items = Vec::new();
+				let mut page_token = None;
+				loop {
+					let list_response = kv_store
+						.list_values(primary_namespace, secondary_namespace, page_token)
+						.unwrap();
+					assert!(list_response.items.len() <= LIST_KEYS_MAX_PAGE_SIZE as usize);
+					all_items.extend(list_response.items);
+					if list_response.next_page_token.is_none() {
+						break;
+					}
+					page_token = list_response.next_page_token;
+				}
+				all_items
+			};
+
 		// Test the basic KVStore operations.
 		for i in 0..110 {
 			kv_store
@@ -370,6 +457,14 @@ mod tests {
 		assert_eq!(listed_keys.len(), 110);
 		assert_eq!(listed_keys[0], testkey);
 
+		let listed_items = list_all_items(primary_namespace, secondary_namespace);
+		let listed_item_keys: Vec<String> =
+			listed_items.iter().map(|(key, _)| key.clone()).collect();
+		assert_eq!(listed_item_keys, listed_keys);
+		for (_, value) in listed_items {
+			assert_eq!(data, &*value);
+		}
+
 		let read_data = kv_store.read(primary_namespace, secondary_namespace, testkey).unwrap();
 		assert_eq!(data, &*read_data);
 
@@ -382,6 +477,11 @@ mod tests {
 		let listed_keys = list_all_keys(&max_chars, &max_chars);
 		assert_eq!(listed_keys.len(), 1);
 		assert_eq!(listed_keys[0], max_chars);
+
+		let listed_items = list_all_items(&max_chars, &max_chars);
+		assert_eq!(listed_items.len(), 1);
+		assert_eq!(listed_items[0].0.as_str(), max_chars.as_str());
+		assert_eq!(data, listed_items[0].1.as_slice());
 
 		let read_data = kv_store.read(&max_chars, &max_chars, &max_chars).unwrap();
 		assert_eq!(data, &*read_data);

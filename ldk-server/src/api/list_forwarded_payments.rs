@@ -28,7 +28,7 @@ pub(crate) async fn handle_list_forwarded_payments_request(
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context
 		.paginated_kv_store
-		.list(
+		.list_values(
 			FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 			FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 			page_token,
@@ -41,21 +41,8 @@ pub(crate) async fn handle_list_forwarded_payments_request(
 		})?;
 
 	let mut forwarded_payments: Vec<ForwardedPayment> =
-		Vec::with_capacity(list_response.keys.len());
-	for key in list_response.keys {
-		let forwarded_payment_bytes = context
-			.paginated_kv_store
-			.read(
-				FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-				FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-				&key,
-			)
-			.map_err(|e| {
-				LdkServerError::new(
-					InternalServerError,
-					format!("Failed to read forwarded payment data: {}", e),
-				)
-			})?;
+		Vec::with_capacity(list_response.items.len());
+	for (_, forwarded_payment_bytes) in list_response.items {
 		let forwarded_payment = ForwardedPayment::decode(Bytes::from(forwarded_payment_bytes))
 			.map_err(|e| {
 				LdkServerError::new(

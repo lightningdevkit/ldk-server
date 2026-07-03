@@ -27,7 +27,7 @@ pub(crate) async fn handle_list_payments_request(
 	let page_token = request.page_token.map(|p| (p.token, p.index));
 	let list_response = context
 		.paginated_kv_store
-		.list(
+		.list_values(
 			PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 			PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 			page_token,
@@ -36,21 +36,8 @@ pub(crate) async fn handle_list_payments_request(
 			LdkServerError::new(InternalServerError, format!("Failed to list payments: {}", e))
 		})?;
 
-	let mut payments: Vec<Payment> = Vec::with_capacity(list_response.keys.len());
-	for key in list_response.keys {
-		let payment_bytes = context
-			.paginated_kv_store
-			.read(
-				PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-				PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-				&key,
-			)
-			.map_err(|e| {
-				LdkServerError::new(
-					InternalServerError,
-					format!("Failed to read payment data: {}", e),
-				)
-			})?;
+	let mut payments: Vec<Payment> = Vec::with_capacity(list_response.items.len());
+	for (_, payment_bytes) in list_response.items {
 		let payment = Payment::decode(Bytes::from(payment_bytes)).map_err(|e| {
 			LdkServerError::new(InternalServerError, format!("Failed to decode payment: {}", e))
 		})?;

@@ -42,6 +42,7 @@ pub trait PaginatedKVStore: Send + Sync {
 	/// `primary_namespace` and `secondary_namespace`.
 	///
 	/// [`ErrorKind::NotFound`]: io::ErrorKind::NotFound
+	#[cfg_attr(not(test), allow(dead_code))]
 	fn read(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
 	) -> Result<Vec<u8>, io::Error>;
@@ -74,20 +75,43 @@ pub trait PaginatedKVStore: Send + Sync {
 	/// there are no more keys to return.
 	///
 	/// [`ListResponse`]: struct.ListResponse.html
+	#[cfg_attr(not(test), allow(dead_code))]
 	fn list(
 		&self, primary_namespace: &str, secondary_namespace: &str,
 		next_page_token: Option<(String, i64)>,
 	) -> Result<ListResponse, io::Error>;
+
+	/// Returns a paginated list of keys and values that are stored under the given
+	/// `secondary_namespace` in `primary_namespace`, ordered in descending order of `time`.
+	///
+	/// This follows the same pagination and ordering semantics as [`PaginatedKVStore::list`].
+	fn list_values(
+		&self, primary_namespace: &str, secondary_namespace: &str,
+		next_page_token: Option<(String, i64)>,
+	) -> Result<ListValuesResponse, io::Error>;
 }
 
 /// Represents the response from a paginated `list` operation.
 ///
 /// Contains the list of keys and an optional `next_page_token` that can be used to retrieve the
 /// next set of keys.
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct ListResponse {
 	/// A vector of keys, ordered in descending order of `time`.
 	pub keys: Vec<String>,
 
 	///  A token that can be used to retrieve the next set of keys.
+	pub next_page_token: Option<(String, i64)>,
+}
+
+/// Represents the response from a paginated `list_values` operation.
+///
+/// Contains the list of keys and values and an optional `next_page_token` that can be used to
+/// retrieve the next set of items.
+pub struct ListValuesResponse {
+	/// A vector of key-value pairs, ordered in descending order of `time`.
+	pub items: Vec<(String, Vec<u8>)>,
+
+	///  A token that can be used to retrieve the next set of items.
 	pub next_page_token: Option<(String, i64)>,
 }
