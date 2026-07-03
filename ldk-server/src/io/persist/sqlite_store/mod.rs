@@ -105,14 +105,19 @@ impl SqliteStore {
 			io::Error::other(msg)
 		})?;
 
-		let index_creation_time_sql = format!(
-			"CREATE INDEX IF NOT EXISTS idx_creation_time ON {} (creation_time);",
+		let index_paginated_kv_namespace_time_key_sql = format!(
+			"CREATE INDEX IF NOT EXISTS idx_paginated_kv_namespace_time_key ON {} (
+				primary_namespace,
+				secondary_namespace,
+				creation_time DESC,
+				key ASC
+			);",
 			paginated_kv_table_name
 		);
 
-		connection.execute(&index_creation_time_sql, []).map_err(|e| {
+		connection.execute(&index_paginated_kv_namespace_time_key_sql, []).map_err(|e| {
 			let msg = format!(
-				"Failed to create index on creation_time, table {}: {}",
+				"Failed to create paginated namespace index, table {}: {}",
 				paginated_kv_table_name, e
 			);
 			io::Error::other(msg)
