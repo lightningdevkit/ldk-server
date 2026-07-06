@@ -311,6 +311,24 @@ pub fn bolt11_send_schema() -> Value {
 	})
 }
 
+pub fn bolt11_send_underpaying_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"invoice": {
+				"type": "string",
+				"description": "A BOLT11 invoice string to underpay"
+			},
+			"amount_msat": {
+				"type": "integer",
+				"description": "Amount in millisatoshis to send. Must be less than the invoice amount"
+			},
+			"route_parameters": route_parameters_config_schema()
+		},
+		"required": ["invoice", "amount_msat"]
+	})
+}
+
 pub fn bolt12_receive_schema() -> Value {
 	json!({
 		"type": "object",

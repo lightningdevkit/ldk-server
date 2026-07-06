@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 37;
+const NUM_TOOLS: usize = 38;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_hash",
 	"bolt11_fail_for_hash",
@@ -20,6 +20,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_receive_variable_amount_via_jit_channel",
 	"bolt11_receive_via_jit_channel",
 	"bolt11_send",
+	"bolt11_send_underpaying",
 	"bolt12_receive",
 	"bolt12_send",
 	"close_channel",
@@ -321,6 +322,14 @@ fn test_list_peers_unreachable() {
 #[test]
 fn test_decode_invoice_unreachable() {
 	assert_unreachable_tool("decode_invoice", json!({ "invoice": "lnbc1example" }));
+}
+
+#[test]
+fn test_bolt11_send_underpaying_unreachable() {
+	assert_unreachable_tool(
+		"bolt11_send_underpaying",
+		json!({ "invoice": "lnbc1example", "amount_msat": 1000 }),
+	);
 }
 
 #[test]

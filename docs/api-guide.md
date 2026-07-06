@@ -93,10 +93,11 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 
 ### BOLT11 Payments
 
-| RPC             | Description                                                       |
-|-----------------|-------------------------------------------------------------------|
-| `Bolt11Receive` | Create an invoice (fixed or variable amount) with automatic claim |
-| `Bolt11Send`    | Pay a BOLT11 invoice (with optional routing config)               |
+| RPC                       | Description                                                                        |
+|---------------------------|------------------------------------------------------------------------------------|
+| `Bolt11Receive`           | Create an invoice (fixed or variable amount) with automatic claim                  |
+| `Bolt11Send`              | Pay a BOLT11 invoice (with optional routing config)                                |
+| `Bolt11SendUnderpaying`   | Pay less than the invoice amount when the receiver accepts underpaying HTLCs       |
 
 ### BOLT11 Hodl Invoices
 

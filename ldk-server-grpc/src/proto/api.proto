@@ -296,6 +296,28 @@ message Bolt11SendResponse {
   string payment_id = 1;
 }
 
+// Send an underpaying payment for a BOLT11 invoice.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send_using_amount_underpaying
+message Bolt11SendUnderpayingRequest {
+
+  // An invoice for a payment within the Lightning Network.
+  string invoice = 1;
+
+  // Amount in millisatoshis to send. Must be less than the amount required by the invoice.
+  uint64 amount_msat = 2;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 3;
+
+}
+
+// The response for the `Bolt11SendUnderpaying` RPC. On failure, a gRPC error status is returned.
+message Bolt11SendUnderpayingResponse {
+
+  // An identifier used to uniquely identify a payment in hex-encoded form.
+  string payment_id = 1;
+}
+
 // Returns a BOLT12 offer for the given amount, if specified.
 //
 // See more:
@@ -928,6 +950,8 @@ service LightningNode {
   rpc Bolt11ReceiveVariableAmountViaJitChannel(Bolt11ReceiveVariableAmountViaJitChannelRequest) returns (Bolt11ReceiveVariableAmountViaJitChannelResponse);
   // Send a payment for a BOLT11 invoice.
   rpc Bolt11Send(Bolt11SendRequest) returns (Bolt11SendResponse);
+  // Send an underpaying payment for a BOLT11 invoice.
+  rpc Bolt11SendUnderpaying(Bolt11SendUnderpayingRequest) returns (Bolt11SendUnderpayingResponse);
   // Return a BOLT12 offer.
   rpc Bolt12Receive(Bolt12ReceiveRequest) returns (Bolt12ReceiveResponse);
   // Send a payment for a BOLT12 offer.
