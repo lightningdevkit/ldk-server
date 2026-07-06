@@ -817,6 +817,58 @@ async fn test_cli_bolt11_send() {
 	assert!(matches!(&event_b.event, Some(Event::PaymentReceived(_))));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_cli_bolt11_send_underpaying_split_payment() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	let server_c = LdkServerHandle::start(&bitcoind).await;
+
+	// Subscribe to events on all three nodes before any payment is sent.
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+	let mut events_b = server_b.client().subscribe_events().await.unwrap();
+	let mut events_c = server_c.client().subscribe_events().await.unwrap();
+
+	// Each payer gets its own direct channel into the receiver. The channels are sized well
+	// above the 50,000 sat HTLCs because LDK limits a channel's maximum HTLC size to a fraction
+	// of its capacity.
+	setup_funded_channel(&bitcoind, &server_a, &server_c, 300_000).await;
+	setup_funded_channel(&bitcoind, &server_b, &server_c, 300_000).await;
+
+	// Create one invoice for the full amount that the two payers will jointly cover.
+	let invoice_resp = server_c
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(100_000_000),
+			description: Some(Bolt11InvoiceDescription {
+				kind: Some(bolt11_invoice_description::Kind::Direct(
+					"split payment test".to_string(),
+				)),
+			}),
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+
+	// Both payers independently send half of the invoice amount.
+	let output_a =
+		run_cli(&server_a, &["bolt11-send-underpaying", &invoice_resp.invoice, "50000sat"]);
+	let output_b =
+		run_cli(&server_b, &["bolt11-send-underpaying", &invoice_resp.invoice, "50000sat"]);
+	assert!(!output_a["payment_id"].as_str().unwrap().is_empty());
+	assert!(!output_b["payment_id"].as_str().unwrap().is_empty());
+
+	// The receiver completes the payment only after both partial HTLCs arrive.
+	let event_c = wait_for_event(&mut events_c, |e| matches!(e, Event::PaymentReceived(_))).await;
+	assert!(matches!(&event_c.event, Some(Event::PaymentReceived(_))));
+
+	// Both payers complete their part of the payment successfully.
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	assert!(matches!(&event_a.event, Some(Event::PaymentSuccessful(_))));
+	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	assert!(matches!(&event_b.event, Some(Event::PaymentSuccessful(_))));
+}
+
 #[tokio::test]
 async fn test_cli_pay() {
 	let bitcoind = TestBitcoind::new();

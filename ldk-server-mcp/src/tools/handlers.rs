@@ -12,11 +12,12 @@ use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11FailForHashRequest, Bolt11ReceiveForHashRequest,
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
-	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt12ReceiveRequest, Bolt12SendRequest,
-	CloseChannelRequest, ConnectPeerRequest, DecodeInvoiceRequest, DecodeOfferRequest,
-	DisconnectPeerRequest, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
-	GetBalancesRequest, GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest,
-	GraphGetNodeRequest, GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
+	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
+	Bolt12ReceiveRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
+	DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, GetBalancesRequest,
+	GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
+	GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
 	OnchainSendRequest, OpenChannelRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
 	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
@@ -188,6 +189,17 @@ pub async fn handle_bolt11_send(client: &LdkServerClient, args: Value) -> Result
 			&mut request.route_parameters
 		})?;
 	let response = client.bolt11_send(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt11_send_underpaying(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt11SendUnderpayingRequest =
+		parse_request_with_route_parameters(args, |request: &mut Bolt11SendUnderpayingRequest| {
+			&mut request.route_parameters
+		})?;
+	let response = client.bolt11_send_underpaying(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

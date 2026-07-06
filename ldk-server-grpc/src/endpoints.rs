@@ -22,6 +22,7 @@ pub const BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH: &str = "Bolt11ReceiveViaJitChanne
 pub const BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH: &str =
 	"Bolt11ReceiveVariableAmountViaJitChannel";
 pub const BOLT11_SEND_PATH: &str = "Bolt11Send";
+pub const BOLT11_SEND_UNDERPAYING_PATH: &str = "Bolt11SendUnderpaying";
 pub const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
 pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
 pub const OPEN_CHANNEL_PATH: &str = "OpenChannel";
