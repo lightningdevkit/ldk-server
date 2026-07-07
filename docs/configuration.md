@@ -105,8 +105,32 @@ cooldown_secs = 3600
 
 ### `[storage.disk]`
 
-Where persistent data is stored. Defaults to `~/.ldk-server/` on Linux and
-`~/Library/Application Support/ldk-server/` on macOS.
+Where local ldk-server data is stored. Defaults to `~/.ldk-server/` on Linux and
+`~/Library/Application Support/ldk-server/` on macOS. This directory is still used for
+the node mnemonic, API key, TLS material, logs, and forwarded-payment history when
+LDK Node wallet state, channel state, and payment history use PostgreSQL.
+
+### `[storage.postgres]`
+
+Optional PostgreSQL storage for LDK Node wallet state, channel state, and payment history.
+
+```toml
+[storage.postgres]
+connection_string = "postgresql://postgres:postgres@localhost:5432"
+db_name = "ldk_db"
+kv_table_name = "ldk_data"
+certificate_path = "/path/to/postgres-ca.pem"
+```
+
+Only `connection_string` is required. `db_name`, `kv_table_name`, and `certificate_path`
+are optional. If `db_name` is set, do not also include a database name in the connection
+string. If `certificate_path` is set, the file must contain a PEM-encoded CA certificate
+for TLS PostgreSQL connections.
+
+Storage migration is not supported. ldk-server refuses to start with PostgreSQL when an existing
+`ldk_node_data.sqlite` file is present. After the first successful PostgreSQL node build,
+ldk-server creates `<network_dir>/ldk_node_postgres.lock` and refuses to start with SQLite while
+that file exists.
 
 ### `[log]`
 
@@ -217,6 +241,7 @@ Two resolution methods are supported via the `mode` field:
   <network>/                # e.g., bitcoin/, regtest/, signet/
     api_key                # API key
     ldk-server.log         # Log file
+    ldk_node_postgres.lock  # Present when LDK Node state uses PostgreSQL
     ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
     ldk_server_data.sqlite # Forwarded-payment history
 ```
@@ -226,3 +251,7 @@ ldk-server generates a fresh 24-word BIP39 mnemonic at `<storage_dir>/keys_mnemo
 does not already exist. `ldk_node_data.sqlite` holds channel state and payment history. Both files
 are required to recover channel funds. See [Operations - Backups](operations.md#backups) for backup
 guidance.
+
+When `[storage.postgres]` is configured, LDK Node wallet state, channel state, and payment
+history are stored in PostgreSQL instead of `ldk_node_data.sqlite`. The storage directory
+remains required for the mnemonic, API key, TLS material, logs, and `ldk_server_data.sqlite`.
