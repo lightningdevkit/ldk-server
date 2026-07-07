@@ -53,7 +53,7 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 | File                                   | Priority     | Description                                                                |
 | -------------------------------------- | ------------ | -------------------------------------------------------------------------- |
 | `<storage_dir>/keys_mnemonic`          | **Critical** | BIP39 mnemonic. Required to recover on-chain funds. Default for new installs. |
-| `<network_dir>/ldk_node_data.sqlite`   | **Critical** | Channel state and on-chain wallet data. Required to recover channel funds. |
+| `<network_dir>/ldk_node_data.sqlite` or configured PostgreSQL database | **Critical** | Channel state and on-chain wallet data. Required to recover channel funds. |
 | `<network_dir>/ldk_server_data.sqlite` | Nice-to-have | Payment and forwarding history                                             |
 
 ### What is Reconstructable
@@ -195,9 +195,10 @@ all clients will need the new certificate.
 
 ## Network-Specific Notes
 
-Data is stored in per-network subdirectories (`bitcoin/`, `testnet/`, `signet/`, `regtest/`,
-etc.) under the storage root. This means you can run multiple networks from one storage
-directory without conflicts.
+Local data is stored in per-network subdirectories (`bitcoin/`, `testnet/`, `signet/`,
+`regtest/`, etc.) under the storage root. This means you can run multiple networks from one
+local storage directory without conflicts. PostgreSQL storage is not automatically isolated
+by network; configure a distinct database or table for each network.
 
 The `keys_mnemonic` file is shared across networks (stored at the storage root, not per-network).
 Keys are split by network at the derivation path level, so the same mnemonic will produce

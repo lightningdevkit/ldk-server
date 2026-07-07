@@ -56,6 +56,7 @@ pub struct Config {
 	pub tls_config: Option<TlsConfig>,
 	pub grpc_service_addr: SocketAddr,
 	pub storage_dir_path: Option<String>,
+	pub ldk_node_storage: LdkNodeStorageConfig,
 	pub chain_source: ChainSource,
 	pub rgs_server_url: Option<String>,
 	pub lsps2_client_config: Option<LSPSClientConfig>,
@@ -92,6 +93,17 @@ pub struct TlsConfig {
 	pub hosts: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LdkNodeStorageConfig {
+	Sqlite,
+	Postgres {
+		connection_string: String,
+		db_name: Option<String>,
+		kv_table_name: Option<String>,
+		certificate_pem: Option<String>,
+	},
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChainSource {
 	Rpc {
@@ -126,6 +138,7 @@ struct ConfigBuilder {
 	tls_config: Option<TlsConfig>,
 	grpc_service_address: Option<String>,
 	storage_dir_path: Option<String>,
+	ldk_node_postgres: Option<PostgresStorageConfig>,
 	electrum_url: Option<String>,
 	esplora_url: Option<String>,
 	bitcoind_rpc_address: Option<String>,
@@ -171,8 +184,12 @@ impl ConfigBuilder {
 		}
 
 		if let Some(storage) = toml.storage {
-			self.storage_dir_path =
-				storage.disk.and_then(|d| d.dir_path).or(self.storage_dir_path.clone());
+			self.storage_dir_path = storage
+				.disk
+				.as_ref()
+				.and_then(|d| d.dir_path.clone())
+				.or(self.storage_dir_path.clone());
+			self.ldk_node_postgres = storage.postgres.or(self.ldk_node_postgres.clone());
 		}
 
 		if let Some(bitcoind) = toml.bitcoind {
@@ -278,6 +295,26 @@ impl ConfigBuilder {
 			self.storage_dir_path = Some(storage_dir_path.clone());
 		}
 
+		if args.storage_postgres_connection_string.is_some()
+			|| args.storage_postgres_db_name.is_some()
+			|| args.storage_postgres_kv_table_name.is_some()
+			|| args.storage_postgres_certificate_path.is_some()
+		{
+			let postgres = self.ldk_node_postgres.get_or_insert_default();
+			if let Some(connection_string) = &args.storage_postgres_connection_string {
+				postgres.connection_string = Some(connection_string.clone());
+			}
+			if let Some(db_name) = &args.storage_postgres_db_name {
+				postgres.db_name = Some(db_name.clone());
+			}
+			if let Some(kv_table_name) = &args.storage_postgres_kv_table_name {
+				postgres.kv_table_name = Some(kv_table_name.clone());
+			}
+			if let Some(certificate_path) = &args.storage_postgres_certificate_path {
+				postgres.certificate_path = Some(certificate_path.clone());
+			}
+		}
+
 		if let Some(pathfinding_scores_source_url) = &args.pathfinding_scores_source_url {
 			self.pathfinding_scores_source_url = Some(pathfinding_scores_source_url.clone());
 		}
@@ -287,7 +324,7 @@ impl ConfigBuilder {
 		}
 
 		if args.has_probing_options() {
-			let probing = self.probing.get_or_insert_with(ProbingTomlConfig::default);
+			let probing = self.probing.get_or_insert_default();
 			if let Some(probing_strategy) = &args.probing_strategy {
 				probing.strategy = Some(probing_strategy.clone());
 				match probing_strategy.trim().to_ascii_lowercase().as_str() {
@@ -499,6 +536,32 @@ impl ConfigBuilder {
 		let log_max_files = self.log_max_files.unwrap_or(DEFAULT_LOG_MAX_FILES);
 		let log_to_file = self.log_to_file.unwrap_or(true);
 
+		let ldk_node_storage = if let Some(postgres) = self.ldk_node_postgres {
+			LdkNodeStorageConfig::Postgres {
+				connection_string: postgres
+					.connection_string
+					.ok_or_else(|| missing_field_err("storage_postgres_connection_string"))?,
+				db_name: postgres.db_name,
+				kv_table_name: postgres.kv_table_name,
+				certificate_pem: postgres
+					.certificate_path
+					.map(|path| {
+						fs::read_to_string(&path).map_err(|e| {
+							io::Error::new(
+								e.kind(),
+								format!(
+									"Failed to read PostgreSQL certificate file '{}': {}",
+									path, e
+								),
+							)
+						})
+					})
+					.transpose()?,
+			}
+		} else {
+			LdkNodeStorageConfig::Sqlite
+		};
+
 		let lsps2_client_config = self
 			.lsps2
 			.as_ref()
@@ -582,6 +645,7 @@ impl ConfigBuilder {
 			tls_config: self.tls_config,
 			grpc_service_addr,
 			storage_dir_path: self.storage_dir_path,
+			ldk_node_storage,
 			chain_source,
 			rgs_server_url: self.rgs_server_url,
 			lsps2_client_config,
@@ -640,12 +704,22 @@ struct NodeConfig {
 #[serde(deny_unknown_fields)]
 struct StorageConfig {
 	disk: Option<DiskConfig>,
+	postgres: Option<PostgresStorageConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct DiskConfig {
 	dir_path: Option<String>,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PostgresStorageConfig {
+	connection_string: Option<String>,
+	db_name: Option<String>,
+	kv_table_name: Option<String>,
+	certificate_path: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1098,6 +1172,34 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_STORAGE_POSTGRES_CONNECTION_STRING",
+		help = "PostgreSQL connection string for LDK Node wallet and channel state."
+	)]
+	storage_postgres_connection_string: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_STORAGE_POSTGRES_DB_NAME",
+		help = "Optional PostgreSQL database name for LDK Node storage."
+	)]
+	storage_postgres_db_name: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_STORAGE_POSTGRES_KV_TABLE_NAME",
+		help = "Optional PostgreSQL key-value table name for LDK Node storage."
+	)]
+	storage_postgres_kv_table_name: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_STORAGE_POSTGRES_CERTIFICATE_PATH",
+		help = "Optional path to a PEM-encoded CA certificate for TLS PostgreSQL connections."
+	)]
+	storage_postgres_certificate_path: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_PATHFINDING_SCORES_SOURCE_URL",
 		help = "The external scores source that is merged into the local scoring system to improve routing. Defaults to https://rapidsync.lightningdevkit.org/scoring/scorer.bin on mainnet. Set to an empty string to disable."
 	)]
@@ -1345,6 +1447,10 @@ mod tests {
 			rescan_from_height: None,
 			force_wallet_full_scan: false,
 			storage_dir_path: Some(String::from("/tmp_cli")),
+			storage_postgres_connection_string: None,
+			storage_postgres_db_name: None,
+			storage_postgres_kv_table_name: None,
+			storage_postgres_certificate_path: None,
 			node_alias: Some(String::from("LDK Server CLI")),
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
 			node_async_payments_role: Some(String::from("server")),
@@ -1381,6 +1487,10 @@ mod tests {
 			rescan_from_height: None,
 			force_wallet_full_scan: false,
 			storage_dir_path: None,
+			storage_postgres_connection_string: None,
+			storage_postgres_db_name: None,
+			storage_postgres_kv_table_name: None,
+			storage_postgres_certificate_path: None,
 			pathfinding_scores_source_url: None,
 			node_async_payments_role: None,
 			probing_strategy: None,
@@ -1454,6 +1564,7 @@ mod tests {
 			network: Network::Regtest,
 			grpc_service_addr: SocketAddr::from_str("127.0.0.1:3002").unwrap(),
 			storage_dir_path: Some("/tmp".to_string()),
+			ldk_node_storage: LdkNodeStorageConfig::Sqlite,
 			tls_config: Some(TlsConfig {
 				cert_path: Some("/path/to/tls.crt".to_string()),
 				key_path: Some("/path/to/tls.key".to_string()),
@@ -1513,6 +1624,7 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
+		assert_eq!(config.ldk_node_storage, expected.ldk_node_storage);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
@@ -1524,7 +1636,6 @@ mod tests {
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Client)));
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
-
 		// Test case where only electrum is set
 
 		let toml_config = r#"
@@ -1695,6 +1806,272 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let error = load_config(&args_config).unwrap_err();
 		assert_eq!(error.to_string(), "Must set a single chain source, multiple were configured");
+	}
+
+	#[test]
+	fn test_postgres_storage_config_from_file() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_postgres_storage_config_from_file.toml";
+		let cert_path = storage_path.join("test_postgres_storage_cert.pem");
+		fs::write(&cert_path, "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----").unwrap();
+		let toml_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[storage.disk]
+			dir_path = "/tmp"
+
+			[storage.postgres]
+			connection_string = "host=localhost user=postgres password=postgres"
+			db_name = "ldk_node"
+			kv_table_name = "ldk_node_kv"
+			certificate_path = "{}"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			{}
+			"#,
+			cert_path.display(),
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(config.storage_dir_path, Some("/tmp".to_string()));
+		assert_eq!(
+			config.ldk_node_storage,
+			LdkNodeStorageConfig::Postgres {
+				connection_string: "host=localhost user=postgres password=postgres".to_string(),
+				db_name: Some("ldk_node".to_string()),
+				kv_table_name: Some("ldk_node_kv".to_string()),
+				certificate_pem: Some(
+					"-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----".to_string()
+				),
+			}
+		);
+	}
+
+	#[test]
+	fn test_postgres_storage_config_from_args() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_postgres_storage_config_from_args.toml";
+		let cert_path = storage_path.join("test_postgres_storage_args_cert.pem");
+		fs::write(&cert_path, "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----").unwrap();
+		let mut args_config = default_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		fs::write(
+			storage_path.join(config_file_name),
+			format!(
+				r#"
+				[node]
+				network = "regtest"
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+				{}
+				"#,
+				lsps2_service_config_for_feature()
+			),
+		)
+		.unwrap();
+		args_config.storage_postgres_connection_string =
+			Some("host=localhost user=postgres password=postgres".to_string());
+		args_config.storage_postgres_db_name = Some("ldk_node".to_string());
+		args_config.storage_postgres_kv_table_name = Some("ldk_node_kv".to_string());
+		args_config.storage_postgres_certificate_path =
+			Some(cert_path.to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(
+			config.ldk_node_storage,
+			LdkNodeStorageConfig::Postgres {
+				connection_string: "host=localhost user=postgres password=postgres".to_string(),
+				db_name: Some("ldk_node".to_string()),
+				kv_table_name: Some("ldk_node_kv".to_string()),
+				certificate_pem: Some(
+					"-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----".to_string()
+				),
+			}
+		);
+	}
+
+	#[test]
+	fn test_postgres_storage_rejects_db_name_in_connection_string_and_field() {
+		let runtime = tokio::runtime::Runtime::new().unwrap();
+		let result = runtime.block_on(ldk_node::io::postgres_store::PostgresStore::new(
+			"postgresql://postgres@localhost/connection_string_db".to_string(),
+			Some("config_field_db".to_string()),
+			None,
+			None,
+		));
+		let error = match result {
+			Ok(_) => panic!("database names from both sources must be rejected"),
+			Err(error) => error,
+		};
+
+		assert_eq!(error.kind(), ldk_node::bitcoin::io::ErrorKind::InvalidInput);
+		assert!(
+			error.to_string().contains(
+				"db_name must not be set when the connection string already contains a dbname"
+			),
+			"unexpected error: {error}"
+		);
+	}
+
+	#[test]
+	fn test_postgres_storage_config_partial_combinations_from_file() {
+		let storage_path = std::env::temp_dir();
+		let cert_path = storage_path.join("test_postgres_storage_partial_cert.pem");
+		let cert_pem = "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----";
+		fs::write(&cert_path, cert_pem).unwrap();
+
+		for mask in 0..8 {
+			let config_file_name =
+				format!("test_postgres_storage_config_partial_combinations_{mask}.toml");
+			let include_db_name = mask & 0b001 != 0;
+			let include_kv_table_name = mask & 0b010 != 0;
+			let include_certificate_path = mask & 0b100 != 0;
+
+			let db_name_line = if include_db_name { "db_name = \"ldk_node\"\n" } else { "" };
+			let kv_table_name_line =
+				if include_kv_table_name { "kv_table_name = \"ldk_node_kv\"\n" } else { "" };
+			let certificate_path_line = if include_certificate_path {
+				format!("certificate_path = \"{}\"\n", cert_path.display())
+			} else {
+				String::new()
+			};
+
+			let toml_config = format!(
+				r#"
+				[node]
+				network = "regtest"
+
+				[storage.postgres]
+				connection_string = "host=localhost user=postgres password=postgres"
+				{db_name_line}{kv_table_name_line}{certificate_path_line}
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+				{}
+				"#,
+				lsps2_service_config_for_feature()
+			);
+
+			fs::write(storage_path.join(&config_file_name), toml_config).unwrap();
+
+			let mut args_config = empty_args_config();
+			args_config.config_file =
+				Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+			let config = load_config(&args_config).unwrap();
+			assert_eq!(
+				config.ldk_node_storage,
+				LdkNodeStorageConfig::Postgres {
+					connection_string: "host=localhost user=postgres password=postgres".to_string(),
+					db_name: include_db_name.then(|| "ldk_node".to_string()),
+					kv_table_name: include_kv_table_name.then(|| "ldk_node_kv".to_string()),
+					certificate_pem: include_certificate_path.then(|| cert_pem.to_string()),
+				}
+			);
+		}
+	}
+
+	#[test]
+	fn test_postgres_storage_config_requires_connection_string_for_partial_file_configs() {
+		let storage_path = std::env::temp_dir();
+		let cert_path = storage_path.join("test_postgres_storage_missing_connection_cert.pem");
+		fs::write(&cert_path, "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----").unwrap();
+
+		let cases = [
+			("", "empty_section"),
+			("db_name = \"ldk_node\"", "db_name"),
+			("kv_table_name = \"ldk_node_kv\"", "kv_table_name"),
+			(&format!("certificate_path = \"{}\"", cert_path.display()), "certificate_path"),
+			(
+				&format!(
+					"db_name = \"ldk_node\"\nkv_table_name = \"ldk_node_kv\"\ncertificate_path = \"{}\"",
+					cert_path.display()
+				),
+				"all_optional",
+			),
+		];
+
+		for (postgres_fields, case_name) in cases {
+			let config_file_name =
+				format!("test_postgres_storage_missing_connection_{case_name}.toml");
+			let toml_config = format!(
+				r#"
+				[node]
+				network = "regtest"
+
+				[storage.postgres]
+				{postgres_fields}
+
+				[bitcoind]
+				rpc_address = "127.0.0.1:8332"
+				rpc_user = "bitcoind-testuser"
+				rpc_password = "bitcoind-testpassword"
+				{}
+				"#,
+				lsps2_service_config_for_feature()
+			);
+
+			fs::write(storage_path.join(&config_file_name), toml_config).unwrap();
+
+			let mut args_config = empty_args_config();
+			args_config.config_file =
+				Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+			let err = load_config(&args_config).unwrap_err();
+			assert_eq!(err.to_string(), missing_field_msg("storage_postgres_connection_string"));
+		}
+	}
+
+	#[test]
+	fn test_postgres_storage_config_requires_connection_string_for_partial_args_configs() {
+		let storage_path = std::env::temp_dir();
+		let cert_path = storage_path.join("test_postgres_storage_missing_args_connection_cert.pem");
+		fs::write(&cert_path, "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----").unwrap();
+
+		let mut cases = Vec::new();
+
+		let mut db_name_args = default_args_config();
+		db_name_args.storage_postgres_db_name = Some("ldk_node".to_string());
+		cases.push(db_name_args);
+
+		let mut kv_table_name_args = default_args_config();
+		kv_table_name_args.storage_postgres_kv_table_name = Some("ldk_node_kv".to_string());
+		cases.push(kv_table_name_args);
+
+		let mut certificate_path_args = default_args_config();
+		certificate_path_args.storage_postgres_certificate_path =
+			Some(cert_path.to_string_lossy().to_string());
+		cases.push(certificate_path_args);
+
+		let mut all_optional_args = default_args_config();
+		all_optional_args.storage_postgres_db_name = Some("ldk_node".to_string());
+		all_optional_args.storage_postgres_kv_table_name = Some("ldk_node_kv".to_string());
+		all_optional_args.storage_postgres_certificate_path =
+			Some(cert_path.to_string_lossy().to_string());
+		cases.push(all_optional_args);
+
+		for args_config in cases {
+			let err = load_config(&args_config).unwrap_err();
+			assert_eq!(err.to_string(), missing_field_msg("storage_postgres_connection_string"));
+		}
 	}
 
 	#[test]
@@ -1923,6 +2300,7 @@ mod tests {
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap()).unwrap()),
 			storage_dir_path: Some(args_config.storage_dir_path.unwrap()),
+			ldk_node_storage: LdkNodeStorageConfig::Sqlite,
 			tls_config: None,
 			chain_source: ChainSource::Rpc {
 				rpc_host: host,
@@ -1956,6 +2334,7 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
+		assert_eq!(config.ldk_node_storage, expected.ldk_node_storage);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert!(config.lsps2_service_config.is_none());
@@ -2020,6 +2399,7 @@ mod tests {
 			.unwrap(),
 			alias: Some(parse_alias(args_config.node_alias.as_deref().unwrap()).unwrap()),
 			storage_dir_path: Some(args_config.storage_dir_path.unwrap()),
+			ldk_node_storage: LdkNodeStorageConfig::Sqlite,
 			tls_config: Some(TlsConfig {
 				cert_path: Some("/path/to/tls.crt".to_string()),
 				key_path: Some("/path/to/tls.key".to_string()),
@@ -2078,6 +2458,7 @@ mod tests {
 		assert_eq!(config.network, expected.network);
 		assert_eq!(config.grpc_service_addr, expected.grpc_service_addr);
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
+		assert_eq!(config.ldk_node_storage, expected.ldk_node_storage);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
 		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
