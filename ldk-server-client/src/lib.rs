@@ -25,6 +25,9 @@ pub mod error;
 /// Request/Response structs required for interacting with the client.
 pub use ldk_server_grpc;
 
+/// Re-export EventKind for convenient use by consumers.
+pub use ldk_server_grpc::api::EventKind;
+
 /// Default maximum total CLTV expiry delta for payment routing.
 pub const DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA: u32 = 1008;
 /// Default maximum number of payment paths.

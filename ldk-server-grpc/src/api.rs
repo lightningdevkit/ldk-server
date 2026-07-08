@@ -1236,10 +1236,55 @@ pub struct DecodeOfferResponse {
 	#[prost(bool, tag = "12")]
 	pub is_expired: bool,
 }
+// NOTE: This section (EventKind + SubscribeEventsRequest) is hand-synced with
+// ldk-server-grpc/src/proto/api.proto. If you modify the proto definition, re-run
+//     RUSTFLAGS="--cfg genproto" cargo build -p ldk-server-grpc
+// to regenerate this file. Manual edits will be overwritten.
+
+/// EventKind represents the category of events a client can subscribe to.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EventKind {
+	/// Default value, not used for filtering.
+	Unspecified = 0,
+	/// Payment events (received, successful, failed, forwarded, claimable).
+	Payment = 1,
+	/// Channel lifecycle events (pending, ready, closed).
+	Channel = 2,
+}
+impl EventKind {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			EventKind::Unspecified => "EVENT_KIND_UNSPECIFIED",
+			EventKind::Payment => "EVENT_KIND_PAYMENT",
+			EventKind::Channel => "EVENT_KIND_CHANNEL",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"EVENT_KIND_UNSPECIFIED" => Some(Self::Unspecified),
+			"EVENT_KIND_PAYMENT" => Some(Self::Payment),
+			"EVENT_KIND_CHANNEL" => Some(Self::Channel),
+			_ => None,
+		}
+	}
+}
 /// Subscribe to a stream of server events.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SubscribeEventsRequest {}
+pub struct SubscribeEventsRequest {
+	/// If empty, all events are subscribed to (backward-compatible default).
+	/// If non-empty, only events matching these kinds will be delivered.
+	#[prost(enumeration = "EventKind", repeated, tag = "1")]
+	pub event_kinds: ::prost::alloc::vec::Vec<i32>,
+}
