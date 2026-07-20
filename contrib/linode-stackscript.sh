@@ -18,9 +18,8 @@
 # <UDF name="ssh_user" label="Admin username (non-root sudo)" default="lsp" />
 # <UDF name="ssh_pubkey" label="Admin SSH public key (Ed25519 recommended)" />
 # <UDF name="ssh_allowed_ips" label="Restrict SSH to these IPs (CIDR, comma-separated; blank = any)" default="" />
-# <UDF name="network" label="Bitcoin network" oneOf="mainnet,mutinynet" default="mutinynet" />
-# <UDF name="chain_backend" label="Chain backend (mainnet must use bitcoind; Mutinynet must use esplora)" oneOf="bitcoind,esplora" default="esplora" />
-# <UDF name="esplora_url" label="Esplora URL (esplora backend only; blank = auto for Mutinynet)" default="" />
+# <UDF name="network" label="Bitcoin network (mainnet = self-hosted bitcoind; Mutinynet = esplora)" oneOf="mainnet,mutinynet" default="mutinynet" />
+# <UDF name="esplora_url" label="Esplora URL (Mutinynet only; blank = https://mutinynet.com/api)" default="" />
 # <UDF name="lsp_alias" label="LSP node alias (<=32 chars)" default="ldk-lsp" />
 # <UDF name="announce_ip" label="Announcement IPv4 (blank = auto-detect this Linode's public IP)" default="" />
 # <UDF name="lsps2_require_token" label="LSPS2 require_token (gate to known clients; blank = open)" default="" />
@@ -35,7 +34,7 @@ set -euo pipefail
 # and this log would otherwise be world-readable, so lock it down immediately.
 LOGFILE=/var/log/stackscript.log
 umask 077
-touch "$LOGFILE"; chmod 600 "$LOGFILE"
+touch "$LOGFILE"   # created 0600 under the umask
 exec > >(tee -ai "$LOGFILE") 2>&1
 
 # Pinned ldk-server commit (no release tags exist; version is 0.1.0).
@@ -54,9 +53,9 @@ RUSTUP_INIT_SHA256_AARCH64="9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6
 # bitcoind release used for the self-hosted backend (operator may bump).
 BITCOIND_VERSION="29.0"
 # Bitcoin Core guix builder keys, pinned by primary PGP fingerprint (from the
-# bitcoin-core/guix.sigs repo). On MAINNET, SHA256SUMS must carry at least
+# bitcoin-core/guix.sigs repo). SHA256SUMS must carry at least
 # BITCOIND_GPG_MIN_SIGS valid signatures from these keys — a hard gate; see
-# verify_bitcoind_sigs(). Signet/Mutinynet stays SHA-256-only (no real funds).
+# verify_bitcoind_sigs(). The bitcoind backend is mainnet-only (real funds).
 BITCOIND_GPG_MIN_SIGS=2
 BITCOIND_BUILDER_KEYS="152812300785C96444D3334D17565732E08E5E41 achow101
 E777299FC265DD04793070EB944D35F9AC3DB76A fanquake
@@ -66,31 +65,29 @@ D1DBF2C4B96F2DEBF4C16654410108112E7EA81F hebasto
 A8FC55F3B04BA3146F3492E79303B33A305224CB TheCharlatan"
 # Mutinynet (custom signet) parameters — see https://blog.mutinywallet.com/mutinynet/
 # Mutinynet is reachable only via esplora here: its 30 s blocks require a custom
-# bitcoind build, so the stock-Core bitcoind backend is blocked for it below.
+# bitcoind build, so the chain backend is derived from the network below.
 MUTINYNET_ESPLORA="https://mutinynet.com/api"
 
 MIN_RAM_MB=7800   # require ~8GB; fat-LTO link must fit in RAM (OQ6)
 
 # --- Helpers ----------------------------------------------------------------
 log()  { echo "[stackscript $(date -u +%H:%M:%S)] $*"; }
-die()  { trap - ERR; echo "[stackscript FATAL] $*" >&2; echo "FAILED: $*" > /root/STACKSCRIPT_FAILED.txt; rm -f /root/STACKSCRIPT_OK 2>/dev/null || true; exit 1; }
+die()  { trap - ERR; echo "[stackscript FATAL] $*" >&2; echo "FAILED: $*" > /root/STACKSCRIPT_FAILED.txt; rm -f /root/STACKSCRIPT_OK; exit 1; }
 
 # Any UNGUARDED failure (apt/rustup/clone/cargo/systemctl with no explicit `|| die`)
 # must leave a clear failure marker — never a silently half-provisioned box that
 # looks done. The trap disables itself inside die() to avoid recursion.
 trap 'die "unexpected failure (rc=$?) near line $LINENO"' ERR
 
-# Accept either lower- or upper-case env var for a UDF (Linode injects the name
-# verbatim; be defensive about case). Usage: v=$(udf network mainnet)
-udf() { local lc="$1" def="${2-}"; local uc; uc=$(echo "$lc" | tr '[:lower:]' '[:upper:]')
-        local val="${!lc:-${!uc:-$def}}"; printf '%s' "$val"; }
+# Read a UDF value (Linode injects each UDF as an env var of the exact same
+# name), falling back to a default. Usage: v=$(udf network mainnet)
+udf() { printf '%s' "${!1:-${2-}}"; }
 
 # --- Read UDF values --------------------------------------------------------
 SSH_USER=$(udf ssh_user lsp)
 SSH_PUBKEY=$(udf ssh_pubkey "")
 SSH_ALLOWED_IPS=$(udf ssh_allowed_ips "")
 NETWORK_UDF=$(udf network mutinynet)
-CHAIN_BACKEND=$(udf chain_backend esplora)
 ESPLORA_URL=$(udf esplora_url "")
 LSP_ALIAS=$(udf lsp_alias ldk-lsp)
 ANNOUNCE_IP=$(udf announce_ip "")
@@ -100,19 +97,18 @@ LSPS2_MIN_FEE_MSAT=$(udf lsps2_min_channel_opening_fee_msat 10000000)
 LSPS2_MAX_PAYMENT_MSAT=$(udf lsps2_max_payment_size_msat 330000000)
 METRICS_PASSWORD=$(udf metrics_password "")
 
-# Map the friendly network name to ldk-server's Network enum value.
+# Map the friendly network name to ldk-server's Network enum value, and DERIVE
+# the chain backend — it is a function of the network, not a choice:
+#  * mainnet must self-host bitcoind: gossip UTXO verification is disabled for
+#    esplora/electrum (as_utxo_source() -> None), so a mainnet LSP needs its
+#    own non-pruned bitcoind. (OQ1)
+#  * Mutinynet must use esplora: its 30 s block cadence needs a custom bitcoind
+#    build (signetblocktime is not a stock Core option), and this script
+#    installs the official bitcoincore.org binary. (OQ4)
 case "$NETWORK_UDF" in
-	mainnet)  LDK_NETWORK="bitcoin"; NETDIR="bitcoin" ;;
-	mutinynet) LDK_NETWORK="signet"; NETDIR="signet" ;;
+	mainnet)   LDK_NETWORK="bitcoin"; NETDIR="bitcoin"; CHAIN_BACKEND="bitcoind" ;;
+	mutinynet) LDK_NETWORK="signet";  NETDIR="signet";  CHAIN_BACKEND="esplora" ;;
 	*) die "Unknown network '$NETWORK_UDF' (expected mainnet or mutinynet)." ;;
-esac
-
-# Whitelist chain_backend up front: every later check is a string compare with
-# an esplora fallthrough, so an API-supplied typo (e.g. "Bitcoind") would
-# otherwise silently deploy the wrong backend instead of dying loudly.
-case "$CHAIN_BACKEND" in
-	bitcoind|esplora) ;;
-	*) die "Unknown chain_backend '$CHAIN_BACKEND' (expected bitcoind or esplora)." ;;
 esac
 
 # ============================================================================
@@ -144,6 +140,9 @@ done
 # backslashes, and newlines (TOML/config injection) and enforce per-field shapes.
 # Without this, e.g. a require_token containing a quote+newline could inject a
 # funds-relevant LSPS2 setting into the rendered TOML.
+# reject_special is load-bearing for metrics_password (which has no whitelist
+# regex) and a deliberate backstop for the whitelisted fields below, should a
+# future change relax one of their regexes.
 reject_special() { case "$2" in *['"'\\]*|*$'\n'*|*$'\r'*) die "$1 must not contain quotes, backslashes, or newlines." ;; esac; }
 reject_special "ssh_user" "$SSH_USER"
 reject_special "lsp_alias" "$LSP_ALIAS"
@@ -168,34 +167,20 @@ if [ -n "$ESPLORA_URL" ]; then
 	[[ "$ESPLORA_URL" =~ ^https?://[A-Za-z0-9./:_-]+$ ]] || die "esplora_url must be an http(s) URL."
 fi
 
-# Hard-block mainnet + remote chain backend: gossip UTXO verification is
-# disabled for esplora/electrum (as_utxo_source() -> None), so a mainnet LSP
-# must run its own non-pruned bitcoind. (OQ1)
-if [ "$LDK_NETWORK" = "bitcoin" ] && [ "$CHAIN_BACKEND" != "bitcoind" ]; then
-	die "mainnet requires chain_backend=bitcoind (remote esplora can't verify gossip UTXOs). Refusing."
-fi
-
 # Mainnet LSP must gate the pilot — refuse an open service on real funds.
 if [ "$LDK_NETWORK" = "bitcoin" ] && [ -z "$LSPS2_REQUIRE_TOKEN" ]; then
 	die "mainnet deployment requires a non-empty lsps2_require_token (gate the pilot to known clients)."
 fi
 
-# Hard-block mutinynet + bitcoind: Mutinynet's 30 s block cadence needs a custom
-# bitcoind build (signetblocktime is not a stock Core option), and this script
-# installs the official bitcoincore.org binary, which would refuse to start on
-# Mutinynet's signet. Reach Mutinynet via the esplora backend instead. (OQ4)
-if [ "$NETWORK_UDF" = "mutinynet" ] && [ "$CHAIN_BACKEND" = "bitcoind" ]; then
-	die "mutinynet requires chain_backend=esplora (stock Bitcoin Core cannot follow Mutinynet's custom signet; it needs a custom bitcoind build)."
-fi
 # RAM floor for the fat-LTO build (OQ6).
 RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
 log "Detected ${RAM_MB} MB RAM"
 [ "${RAM_MB:-0}" -ge "$MIN_RAM_MB" ] || die "Need >= 8 GB RAM to build (have ${RAM_MB} MB). Pick a larger Linode plan."
 
-# Resolve the announcement IP (auto-detect this Linode's public IPv4 if blank).
+# Resolve the announcement IP if blank. Linodes carry their public IPv4 on the
+# interface (no NAT), so reading it locally suffices — no external lookup.
 if [ -z "$ANNOUNCE_IP" ]; then
 	ANNOUNCE_IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
-	[ -n "$ANNOUNCE_IP" ] || ANNOUNCE_IP=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)
 fi
 [ -n "$ANNOUNCE_IP" ] || die "Could not determine a public IPv4 for announcement_addresses; set the announce_ip UDF."
 [[ "$ANNOUNCE_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "announce_ip is not a valid IPv4 address: '$ANNOUNCE_IP'."
@@ -225,7 +210,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
 	ca-certificates curl git build-essential pkg-config sudo openssl gpg \
 	ufw fail2ban unattended-upgrades \
-	sqlite3 age rclone jq xxd
+	sqlite3 age rclone xxd
 
 log "Creating admin user '${SSH_USER}'"
 if ! id -u "$SSH_USER" >/dev/null 2>&1; then
@@ -275,7 +260,12 @@ sshd -T | grep -qi '^passwordauthentication no' \
 	|| die "sshd hardening not effective: PasswordAuthentication is still enabled by another config file."
 sshd -T | grep -qi '^permitrootlogin no' \
 	|| die "sshd hardening not effective: PermitRootLogin is still enabled by another config file."
-systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+# Don't mask a reload failure entirely (the config is sshd -t-validated, so a
+# failure here is informative) — but don't die either: on socket-activated
+# images the unit may be inactive, and the validated config still applies to
+# the next sshd (re)start/connection.
+systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null \
+	|| log "WARNING: could not reload ssh/sshd (unit inactive or named differently); the validated config applies on the next sshd start."
 
 log "Configuring UFW (SSH + 9735 inbound only)"
 ufw --force reset >/dev/null
@@ -358,8 +348,10 @@ git -C "$BUILD_SRC" checkout --detach "$LDK_SERVER_COMMIT" --
 [ "$(git -C "$BUILD_SRC" rev-parse "HEAD^{commit}")" = "$LDK_SERVER_COMMIT" ] \
 	|| die "Checkout mismatch: HEAD is not the pinned commit ${LDK_SERVER_COMMIT}. Refusing to build."
 # Record the commit while root still owns the clone (root git refuses
-# builder-owned repos: safe.directory).
-git -C "$BUILD_SRC" rev-parse HEAD > /etc/ldk-server-build-commit 2>/dev/null || true
+# builder-owned repos: safe.directory). Kept in a var for later reuse and
+# persisted to /etc for post-provision inspection.
+BUILD_COMMIT=$(git -C "$BUILD_SRC" rev-parse HEAD)
+printf '%s\n' "$BUILD_COMMIT" > /etc/ldk-server-build-commit
 chown -R builder:builder "$BUILD_SRC"
 # --locked: enforce the committed Cargo.lock (fail loudly if stale) on a funds node.
 ( cd "$BUILD_SRC" && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOME="$CARGO_HOME" \
@@ -370,7 +362,7 @@ install -m 0755 "$BUILD_SRC/target/release/ldk-server-cli" /usr/local/bin/ldk-se
 # Base systemd unit is committed in the repo; grab it before the build tree goes.
 install -m 0644 "$BUILD_SRC/contrib/ldk-server.service" /etc/systemd/system/ldk-server.service
 rm -rf "$BUILD_SRC"
-log "Built commit: $(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)"
+log "Built commit: ${BUILD_COMMIT}"
 
 # Seed the operator's upgrade clone only if absent — never touch an existing
 # tree (it may hold the operator's in-place upgrade state).
@@ -429,18 +421,14 @@ if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 		[ "$good" -ge "$BITCOIND_GPG_MIN_SIGS" ] || { log "ERROR: only ${good} valid pinned builder signature(s) on SHA256SUMS (need >= ${BITCOIND_GPG_MIN_SIGS}). Refusing bitcoind on mainnet."; return 1; }
 	}
 
-	# Download Bitcoin Core; always SHA256-verify, and on mainnet ALSO require
-	# pinned builder signatures over SHA256SUMS (hard gate, see above).
+	# Download Bitcoin Core; SHA256-verify AND require pinned builder signatures
+	# over SHA256SUMS (hard gate, see above — this path is mainnet-only).
 	arch=$(uname -m); case "$arch" in x86_64) btarch=x86_64-linux-gnu ;; aarch64) btarch=aarch64-linux-gnu ;; *) die "Unsupported arch $arch for bitcoind." ;; esac
 	tmp=$(mktemp -d); ( cd "$tmp"
 		base="https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}"
 		curl -fsSLO "${base}/bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz"
 		curl -fsSLO "${base}/SHA256SUMS"
-		if [ "$LDK_NETWORK" = "bitcoin" ]; then
-			verify_bitcoind_sigs "$base" || exit 1
-		else
-			log "Signet path: skipping GPG check of SHA256SUMS (SHA-256 only; mainnet enforces GPG)."
-		fi
+		verify_bitcoind_sigs "$base" || exit 1
 		grep " bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz\$" SHA256SUMS | sha256sum -c - || exit 1
 		tar -xzf "bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz"
 		install -m 0755 "bitcoin-${BITCOIND_VERSION}/bin/bitcoind" "bitcoin-${BITCOIND_VERSION}/bin/bitcoin-cli" /usr/local/bin/
@@ -470,8 +458,8 @@ if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 
 		{
 			echo "# Managed by ldk-server linode-stackscript. Loopback RPC only."
-			# bitcoind backend is mainnet-only: mutinynet+bitcoind is blocked in
-			# Phase 1 (stock Core can't follow Mutinynet's custom signet).
+			# bitcoind backend is mainnet-only: the backend is derived from the
+			# network (stock Core can't follow Mutinynet's custom signet).
 			echo "chain=main"
 			echo "server=1"
 			echo "daemon=0"
@@ -514,14 +502,8 @@ EOF
 	RPC_PORT=8332
 	CHAIN_TOML=$(printf '[bitcoind]\nrpc_address = "127.0.0.1:%s"\nrpc_user = "%s"\n# rpc_password supplied via EnvironmentFile (LDK_SERVER_BITCOIND_RPC_PASSWORD)\n' "$RPC_PORT" "$RPC_USER")
 else
-	# Remote esplora. Default to the Mutinynet endpoint on signet if unset.
-	if [ -z "$ESPLORA_URL" ]; then
-		if [ "$LDK_NETWORK" = "signet" ]; then
-			ESPLORA_URL="$MUTINYNET_ESPLORA"
-		else
-			die "esplora backend on mainnet is blocked; set esplora_url for signet."
-		fi
-	fi
+	# Remote esplora (Mutinynet-only path). Default to the Mutinynet endpoint.
+	[ -n "$ESPLORA_URL" ] || ESPLORA_URL="$MUTINYNET_ESPLORA"
 	CHAIN_TOML=$(printf '[esplora]\nserver_url = "%s"\n' "$ESPLORA_URL")
 fi
 
@@ -540,7 +522,7 @@ REQUIRE_TOKEN_TOML=""
 [ -n "$LSPS2_REQUIRE_TOKEN" ] && REQUIRE_TOKEN_TOML=$(printf 'require_token = "%s"\n' "$LSPS2_REQUIRE_TOKEN")
 
 cat > /etc/ldk-server/config.toml <<EOF
-# Generated by linode-stackscript.sh. Built commit: $(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)
+# Generated by linode-stackscript.sh. Built commit: ${BUILD_COMMIT}
 [node]
 network = "${LDK_NETWORK}"
 listening_addresses = ["0.0.0.0:9735"]
@@ -556,6 +538,7 @@ level = "Info"                            # NOT Debug/Trace on a funds node
 file = "/var/lib/ldk-server/${NETDIR}/ldk-server.log"
 
 ${CHAIN_TOML}
+
 [liquidity.lsps2_service]
 advertise_service = true
 channel_opening_fee_ppm = ${LSPS2_FEE_PPM}
@@ -588,12 +571,20 @@ cat > /etc/systemd/system/ldk-server.service.d/10-environment.conf <<'EOF'
 EnvironmentFile=/etc/ldk-server/ldk-server.env
 EOF
 
-# Start-ordering on bitcoind only. The base unit orders after network-online
-# alone; referencing bitcoind.service there would be dead config on esplora.
+# bitcoind path: order after bitcoind AND gate ldk-server startup on bitcoind's
+# RPC actually answering. After a reboot bitcoind is "started" (Type=simple)
+# long before RPC is up (block-index load), so without the gate ldk-server
+# would crash-loop every 10 s. The '+' prefix runs bitcoin-cli with full
+# privileges so it can read the RPC cookie in /var/lib/bitcoind (loopback RPC
+# only; nothing is exposed). The base unit orders after network-online alone;
+# referencing bitcoind.service there would be dead config on esplora.
 if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
-	cat > /etc/systemd/system/ldk-server.service.d/15-after.conf <<'EOF'
+	cat > /etc/systemd/system/ldk-server.service.d/15-bitcoind.conf <<'EOF'
 [Unit]
 After=bitcoind.service
+[Service]
+ExecStartPre=+/usr/local/bin/bitcoin-cli -conf=/etc/bitcoin/bitcoin.conf -datadir=/var/lib/bitcoind -rpcwait -rpcwaittimeout=600 getblockchaininfo
+TimeoutStartSec=660
 EOF
 fi
 
@@ -616,19 +607,6 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 EOF
-
-# bitcoind path: gate ldk-server startup on bitcoind's RPC actually answering.
-# After a reboot bitcoind is "started" (Type=simple) long before RPC is up
-# (block-index load), so without this ldk-server would crash-loop every 10 s.
-# The '+' prefix runs bitcoin-cli with full privileges so it can read the RPC
-# cookie in /var/lib/bitcoind (loopback RPC only; nothing is exposed).
-if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
-	{
-		echo "[Service]"
-		echo "ExecStartPre=+/usr/local/bin/bitcoin-cli -conf=/etc/bitcoin/bitcoin.conf -datadir=/var/lib/bitcoind -rpcwait -rpcwaittimeout=600 getblockchaininfo"
-		echo "TimeoutStartSec=660"
-	} > /etc/systemd/system/ldk-server.service.d/30-bitcoind-wait.conf
-fi
 
 log "Installing logrotate (network dir: ${NETDIR})"
 cat > /etc/logrotate.d/ldk-server <<EOF
@@ -676,11 +654,13 @@ STAMP="\$(date -u +%Y%m%dT%H%M%SZ)"; tmp="\$(mktemp -d)"; trap 'rm -rf "\$tmp"' 
 mkdir "\$tmp/data"
 sqlite3 "\$NETWORK_DIR/ldk_node_data.sqlite" ".backup '\$tmp/data/ldk_node_data.sqlite'"
 [ -f "\$NETWORK_DIR/ldk_server_data.sqlite" ] && sqlite3 "\$NETWORK_DIR/ldk_server_data.sqlite" ".backup '\$tmp/data/ldk_server_data.sqlite'" || true
-sqlite3 "\$tmp/data/ldk_node_data.sqlite" "PRAGMA integrity_check;" | grep -qx ok || { echo "integrity_check failed"; exit 1; }
+for db in "\$tmp/data"/*.sqlite; do
+	sqlite3 "\$db" "PRAGMA integrity_check;" | grep -qx ok || { echo "integrity_check failed: \$db"; exit 1; }
+done
 tar -C "\$tmp/data" -cf "\$tmp/b.tar" . && age -r "\$AGE_RECIPIENT" -o "\$tmp/b.tar.age" "\$tmp/b.tar"
 # copyto, not copy: the destination is the object name, so the remote holds
 # flat ldk-server-<STAMP>.tar.age objects (copy would nest b.tar.age inside).
-rclone copyto "\$tmp/b.tar.age" "\$RCLONE_REMOTE/ldk-server-\$STAMP.tar.age" --immutable
+rclone copyto "\$tmp/b.tar.age" "\$RCLONE_REMOTE/ldk-server-\$STAMP.tar.age"
 EOF
 chmod 0755 /opt/ldk-server-ops/backup-ldk-server.sh
 
@@ -759,7 +739,7 @@ cat > /root/NEXT_STEPS.txt <<EOF
  ldk-server LSPS2 LSP — provisioning complete. THE NODE IS UNFUNDED.
 ================================================================================
 Network: ${NETWORK_UDF} (${LDK_NETWORK})   Backend: ${CHAIN_BACKEND}
-Built commit: $(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)
+Built commit: ${BUILD_COMMIT}
 
 HARD RULES (funds safety):
  * NO sats touch this node until the mnemonic is backed up offline AND a
@@ -824,7 +804,7 @@ rm -f /root/STACKSCRIPT_FAILED.txt
 	echo "network=${NETWORK_UDF}"
 	echo "chain_backend=${CHAIN_BACKEND}"
 	if [ "$CHAIN_BACKEND" = "esplora" ]; then echo "node_state=started"; else echo "node_state=pending_ibd"; fi
-	echo "commit=$(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)"
+	echo "commit=${BUILD_COMMIT}"
 	echo "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > /root/STACKSCRIPT_OK
 log "Done. Node is UNFUNDED. See /root/NEXT_STEPS.txt"

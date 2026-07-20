@@ -13,8 +13,9 @@ from source, as an experimental **LSPS2 Lightning Service Provider**.
 
 ## What it does
 
-1. Validates inputs and the host (requires **≥ 8 GB RAM** for the fat-LTO build;
-   refuses `mainnet` + remote esplora).
+1. Validates inputs and the host (requires **≥ 8 GB RAM** for the fat-LTO build)
+   and derives the chain backend from the network — `mainnet` → self-hosted
+   bitcoind, `mutinynet` → esplora (see the UDF table below).
 2. Adds a 4 GB swap safety margin and installs the toolchain + ops packages.
 3. Creates a non-root sudo user, installs your SSH key, hardens `sshd`
    (key-only, no root), and configures UFW (only `22` and `9735/tcp` inbound).
@@ -52,9 +53,8 @@ from source, as an experimental **LSPS2 Lightning Service Provider**.
 | `ssh_user` | Non-root sudo admin user (default `lsp`). |
 | `ssh_pubkey` | **Required.** Your OpenSSH public key (Ed25519 recommended). A bad key locks you out — recover via the Linode **Lish** console. |
 | `ssh_allowed_ips` | Optional CIDR allow-list for SSH; blank = any. |
-| `network` | `mainnet` or `mutinynet` (a custom 30 s-block signet). |
-| `chain_backend` | `bitcoind` (self-hosted, non-pruned) or `esplora` (remote). **Mainnet must use `bitcoind`. Mutinynet must use `esplora`** — its 30 s-block signet needs a custom bitcoind build, so the script refuses `mutinynet` + `bitcoind` (stock Bitcoin Core cannot follow it). |
-| `esplora_url` | Esplora endpoint for the esplora backend; blank auto-fills `https://mutinynet.com/api` on Mutinynet. |
+| `network` | `mainnet` or `mutinynet` (a custom 30 s-block signet). Also determines the chain backend — it is not a separate choice: **mainnet uses self-hosted, non-pruned `bitcoind`** (remote esplora cannot verify gossip UTXOs); **Mutinynet uses remote `esplora`** (its 30 s-block signet needs a custom bitcoind build, which stock Bitcoin Core cannot follow). |
+| `esplora_url` | Esplora endpoint (Mutinynet only); blank auto-fills `https://mutinynet.com/api`. |
 | `lsp_alias` | Node alias (≤ 32 chars). |
 | `announce_ip` | Public IPv4 to announce; blank auto-detects this Linode's IP. |
 | `lsps2_require_token` | Gate the service to known clients. **Required on mainnet.** |
@@ -82,7 +82,7 @@ programmatic success signal is a marker file in `/root` (root-only — read via
 two exists after any run:
 
 - `/root/STACKSCRIPT_OK` — provisioning succeeded. Contains `key=value` facts:
-  `network`, `chain_backend`, `node_state` (`started` on the esplora path,
+  `network`, `chain_backend` (derived from `network`), `node_state` (`started` on the esplora path,
   `pending_ibd` on the bitcoind path, where the node is deliberately left
   disabled), `commit` (the ldk-server commit built), and `finished_utc`.
 - `/root/STACKSCRIPT_FAILED.txt` — provisioning failed; the file holds the
@@ -196,12 +196,11 @@ The same runbook is written on-box to `/root/NEXT_STEPS.txt`.
 - **Mutinynet wiring is not yet empirically verified** — confirm `ldk-server`
   (network `signet`) syncs against `https://mutinynet.com/api` on a throwaway
   deploy before relying on it.
-- For mainnet bitcoind, the script **enforces** GPG verification of the Bitcoin
-  Core `SHA256SUMS` against builder keys pinned in-script by fingerprint (at
-  least 2 valid signatures required, or the deploy aborts). The signet/Mutinynet
-  path checks the SHA-256 digest only (no real funds). If you bump
-  `BITCOIND_VERSION`, confirm the pinned builders still attest that release in
-  [bitcoin-core/guix.sigs](https://github.com/bitcoin-core/guix.sigs).
+- For bitcoind (mainnet-only backend), the script **enforces** GPG verification
+  of the Bitcoin Core `SHA256SUMS` against builder keys pinned in-script by
+  fingerprint (at least 2 valid signatures required, or the deploy aborts). If
+  you bump `BITCOIND_VERSION`, confirm the pinned builders still attest that
+  release in [bitcoin-core/guix.sigs](https://github.com/bitcoin-core/guix.sigs).
 - Tor onion service is not supported in v1 (clearnet announce only).
 
 See [operations.md](operations.md) for backups, monitoring, TLS, and the broader
