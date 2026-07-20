@@ -74,6 +74,36 @@ EnvironmentFile. It is machine-to-machine on loopback only; use
   large plan and/or a Linode Block Storage volume mounted at `/var/lib/bitcoind`.
   Initial block download takes hours-to-days.
 
+### Provisioning status markers
+
+Linode does not surface StackScript exit codes, so the script's only
+programmatic success signal is a marker file in `/root` (root-only — read via
+`sudo` as your admin user; neither file contains secrets). Exactly one of the
+two exists after any run:
+
+- `/root/STACKSCRIPT_OK` — provisioning succeeded. Contains `key=value` facts:
+  `network`, `chain_backend`, `node_state` (`started` on the esplora path,
+  `pending_ibd` on the bitcoind path, where the node is deliberately left
+  disabled), `commit` (the ldk-server commit built), and `finished_utc`.
+- `/root/STACKSCRIPT_FAILED.txt` — provisioning failed; the file holds the
+  reason. Full detail is in `/var/log/stackscript.log`.
+
+Check from your machine:
+```bash
+ssh <ssh_user>@<ip> 'sudo cat /root/STACKSCRIPT_OK 2>/dev/null || sudo cat /root/STACKSCRIPT_FAILED.txt'
+```
+
+### Health check (installed, not armed)
+
+`/opt/ldk-server-ops/health-check.sh` verifies the installed units
+(`ldk-server`, plus `bitcoind` where deployed) are active and that their data
+filesystems are below a disk-usage threshold (`DISK_MAX_PCT`, default 90%). It
+exits `0` when healthy and `1` otherwise, so it can drive a cron job or systemd
+timer plus alerting (e.g. an `OnFailure=` unit). It is installed but **not
+armed**: arm it only after the node is enabled (bitcoind path: post-IBD), since
+before that an inactive `ldk-server` is expected. A mainnet chainstate grows
+toward ~600 GB, so do not fund the node without disk-space alerting in place.
+
 ## After provisioning — the funds-safety sequence
 
 Read `/root/NEXT_STEPS.txt` on the box. In order:
@@ -128,15 +158,26 @@ resolves them from the config. Do not loosen permissions on
 ## Upgrading
 
 There is no auto-upgrade. **Back up first**, then rebuild from the pinned
-source (git + cargo run as the non-root `builder` user; root only installs):
+source (git + cargo run as the non-root `builder` user; root only installs).
+Config keys can change between commits, so keep a rollback copy of the working
+binary before overwriting it. The provisioning clone is left on a detached
+HEAD, so use `git fetch` + `git checkout --detach` (a plain `git pull` fails):
 ```bash
+sudo cp /usr/local/bin/ldk-server /usr/local/bin/ldk-server.bak
 cd /opt/ldk-server-src
 sudo runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME=/opt/rust CARGO_HOME=/opt/cargo \
-  bash -c 'git fetch && git checkout <new-commit> && /opt/cargo/bin/cargo build \
-  --release --features experimental-lsps2-support'
+  bash -c 'git fetch && git checkout --detach <new-commit> && /opt/cargo/bin/cargo build \
+  --release --locked --features experimental-lsps2-support'
 sudo install -m0755 target/release/ldk-server target/release/ldk-server-cli /usr/local/bin/
 sudo systemctl restart ldk-server
 ```
+If the new binary fails to start (`journalctl -u ldk-server` — check for config
+changes between the two commits), roll back:
+```bash
+sudo install -m0755 /usr/local/bin/ldk-server.bak /usr/local/bin/ldk-server
+sudo systemctl restart ldk-server
+```
+The same runbook is written on-box to `/root/NEXT_STEPS.txt`.
 
 ## Security notes
 

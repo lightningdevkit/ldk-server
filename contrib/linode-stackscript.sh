@@ -12,8 +12,6 @@
 # ⚠️  This deploys the EXPERIMENTAL LSPS2 service. On mainnet it custodies real
 #     funds. NO sats may touch the node until its mnemonic is backed up offline
 #     AND a restore is proven — both are manual steps this script cannot do.
-#
-# Plan:      docs/plans/2026-06-30-001-feat-linode-stackscript-ldk-server-lsp-plan.md
 # ============================================================================
 
 # --- UDF (deploy-time form fields; required unless a default is given) ------
@@ -107,6 +105,14 @@ case "$NETWORK_UDF" in
 	mainnet)  LDK_NETWORK="bitcoin"; NETDIR="bitcoin" ;;
 	mutinynet) LDK_NETWORK="signet"; NETDIR="signet" ;;
 	*) die "Unknown network '$NETWORK_UDF' (expected mainnet or mutinynet)." ;;
+esac
+
+# Whitelist chain_backend up front: every later check is a string compare with
+# an esplora fallthrough, so an API-supplied typo (e.g. "Bitcoind") would
+# otherwise silently deploy the wrong backend instead of dying loudly.
+case "$CHAIN_BACKEND" in
+	bitcoind|esplora) ;;
+	*) die "Unknown chain_backend '$CHAIN_BACKEND' (expected bitcoind or esplora)." ;;
 esac
 
 # ============================================================================
@@ -206,10 +212,13 @@ if ! swapon --show=NAME --noheadings | grep -q '/swapfile'; then
 	chmod 600 /swapfile
 	mkswap /swapfile >/dev/null
 	swapon /swapfile
-	grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-	printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-ldk-swap.conf
-	sysctl --system >/dev/null 2>&1 || true
 fi
+# Asserted OUTSIDE the creation guard (each line is idempotent): a re-run — or
+# a first run that died between swapon and here — must still persist swap in
+# fstab and (re-)apply the swappiness tuning.
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-ldk-swap.conf
+sysctl --system >/dev/null 2>&1 || true
 
 log "Installing packages"
 apt-get update -y
@@ -298,7 +307,13 @@ printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgr
 	> /etc/apt/apt.conf.d/20auto-upgrades
 printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' \
 	> /etc/apt/apt.conf.d/51ldk-no-reboot
-systemctl enable --now fail2ban >/dev/null 2>&1 || true
+# Force the systemd journal backend: minimal images ship no rsyslog/auth.log,
+# where the default sshd jail fails to start — and a masked failure would leave
+# a documented security control silently absent. No mask: fail loudly instead.
+install -d -m 755 /etc/fail2ban/jail.d
+printf '[DEFAULT]\nbackend = systemd\n' > /etc/fail2ban/jail.d/90-ldk-systemd-backend.conf
+systemctl enable --now fail2ban || die "fail2ban failed to start (see 'journalctl -u fail2ban'); refusing to continue without it."
+systemctl is-active --quiet fail2ban || die "fail2ban is not active after start; refusing to continue without it."
 
 # ============================================================================
 # Phase 3 — Build ldk-server from source (pinned commit)
@@ -330,25 +345,42 @@ runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOM
 rm -rf "$tmp"
 
 log "Cloning ldk-server @ ${LDK_SERVER_COMMIT} and building (this takes a while)"
+# Build in a throwaway temp clone: only the binaries, the base systemd unit,
+# and /etc/ldk-server-build-commit persist from it. /opt/ldk-server-src is the
+# OPERATOR's upgrade clone (see NEXT_STEPS) — a manual re-run of this script
+# must never rm -rf an in-place upgrade the operator has staged there.
 SRC=/opt/ldk-server-src
-rm -rf "$SRC"
-git clone "$LDK_SERVER_REPO" "$SRC"
+BUILD_SRC=$(mktemp -d); chmod 755 "$BUILD_SRC"   # builder must be able to read it
+git clone "$LDK_SERVER_REPO" "$BUILD_SRC"
 # Detached checkout of the pin, then verify HEAD is EXACTLY the pinned commit —
 # a branch/tag named like the pin (refname shadowing) must not change the build.
-git -C "$SRC" checkout --detach "$LDK_SERVER_COMMIT" --
-[ "$(git -C "$SRC" rev-parse "HEAD^{commit}")" = "$LDK_SERVER_COMMIT" ] \
+git -C "$BUILD_SRC" checkout --detach "$LDK_SERVER_COMMIT" --
+[ "$(git -C "$BUILD_SRC" rev-parse "HEAD^{commit}")" = "$LDK_SERVER_COMMIT" ] \
 	|| die "Checkout mismatch: HEAD is not the pinned commit ${LDK_SERVER_COMMIT}. Refusing to build."
 # Record the commit while root still owns the clone (root git refuses
 # builder-owned repos: safe.directory).
-git -C "$SRC" rev-parse HEAD > /etc/ldk-server-build-commit 2>/dev/null || true
-chown -R builder:builder "$SRC"
+git -C "$BUILD_SRC" rev-parse HEAD > /etc/ldk-server-build-commit 2>/dev/null || true
+chown -R builder:builder "$BUILD_SRC"
 # --locked: enforce the committed Cargo.lock (fail loudly if stale) on a funds node.
-( cd "$SRC" && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOME="$CARGO_HOME" \
+( cd "$BUILD_SRC" && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOME="$CARGO_HOME" \
 	PATH="$CARGO_HOME/bin:$PATH" cargo build --release --locked --features experimental-lsps2-support )
 
-install -m 0755 "$SRC/target/release/ldk-server" /usr/local/bin/ldk-server
-install -m 0755 "$SRC/target/release/ldk-server-cli" /usr/local/bin/ldk-server-cli
+install -m 0755 "$BUILD_SRC/target/release/ldk-server" /usr/local/bin/ldk-server
+install -m 0755 "$BUILD_SRC/target/release/ldk-server-cli" /usr/local/bin/ldk-server-cli
+# Base systemd unit is committed in the repo; grab it before the build tree goes.
+install -m 0644 "$BUILD_SRC/contrib/ldk-server.service" /etc/systemd/system/ldk-server.service
+rm -rf "$BUILD_SRC"
 log "Built commit: $(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)"
+
+# Seed the operator's upgrade clone only if absent — never touch an existing
+# tree (it may hold the operator's in-place upgrade state).
+if [ ! -e "$SRC" ]; then
+	git clone "$LDK_SERVER_REPO" "$SRC"
+	git -C "$SRC" checkout --detach "$LDK_SERVER_COMMIT" --
+	chown -R builder:builder "$SRC"
+else
+	log "Existing ${SRC} found; leaving it untouched (operator upgrade clone)."
+fi
 
 # ============================================================================
 # Phase 4 — Service user, directories, chain backend
@@ -422,24 +454,35 @@ if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 	# vars into ldk-server.env or break the rpcauth HMAC. Hex only => safe in
 	# both bitcoin.conf and the EnvironmentFile.
 	RPC_USER="ldkserver"
-	BITCOIND_RPC_PASSWORD=$(head -c16 /dev/urandom | xxd -p)
-	rpcsalt=$(head -c16 /dev/urandom | xxd -p)
-	rpchmac=$(printf '%s' "$BITCOIND_RPC_PASSWORD" | openssl dgst -sha256 -hmac "$rpcsalt" | awk '{print $NF}')
+	if [ -f /etc/bitcoin/bitcoin.conf ]; then
+		# Re-run safety: operators tune bitcoin.conf (prune, dbcache, custom
+		# datadir/Block Storage); regenerating it would silently destroy those
+		# edits and rotate rpcauth out from under a working node. Keep the file
+		# and reuse the existing RPC password so the preserved rpcauth line
+		# still matches what ldk-server sends.
+		log "Existing /etc/bitcoin/bitcoin.conf found; preserving it (re-run)."
+		BITCOIND_RPC_PASSWORD=$(sed -n 's/^LDK_SERVER_BITCOIND_RPC_PASSWORD=//p' /etc/ldk-server/ldk-server.env 2>/dev/null | head -n1)
+		[ -n "$BITCOIND_RPC_PASSWORD" ] || die "/etc/bitcoin/bitcoin.conf exists but LDK_SERVER_BITCOIND_RPC_PASSWORD is missing from /etc/ldk-server/ldk-server.env; restore that file, or remove bitcoin.conf to regenerate both."
+	else
+		BITCOIND_RPC_PASSWORD=$(head -c16 /dev/urandom | xxd -p)
+		rpcsalt=$(head -c16 /dev/urandom | xxd -p)
+		rpchmac=$(printf '%s' "$BITCOIND_RPC_PASSWORD" | openssl dgst -sha256 -hmac "$rpcsalt" | awk '{print $NF}')
 
-	{
-		echo "# Managed by ldk-server linode-stackscript. Loopback RPC only."
-		# bitcoind backend is mainnet-only: mutinynet+bitcoind is blocked in
-		# Phase 1 (stock Core can't follow Mutinynet's custom signet).
-		echo "chain=main"
-		echo "server=1"
-		echo "daemon=0"
-		echo "txindex=0"
-		echo "dbcache=2048"
-		echo "rpcbind=127.0.0.1"
-		echo "rpcallowip=127.0.0.1"
-		echo "rpcauth=${RPC_USER}:${rpcsalt}\$${rpchmac}"
-	} > /etc/bitcoin/bitcoin.conf
-	chown root:bitcoin /etc/bitcoin/bitcoin.conf; chmod 640 /etc/bitcoin/bitcoin.conf
+		{
+			echo "# Managed by ldk-server linode-stackscript. Loopback RPC only."
+			# bitcoind backend is mainnet-only: mutinynet+bitcoind is blocked in
+			# Phase 1 (stock Core can't follow Mutinynet's custom signet).
+			echo "chain=main"
+			echo "server=1"
+			echo "daemon=0"
+			echo "txindex=0"
+			echo "dbcache=2048"
+			echo "rpcbind=127.0.0.1"
+			echo "rpcallowip=127.0.0.1"
+			echo "rpcauth=${RPC_USER}:${rpcsalt}\$${rpchmac}"
+		} > /etc/bitcoin/bitcoin.conf
+		chown root:bitcoin /etc/bitcoin/bitcoin.conf; chmod 640 /etc/bitcoin/bitcoin.conf
+	fi
 
 	cat > /etc/systemd/system/bitcoind.service <<'EOF'
 [Unit]
@@ -536,9 +579,8 @@ log "Writing 0600 EnvironmentFile with secrets"
 } > /etc/ldk-server/ldk-server.env
 chown root:root /etc/ldk-server/ldk-server.env; chmod 600 /etc/ldk-server/ldk-server.env
 
-log "Installing systemd unit + drop-ins"
-# Base unit is committed in the repo; copy it from the clone.
-install -m 0644 "$SRC/contrib/ldk-server.service" /etc/systemd/system/ldk-server.service
+log "Installing systemd drop-ins"
+# The base unit was installed from the build clone in Phase 3.
 install -d -m 0755 /etc/systemd/system/ldk-server.service.d
 
 cat > /etc/systemd/system/ldk-server.service.d/10-environment.conf <<'EOF'
@@ -642,6 +684,41 @@ rclone copyto "\$tmp/b.tar.age" "\$RCLONE_REMOTE/ldk-server-\$STAMP.tar.age" --i
 EOF
 chmod 0755 /opt/ldk-server-ops/backup-ldk-server.sh
 
+# Health check: units active + disk headroom. Installed but NOT armed — wire it
+# to a cron/systemd timer (and alerting, e.g. a systemd OnFailure= hook) once
+# the node is enabled. A mainnet chainstate grows toward ~600 GB; without disk
+# alerting the box fills up and the node crash-loops.
+cat > /opt/ldk-server-ops/health-check.sh <<'EOF'
+#!/usr/bin/env bash
+# Host health check for the ldk-server LSP deployment.
+# Exit codes: 0 = healthy, 1 = one or more checks failed (details on stdout).
+# Arm only after the node is enabled (bitcoind path: post-IBD, NEXT_STEPS step 1);
+# before that, an inactive ldk-server is expected and would report as a failure.
+set -u
+DISK_MAX_PCT="${DISK_MAX_PCT:-90}"
+rc=0
+for unit in ldk-server bitcoind; do
+	# Only check units this deployment installed (esplora boxes have no bitcoind).
+	[ -f "/etc/systemd/system/${unit}.service" ] || continue
+	if systemctl is-active --quiet "$unit"; then
+		echo "OK: $unit is active"
+	else
+		echo "FAIL: $unit is not active (check: systemctl status $unit)"; rc=1
+	fi
+done
+for dir in /var/lib/ldk-server /var/lib/bitcoind; do
+	[ -d "$dir" ] || continue
+	pct=$(df -P "$dir" | awk 'NR==2 {sub("%","",$5); print $5}')
+	if [ "${pct:-100}" -ge "$DISK_MAX_PCT" ]; then
+		echo "FAIL: $dir filesystem is ${pct:-?}% full (threshold ${DISK_MAX_PCT}%)"; rc=1
+	else
+		echo "OK: $dir filesystem is ${pct}% full"
+	fi
+done
+exit "$rc"
+EOF
+chmod 0755 /opt/ldk-server-ops/health-check.sh
+
 log "First start (backend=${CHAIN_BACKEND})"
 START_FAILED=0
 if [ "$CHAIN_BACKEND" = "esplora" ]; then
@@ -657,9 +734,15 @@ else
 	# on any reboot (manual, console, or a Linode host migration) and generate
 	# keys_mnemonic unattended — the exact operator-triggered step the funds-safety
 	# gate depends on. The operator arms it post-IBD with `systemctl enable --now`
-	# (NEXT_STEPS step 1).
-	systemctl disable ldk-server >/dev/null 2>&1 || true
-	log "bitcoind path: leaving ldk-server disabled until the operator enables it post-IBD (see NEXT_STEPS)."
+	# (NEXT_STEPS step 1). Re-run safety: once the operator HAS armed it, a
+	# manual re-run must not disarm it again (a later reboot would silently
+	# leave the LSP down).
+	if systemctl is-enabled --quiet ldk-server 2>/dev/null; then
+		log "bitcoind path: ldk-server already enabled by the operator; leaving it enabled."
+	else
+		systemctl disable ldk-server >/dev/null 2>&1 || true
+		log "bitcoind path: leaving ldk-server disabled until the operator enables it post-IBD (see NEXT_STEPS)."
+	fi
 fi
 
 # --- Operator handoff (seed-free) -------------------------------------------
@@ -701,25 +784,47 @@ cert (they live under /var/lib/ldk-server, readable only by the service user):
        sudo ldk-server-cli -c /etc/ldk-server/config.toml get-node-info
 
 Check status:  systemctl status ldk-server ; journalctl -u ldk-server -f
+Health check:  /opt/ldk-server-ops/health-check.sh  (units + disk; arm it via a
+    cron/systemd timer once the node is enabled — see docs/linode-stackscript.md)
 StackScript log: /var/log/stackscript.log
-Upgrade later (as root; git + cargo run as the non-root builder user): \\
-    cd ${SRC} \\
-    && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME=/opt/rust CARGO_HOME=/opt/cargo \\
-       bash -c 'git pull && git checkout <commit> && /opt/cargo/bin/cargo build \\
-       --release --features experimental-lsps2-support' \\
-    && install -m0755 target/release/ldk-server* /usr/local/bin/ \\
-    && systemctl restart ldk-server   # back up FIRST
+Provisioning result marker: /root/STACKSCRIPT_OK (key=value facts) or
+    /root/STACKSCRIPT_FAILED.txt (reason) — exactly one exists after any run.
+Upgrade later (as root; same runbook as docs/linode-stackscript.md "Upgrading").
+Back up FIRST. Config keys can change between commits, so keep a rollback copy
+of the working binary before overwriting it:
+    cp /usr/local/bin/ldk-server /usr/local/bin/ldk-server.bak
+    cd ${SRC}
+    runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME=/opt/rust CARGO_HOME=/opt/cargo \\
+      bash -c 'git fetch && git checkout --detach <new-commit> && /opt/cargo/bin/cargo build \\
+      --release --locked --features experimental-lsps2-support'
+    install -m0755 target/release/ldk-server target/release/ldk-server-cli /usr/local/bin/
+    systemctl restart ldk-server
+If the new binary fails to start (journalctl -u ldk-server), roll back:
+    install -m0755 /usr/local/bin/ldk-server.bak /usr/local/bin/ldk-server
+    systemctl restart ldk-server
 ================================================================================
 EOF
 chmod 600 /root/NEXT_STEPS.txt
 printf '\n*** ldk-server LSP deployed and UNFUNDED. Read /root/NEXT_STEPS.txt before funding. ***\n\n' > /etc/motd
 
-# Honest end-state: only write the OK marker if nothing failed. Don't report
-# success when the esplora node failed to start.
+# Honest end-state: exactly one of STACKSCRIPT_OK / STACKSCRIPT_FAILED.txt may
+# exist after any run (they are the only programmatic success signal — Linode
+# does not surface StackScript exit codes; contract documented in
+# docs/linode-stackscript.md). Don't report success when the esplora node
+# failed to start, and never leave a stale marker from an earlier run.
 if [ "$START_FAILED" -eq 1 ]; then
 	echo "FAILED: ldk-server did not start; see 'journalctl -u ldk-server'." > /root/STACKSCRIPT_FAILED.txt
+	rm -f /root/STACKSCRIPT_OK
 	log "Provisioning finished but ldk-server did NOT start — see /root/STACKSCRIPT_FAILED.txt and /root/NEXT_STEPS.txt"
 	exit 1
 fi
-: > /root/STACKSCRIPT_OK
+rm -f /root/STACKSCRIPT_FAILED.txt
+# The OK marker carries machine-readable key=value facts (no secrets).
+{
+	echo "network=${NETWORK_UDF}"
+	echo "chain_backend=${CHAIN_BACKEND}"
+	if [ "$CHAIN_BACKEND" = "esplora" ]; then echo "node_state=started"; else echo "node_state=pending_ibd"; fi
+	echo "commit=$(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)"
+	echo "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > /root/STACKSCRIPT_OK
 log "Done. Node is UNFUNDED. See /root/NEXT_STEPS.txt"
