@@ -21,7 +21,7 @@
 # <UDF name="ssh_pubkey" label="Admin SSH public key (Ed25519 recommended)" />
 # <UDF name="ssh_allowed_ips" label="Restrict SSH to these IPs (CIDR, comma-separated; blank = any)" default="" />
 # <UDF name="network" label="Bitcoin network" oneOf="mainnet,mutinynet" default="mutinynet" />
-# <UDF name="chain_backend" label="Chain backend (mainnet must use bitcoind)" oneOf="bitcoind,esplora" default="esplora" />
+# <UDF name="chain_backend" label="Chain backend (mainnet must use bitcoind; Mutinynet must use esplora)" oneOf="bitcoind,esplora" default="esplora" />
 # <UDF name="esplora_url" label="Esplora URL (esplora backend only; blank = auto for Mutinynet)" default="" />
 # <UDF name="lsp_alias" label="LSP node alias (<=32 chars)" default="ldk-lsp" />
 # <UDF name="announce_ip" label="Announcement IPv4 (blank = auto-detect this Linode's public IP)" default="" />
@@ -29,7 +29,6 @@
 # <UDF name="lsps2_channel_opening_fee_ppm" label="LSPS2 opening fee (ppm)" default="1000" />
 # <UDF name="lsps2_min_channel_opening_fee_msat" label="LSPS2 min opening fee (msat)" default="10000000" />
 # <UDF name="lsps2_max_payment_size_msat" label="LSPS2 max payment size (msat)" default="330000000" />
-# <UDF name="bitcoind_rpc_password" label="bitcoind RPC password (bitcoind backend only; masked)" default="" />
 # <UDF name="metrics_password" label="Prometheus /metrics Basic-Auth password (masked; blank = metrics off)" default="" />
 
 # --- Strict mode + logging --------------------------------------------------
@@ -42,14 +41,35 @@ touch "$LOGFILE"; chmod 600 "$LOGFILE"
 exec > >(tee -ai "$LOGFILE") 2>&1
 
 # Pinned ldk-server commit (no release tags exist; version is 0.1.0).
+# MUST be a full 40-char SHA: abbreviations can be shadowed by a hostile
+# refname of the same spelling, and the post-checkout verification below
+# compares rev-parse output against this exact value.
 LDK_SERVER_REPO="https://github.com/lightningdevkit/ldk-server.git"
-LDK_SERVER_COMMIT="c8424db"
+LDK_SERVER_COMMIT="c8424dbdd739a99f0bb8b2dd525674dd20a48ef2"
+# Pinned Rust toolchain + rustup-init release (same input → same toolchain
+# months later). SHA-256 sums are the published rustup-init.sha256 values for
+# RUSTUP_VERSION; bump all three together.
+RUST_TOOLCHAIN="1.97.1"
+RUSTUP_VERSION="1.29.0"
+RUSTUP_INIT_SHA256_X86_64="4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10"
+RUSTUP_INIT_SHA256_AARCH64="9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792"
 # bitcoind release used for the self-hosted backend (operator may bump).
 BITCOIND_VERSION="29.0"
+# Bitcoin Core guix builder keys, pinned by primary PGP fingerprint (from the
+# bitcoin-core/guix.sigs repo). On MAINNET, SHA256SUMS must carry at least
+# BITCOIND_GPG_MIN_SIGS valid signatures from these keys — a hard gate; see
+# verify_bitcoind_sigs(). Signet/Mutinynet stays SHA-256-only (no real funds).
+BITCOIND_GPG_MIN_SIGS=2
+BITCOIND_BUILDER_KEYS="152812300785C96444D3334D17565732E08E5E41 achow101
+E777299FC265DD04793070EB944D35F9AC3DB76A fanquake
+6B002C6EA3F91B1B0DF0C9BC8F617F1200A6D25C glozow
+D1DBF2C4B96F2DEBF4C16654410108112E7EA81F hebasto
+67AA5B46E7AF78053167FE343B8F814A784218F8 willcl-ark
+A8FC55F3B04BA3146F3492E79303B33A305224CB TheCharlatan"
 # Mutinynet (custom signet) parameters — see https://blog.mutinywallet.com/mutinynet/
+# Mutinynet is reachable only via esplora here: its 30 s blocks require a custom
+# bitcoind build, so the stock-Core bitcoind backend is blocked for it below.
 MUTINYNET_ESPLORA="https://mutinynet.com/api"
-MUTINYNET_SIGNETCHALLENGE="512102f7561d208dd9ae99bf497273e16f389bdbd6c4742ddb8e6b216e64fa2928ad8f51ae"
-MUTINYNET_ADDNODE="45.79.52.207:38333"
 
 MIN_RAM_MB=7800   # require ~8GB; fat-LTO link must fit in RAM (OQ6)
 
@@ -80,7 +100,6 @@ LSPS2_REQUIRE_TOKEN=$(udf lsps2_require_token "")
 LSPS2_FEE_PPM=$(udf lsps2_channel_opening_fee_ppm 1000)
 LSPS2_MIN_FEE_MSAT=$(udf lsps2_min_channel_opening_fee_msat 10000000)
 LSPS2_MAX_PAYMENT_MSAT=$(udf lsps2_max_payment_size_msat 330000000)
-BITCOIND_RPC_PASSWORD=$(udf bitcoind_rpc_password "")
 METRICS_PASSWORD=$(udf metrics_password "")
 
 # Map the friendly network name to ldk-server's Network enum value.
@@ -98,11 +117,15 @@ log "Validating inputs"
 [ "$(id -u)" -eq 0 ] || die "StackScript must run as root."
 command -v apt-get >/dev/null 2>&1 || die "Unsupported image: apt-get not found (use Debian/Ubuntu)."
 
-# SSH key sanity — a bad/empty key locks the operator out of the new user.
+# SSH key sanity — a bad/empty key locks the operator out of the new user, and
+# an embedded newline would smuggle extra authorized_keys entries (or options
+# like command="...") past a visual "my key is there" check. Enforce a strict
+# single-line "<type> <base64> [comment]" shape with no control characters.
 case "$SSH_PUBKEY" in
-	ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-ssh-ed25519@openssh.com\ *) : ;;
-	*) die "ssh_pubkey is empty or not a recognized OpenSSH public key." ;;
+	*$'\n'*|*$'\r'*) die "ssh_pubkey must be a single line (embedded newlines are not allowed)." ;;
 esac
+_pubkey_re='^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9-]+|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( [^[:cntrl:]]*)?$'
+[[ "$SSH_PUBKEY" =~ $_pubkey_re ]] || die "ssh_pubkey is empty or not a recognized single-line OpenSSH public key."
 
 # Numeric LSPS2 fields.
 for v in "$LSPS2_FEE_PPM" "$LSPS2_MIN_FEE_MSAT" "$LSPS2_MAX_PAYMENT_MSAT"; do
@@ -120,6 +143,13 @@ reject_special "ssh_user" "$SSH_USER"
 reject_special "lsp_alias" "$LSP_ALIAS"
 reject_special "esplora_url" "$ESPLORA_URL"
 reject_special "lsps2_require_token" "$LSPS2_REQUIRE_TOKEN"
+# metrics_password lands in the systemd EnvironmentFile, where whitespace and
+# control characters parse differently than the raw value (or inject extra
+# KEY=value lines). Reject them outright so the value provably round-trips.
+reject_special "metrics_password" "$METRICS_PASSWORD"
+case "$METRICS_PASSWORD" in
+	*[[:space:]]*|*[[:cntrl:]]*) die "metrics_password must not contain whitespace or control characters." ;;
+esac
 
 [[ "$SSH_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "ssh_user must match ^[a-z_][a-z0-9_-]*$ (got '$SSH_USER')."
 [ "${#LSP_ALIAS}" -le 32 ] || die "lsp_alias must be at most 32 bytes."
@@ -144,11 +174,13 @@ if [ "$LDK_NETWORK" = "bitcoin" ] && [ -z "$LSPS2_REQUIRE_TOKEN" ]; then
 	die "mainnet deployment requires a non-empty lsps2_require_token (gate the pilot to known clients)."
 fi
 
-# bitcoind backend needs an RPC password.
-if [ "$CHAIN_BACKEND" = "bitcoind" ] && [ -z "$BITCOIND_RPC_PASSWORD" ]; then
-	die "chain_backend=bitcoind requires a bitcoind_rpc_password."
+# Hard-block mutinynet + bitcoind: Mutinynet's 30 s block cadence needs a custom
+# bitcoind build (signetblocktime is not a stock Core option), and this script
+# installs the official bitcoincore.org binary, which would refuse to start on
+# Mutinynet's signet. Reach Mutinynet via the esplora backend instead. (OQ4)
+if [ "$NETWORK_UDF" = "mutinynet" ] && [ "$CHAIN_BACKEND" = "bitcoind" ]; then
+	die "mutinynet requires chain_backend=esplora (stock Bitcoin Core cannot follow Mutinynet's custom signet; it needs a custom bitcoind build)."
 fi
-
 # RAM floor for the fat-LTO build (OQ6).
 RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
 log "Detected ${RAM_MB} MB RAM"
@@ -182,7 +214,7 @@ fi
 log "Installing packages"
 apt-get update -y
 apt-get install -y --no-install-recommends \
-	ca-certificates curl git build-essential pkg-config sudo openssl \
+	ca-certificates curl git build-essential pkg-config sudo openssl gpg \
 	ufw fail2ban unattended-upgrades \
 	sqlite3 age rclone jq xxd
 
@@ -191,13 +223,33 @@ if ! id -u "$SSH_USER" >/dev/null 2>&1; then
 	adduser --disabled-password --gecos "" "$SSH_USER"
 fi
 usermod -aG sudo "$SSH_USER"
+
+# The account has a disabled password, but Debian's %sudo rule still demands the
+# invoking user's password — so sudo would be unusable and every documented
+# post-provision step (starting the node, seed backup, upgrades) would be blocked
+# over SSH. Grant passwordless sudo instead: key-only SSH is the auth boundary,
+# the standard posture for key-only cloud images. Validate with visudo before
+# install — a malformed drop-in would break sudo for the whole host.
+log "Granting passwordless sudo to '${SSH_USER}' (key-only host; no password exists)"
+SUDOERS_TMP=$(mktemp)
+printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$SSH_USER" > "$SUDOERS_TMP"
+visudo -cf "$SUDOERS_TMP" >/dev/null || { rm -f "$SUDOERS_TMP"; die "Generated sudoers drop-in failed visudo validation; not installing it."; }
+install -m 440 -o root -g root "$SUDOERS_TMP" "/etc/sudoers.d/90-${SSH_USER}"
+rm -f "$SUDOERS_TMP"
+
 install -d -m 700 -o "$SSH_USER" -g "$SSH_USER" "/home/$SSH_USER/.ssh"
 printf '%s\n' "$SSH_PUBKEY" > "/home/$SSH_USER/.ssh/authorized_keys"
 chmod 600 "/home/$SSH_USER/.ssh/authorized_keys"
 chown "$SSH_USER:$SSH_USER" "/home/$SSH_USER/.ssh/authorized_keys"
+# Cross-check with the real parser: exactly one valid key must have landed.
+_keycount=$(ssh-keygen -lf "/home/$SSH_USER/.ssh/authorized_keys" 2>/dev/null | wc -l) || true
+[ "${_keycount:-0}" -eq 1 ] || die "authorized_keys must contain exactly one valid SSH key (ssh-keygen found ${_keycount:-0})."
 
 log "Hardening sshd (key-only, no root)"
-SSH_DROPIN=/etc/ssh/sshd_config.d/99-ldk-hardening.conf
+# sshd uses first-obtained-value-wins and includes sshd_config.d/*.conf in lexical
+# order, so this drop-in must sort before anything the image ships (e.g. cloud-init's
+# 50-cloud-init.conf setting "PasswordAuthentication yes") or it is silently ignored.
+SSH_DROPIN=/etc/ssh/sshd_config.d/00-ldk-hardening.conf
 {
 	echo "PermitRootLogin no"
 	echo "PasswordAuthentication no"
@@ -208,6 +260,12 @@ SSH_DROPIN=/etc/ssh/sshd_config.d/99-ldk-hardening.conf
 } > "$SSH_DROPIN"
 # Validate before reloading — a broken config would lock everyone out.
 sshd -t || die "sshd config validation failed; not reloading. Recover via Linode Lish console."
+# Assert the *effective* merged config: `sshd -t` only checks syntax, so another
+# drop-in could still override the hardening without any error.
+sshd -T | grep -qi '^passwordauthentication no' \
+	|| die "sshd hardening not effective: PasswordAuthentication is still enabled by another config file."
+sshd -T | grep -qi '^permitrootlogin no' \
+	|| die "sshd hardening not effective: PermitRootLogin is still enabled by another config file."
 systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 
 log "Configuring UFW (SSH + 9735 inbound only)"
@@ -245,21 +303,51 @@ systemctl enable --now fail2ban >/dev/null 2>&1 || true
 # ============================================================================
 # Phase 3 — Build ldk-server from source (pinned commit)
 # ============================================================================
-log "Installing Rust toolchain"
-export RUSTUP_HOME=/opt/rust CARGO_HOME=/opt/cargo
-curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
-export PATH="$CARGO_HOME/bin:$PATH"
+# The toolchain install and cargo build run as a throwaway non-root 'builder'
+# user so no transitive build.rs/proc-macro executes with root privileges on a
+# box that will custody funds; root only installs the finished binaries.
+# rustup-init is a pinned release verified against its published SHA-256 —
+# no unpinned `curl | sh`.
+log "Creating throwaway build user 'builder'"
+id -u builder >/dev/null 2>&1 || useradd --system --create-home --home-dir /opt/builder --shell /usr/sbin/nologin builder
+
+log "Installing Rust ${RUST_TOOLCHAIN} via rustup-init ${RUSTUP_VERSION} (as builder)"
+RUSTUP_HOME=/opt/rust
+CARGO_HOME=/opt/cargo
+install -d -m 755 -o builder -g builder "$RUSTUP_HOME" "$CARGO_HOME"
+arch=$(uname -m); case "$arch" in
+	x86_64)  rust_triple=x86_64-unknown-linux-gnu;  rustup_sha="$RUSTUP_INIT_SHA256_X86_64" ;;
+	aarch64) rust_triple=aarch64-unknown-linux-gnu; rustup_sha="$RUSTUP_INIT_SHA256_AARCH64" ;;
+	*) die "Unsupported arch $arch for the Rust toolchain." ;;
+esac
+tmp=$(mktemp -d); chmod 755 "$tmp"   # builder must be able to read rustup-init
+curl --proto '=https' --tlsv1.2 -fsS -o "$tmp/rustup-init" \
+	"https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rust_triple}/rustup-init"
+echo "${rustup_sha}  ${tmp}/rustup-init" | sha256sum -c - >/dev/null || die "rustup-init SHA-256 mismatch."
+chmod 755 "$tmp/rustup-init"
+runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOME="$CARGO_HOME" \
+	"$tmp/rustup-init" -y --no-modify-path --default-toolchain "$RUST_TOOLCHAIN"
+rm -rf "$tmp"
 
 log "Cloning ldk-server @ ${LDK_SERVER_COMMIT} and building (this takes a while)"
 SRC=/opt/ldk-server-src
 rm -rf "$SRC"
 git clone "$LDK_SERVER_REPO" "$SRC"
-git -C "$SRC" checkout "$LDK_SERVER_COMMIT"
-( cd "$SRC" && cargo build --release --features experimental-lsps2-support )
+# Detached checkout of the pin, then verify HEAD is EXACTLY the pinned commit —
+# a branch/tag named like the pin (refname shadowing) must not change the build.
+git -C "$SRC" checkout --detach "$LDK_SERVER_COMMIT" --
+[ "$(git -C "$SRC" rev-parse "HEAD^{commit}")" = "$LDK_SERVER_COMMIT" ] \
+	|| die "Checkout mismatch: HEAD is not the pinned commit ${LDK_SERVER_COMMIT}. Refusing to build."
+# Record the commit while root still owns the clone (root git refuses
+# builder-owned repos: safe.directory).
+git -C "$SRC" rev-parse HEAD > /etc/ldk-server-build-commit 2>/dev/null || true
+chown -R builder:builder "$SRC"
+# --locked: enforce the committed Cargo.lock (fail loudly if stale) on a funds node.
+( cd "$SRC" && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME="$RUSTUP_HOME" CARGO_HOME="$CARGO_HOME" \
+	PATH="$CARGO_HOME/bin:$PATH" cargo build --release --locked --features experimental-lsps2-support )
 
 install -m 0755 "$SRC/target/release/ldk-server" /usr/local/bin/ldk-server
 install -m 0755 "$SRC/target/release/ldk-server-cli" /usr/local/bin/ldk-server-cli
-git -C "$SRC" rev-parse HEAD > /etc/ldk-server-build-commit 2>/dev/null || true
 log "Built commit: $(cat /etc/ldk-server-build-commit 2>/dev/null || echo unknown)"
 
 # ============================================================================
@@ -277,13 +365,50 @@ if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 	install -d -m 710 -o bitcoin -g bitcoin /var/lib/bitcoind
 	install -d -m 750 -o root -g bitcoin /etc/bitcoin
 
-	# Download + SHA256-verify Bitcoin Core. NOTE: for mainnet you should also
-	# GPG-verify SHA256SUMS against the Bitcoin Core builder keys (see docs).
+	# Mainnet hard gate: SHA-256 alone only proves the tarball matches a sums
+	# file served by the SAME origin — a compromised/MITM'd mirror can forge
+	# both. The guix builder signatures over SHA256SUMS cannot, and this
+	# bitcoind is the node's own chain source for real funds. Runs inside the
+	# download subshell ($PWD holds SHA256SUMS; GNUPGHOME dies with it).
+	verify_bitcoind_sigs() {
+		local base="$1" good=0 fpr name
+		curl -fsSLO "${base}/SHA256SUMS.asc" || { log "ERROR: could not fetch SHA256SUMS.asc."; return 1; }
+		export GNUPGHOME="$PWD/gnupg"
+		install -d -m 700 "$GNUPGHOME"
+		while read -r fpr name; do
+			# Key bodies come from the guix.sigs repo, but only signatures whose
+			# PRIMARY fingerprint matches a pin below count toward the threshold,
+			# so a tampered key file cannot satisfy the gate.
+			if curl -fsSL "https://raw.githubusercontent.com/bitcoin-core/guix.sigs/main/builder-keys/${name}.gpg" -o "${name}.gpg"; then
+				gpg --batch --import "${name}.gpg" >/dev/null 2>&1 || log "WARNING: could not import builder key ${name}."
+			else
+				log "WARNING: could not download builder key ${name}."
+			fi
+		done <<< "$BITCOIND_BUILDER_KEYS"
+		# No --batch: gpg >= 2.5 aborts a multi-signature verify at the first
+		# signature from a key it does not have when run with --batch.
+		gpg --status-file gpg-status.txt --verify SHA256SUMS.asc SHA256SUMS >/dev/null 2>&1 || true
+		while read -r fpr name; do
+			if grep -q "VALIDSIG .* ${fpr}\$" gpg-status.txt 2>/dev/null; then
+				log "Good SHA256SUMS signature from builder ${name} (${fpr})"
+				good=$((good + 1))
+			fi
+		done <<< "$BITCOIND_BUILDER_KEYS"
+		[ "$good" -ge "$BITCOIND_GPG_MIN_SIGS" ] || { log "ERROR: only ${good} valid pinned builder signature(s) on SHA256SUMS (need >= ${BITCOIND_GPG_MIN_SIGS}). Refusing bitcoind on mainnet."; return 1; }
+	}
+
+	# Download Bitcoin Core; always SHA256-verify, and on mainnet ALSO require
+	# pinned builder signatures over SHA256SUMS (hard gate, see above).
 	arch=$(uname -m); case "$arch" in x86_64) btarch=x86_64-linux-gnu ;; aarch64) btarch=aarch64-linux-gnu ;; *) die "Unsupported arch $arch for bitcoind." ;; esac
 	tmp=$(mktemp -d); ( cd "$tmp"
 		base="https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}"
 		curl -fsSLO "${base}/bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz"
 		curl -fsSLO "${base}/SHA256SUMS"
+		if [ "$LDK_NETWORK" = "bitcoin" ]; then
+			verify_bitcoind_sigs "$base" || exit 1
+		else
+			log "Signet path: skipping GPG check of SHA256SUMS (SHA-256 only; mainnet enforces GPG)."
+		fi
 		grep " bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz\$" SHA256SUMS | sha256sum -c - || exit 1
 		tar -xzf "bitcoin-${BITCOIND_VERSION}-${btarch}.tar.gz"
 		install -m 0755 "bitcoin-${BITCOIND_VERSION}/bin/bitcoind" "bitcoin-${BITCOIND_VERSION}/bin/bitcoin-cli" /usr/local/bin/
@@ -291,22 +416,21 @@ if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 	rm -rf "$tmp"
 
 	# rpcauth (salted) — ldk-server has no cookie-auth path, only user/password.
+	# The RPC password is generated on-box, never taken as a UDF: it is used
+	# exactly once, machine-to-machine on loopback (the operator's bitcoin-cli
+	# uses cookie auth), and a UDF value could carry newlines that inject env
+	# vars into ldk-server.env or break the rpcauth HMAC. Hex only => safe in
+	# both bitcoin.conf and the EnvironmentFile.
 	RPC_USER="ldkserver"
+	BITCOIND_RPC_PASSWORD=$(head -c16 /dev/urandom | xxd -p)
 	rpcsalt=$(head -c16 /dev/urandom | xxd -p)
 	rpchmac=$(printf '%s' "$BITCOIND_RPC_PASSWORD" | openssl dgst -sha256 -hmac "$rpcsalt" | awk '{print $NF}')
 
 	{
 		echo "# Managed by ldk-server linode-stackscript. Loopback RPC only."
-		if [ "$LDK_NETWORK" = "signet" ]; then
-			echo "signet=1"
-			echo "[signet]"
-			echo "signetchallenge=${MUTINYNET_SIGNETCHALLENGE}"
-			echo "signetblocktime=30"
-			echo "addnode=${MUTINYNET_ADDNODE}"
-			echo "dnsseed=0"
-		else
-			echo "chain=main"
-		fi
+		# bitcoind backend is mainnet-only: mutinynet+bitcoind is blocked in
+		# Phase 1 (stock Core can't follow Mutinynet's custom signet).
+		echo "chain=main"
 		echo "server=1"
 		echo "daemon=0"
 		echo "txindex=0"
@@ -328,6 +452,11 @@ User=bitcoin
 Type=simple
 Restart=on-failure
 TimeoutStartSec=infinity
+# Shutdown flush of dbcache=2048 can take minutes (worse during/after IBD);
+# systemd's default 90 s stop timeout would SIGKILL bitcoind mid-flush and
+# corrupt the chainstate (=> days-long reindex). Give it time to stop cleanly.
+TimeoutStopSec=600
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
@@ -336,11 +465,10 @@ ReadWritePaths=/var/lib/bitcoind
 WantedBy=multi-user.target
 EOF
 	# RPC is loopback-bound and the default UFW policy denies all inbound, so the
-	# RPC port (8332 mainnet / 38332 signet) is never exposed.
+	# RPC port (8332, mainnet) is never exposed.
 	systemctl daemon-reload
 	systemctl enable --now bitcoind
-	# RPC port: mainnet 8332, signet 38332.
-	if [ "$LDK_NETWORK" = "signet" ]; then RPC_PORT=38332; else RPC_PORT=8332; fi
+	RPC_PORT=8332
 	CHAIN_TOML=$(printf '[bitcoind]\nrpc_address = "127.0.0.1:%s"\nrpc_user = "%s"\n# rpc_password supplied via EnvironmentFile (LDK_SERVER_BITCOIND_RPC_PASSWORD)\n' "$RPC_PORT" "$RPC_USER")
 else
 	# Remote esplora. Default to the Mutinynet endpoint on signet if unset.
@@ -418,6 +546,15 @@ cat > /etc/systemd/system/ldk-server.service.d/10-environment.conf <<'EOF'
 EnvironmentFile=/etc/ldk-server/ldk-server.env
 EOF
 
+# Start-ordering on bitcoind only. The base unit orders after network-online
+# alone; referencing bitcoind.service there would be dead config on esplora.
+if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
+	cat > /etc/systemd/system/ldk-server.service.d/15-after.conf <<'EOF'
+[Unit]
+After=bitcoind.service
+EOF
+fi
+
 # Hardening drop-in (embedded; deploy/ is not part of the committed repo).
 cat > /etc/systemd/system/ldk-server.service.d/20-hardening.conf <<'EOF'
 [Service]
@@ -437,6 +574,19 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 EOF
+
+# bitcoind path: gate ldk-server startup on bitcoind's RPC actually answering.
+# After a reboot bitcoind is "started" (Type=simple) long before RPC is up
+# (block-index load), so without this ldk-server would crash-loop every 10 s.
+# The '+' prefix runs bitcoin-cli with full privileges so it can read the RPC
+# cookie in /var/lib/bitcoind (loopback RPC only; nothing is exposed).
+if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
+	{
+		echo "[Service]"
+		echo "ExecStartPre=+/usr/local/bin/bitcoin-cli -conf=/etc/bitcoin/bitcoin.conf -datadir=/var/lib/bitcoind -rpcwait -rpcwaittimeout=600 getblockchaininfo"
+		echo "TimeoutStartSec=660"
+	} > /etc/systemd/system/ldk-server.service.d/30-bitcoind-wait.conf
+fi
 
 log "Installing logrotate (network dir: ${NETDIR})"
 cat > /etc/logrotate.d/ldk-server <<EOF
@@ -467,38 +617,58 @@ cat > /opt/ldk-server-ops/backup-ldk-server.sh <<EOF
 # Consistent, encrypted, offsite backup of channel state. Configure AGE_RECIPIENT
 # and RCLONE_REMOTE, then run via cron/timer as the ldk-server user.
 # Does NOT back up keys_mnemonic — copy that offline by hand, once, before funding.
+#
+# ⚠️  STALE-RESTORE WARNING: a snapshot goes stale the moment channel state
+#     advances. Restoring a stale snapshot on a funded node and letting it run
+#     (or force-close) broadcasts since-revoked commitments — the counterparty
+#     sweeps the channels via penalty transactions. After any post-funding
+#     restore, do NOT let the node act (esp. force-close) before assessing.
+#     The snapshot cadence bounds the loss window, so run this often (sqlite
+#     .backup is cheap); live replication (e.g. VSS) is the long-term answer.
 set -euo pipefail
 NETWORK_DIR="\${NETWORK_DIR:-/var/lib/ldk-server/${NETDIR}}"
 AGE_RECIPIENT="\${AGE_RECIPIENT:-<AGE_PUBLIC_KEY>}"
 RCLONE_REMOTE="\${RCLONE_REMOTE:-<rclone-remote>:ldk-server-backups}"
 STAMP="\$(date -u +%Y%m%dT%H%M%SZ)"; tmp="\$(mktemp -d)"; trap 'rm -rf "\$tmp"' EXIT
-sqlite3 "\$NETWORK_DIR/ldk_node_data.sqlite" ".backup '\$tmp/ldk_node_data.sqlite'"
-[ -f "\$NETWORK_DIR/ldk_server_data.sqlite" ] && sqlite3 "\$NETWORK_DIR/ldk_server_data.sqlite" ".backup '\$tmp/ldk_server_data.sqlite'" || true
-sqlite3 "\$tmp/ldk_node_data.sqlite" "PRAGMA integrity_check;" | grep -qx ok || { echo "integrity_check failed"; exit 1; }
-tar -C "\$tmp" -cf "\$tmp/b.tar" . && age -r "\$AGE_RECIPIENT" -o "\$tmp/b.tar.age" "\$tmp/b.tar"
-rclone copy "\$tmp/b.tar.age" "\$RCLONE_REMOTE/ldk-server-\$STAMP.tar.age" --immutable
+# Stage DB copies in \$tmp/data so tar never archives its own output tree.
+mkdir "\$tmp/data"
+sqlite3 "\$NETWORK_DIR/ldk_node_data.sqlite" ".backup '\$tmp/data/ldk_node_data.sqlite'"
+[ -f "\$NETWORK_DIR/ldk_server_data.sqlite" ] && sqlite3 "\$NETWORK_DIR/ldk_server_data.sqlite" ".backup '\$tmp/data/ldk_server_data.sqlite'" || true
+sqlite3 "\$tmp/data/ldk_node_data.sqlite" "PRAGMA integrity_check;" | grep -qx ok || { echo "integrity_check failed"; exit 1; }
+tar -C "\$tmp/data" -cf "\$tmp/b.tar" . && age -r "\$AGE_RECIPIENT" -o "\$tmp/b.tar.age" "\$tmp/b.tar"
+# copyto, not copy: the destination is the object name, so the remote holds
+# flat ldk-server-<STAMP>.tar.age objects (copy would nest b.tar.age inside).
+rclone copyto "\$tmp/b.tar.age" "\$RCLONE_REMOTE/ldk-server-\$STAMP.tar.age" --immutable
 EOF
 chmod 0755 /opt/ldk-server-ops/backup-ldk-server.sh
 
 log "First start (backend=${CHAIN_BACKEND})"
-systemctl enable ldk-server
 START_FAILED=0
 if [ "$CHAIN_BACKEND" = "esplora" ]; then
 	# Backend reachable immediately → start now (generates keys_mnemonic, NODE_URI).
 	# Do NOT mask a real failure: a broken node must not look like a successful deploy.
+	systemctl enable ldk-server
 	if ! systemctl start ldk-server; then
 		START_FAILED=1
 		log "WARNING: ldk-server failed to start (check: journalctl -u ldk-server). Writing handoff anyway."
 	fi
 else
-	log "bitcoind path: leaving ldk-server enabled-but-stopped until IBD completes (see NEXT_STEPS)."
+	# Deliberately NOT enabled: with Restart=always, an enabled unit would auto-start
+	# on any reboot (manual, console, or a Linode host migration) and generate
+	# keys_mnemonic unattended — the exact operator-triggered step the funds-safety
+	# gate depends on. The operator arms it post-IBD with `systemctl enable --now`
+	# (NEXT_STEPS step 1).
+	systemctl disable ldk-server >/dev/null 2>&1 || true
+	log "bitcoind path: leaving ldk-server disabled until the operator enables it post-IBD (see NEXT_STEPS)."
 fi
 
 # --- Operator handoff (seed-free) -------------------------------------------
 START_HINT="The node was started; the seed file now exists."
 if [ "$CHAIN_BACKEND" = "bitcoind" ]; then
 	START_HINT="Wait for bitcoind sync (bitcoin-cli -datadir=/var/lib/bitcoind getblockchaininfo => initialblockdownload=false),
-then: sudo systemctl start ldk-server   # this generates the seed file"
+then: sudo systemctl enable --now ldk-server   # this generates the seed file
+    (ldk-server is deliberately left DISABLED so a reboot cannot start the
+    node and generate the seed before you are ready to back it up)"
 fi
 
 cat > /root/NEXT_STEPS.txt <<EOF
@@ -522,14 +692,21 @@ NEXT STEPS:
     (24 words; 0600. Do NOT copy it into the recurring backup job.)
  3. Configure + prove a restore: edit /opt/ldk-server-ops/backup-ldk-server.sh
     (set AGE_RECIPIENT, RCLONE_REMOTE), run it, and restore on a CLEAN host.
- 4. Only then fund:  ldk-server-cli onchain-receive   (mainnet: <=0.05 BTC pilot)
+ 4. Only then fund (mainnet: <=0.05 BTC pilot):
+       sudo ldk-server-cli -c /etc/ldk-server/config.toml onchain-receive
  5. Distribute the require_token to known clients out-of-band (if set).
+
+CLI usage: always pass the server config so the CLI finds the API key and TLS
+cert (they live under /var/lib/ldk-server, readable only by the service user):
+       sudo ldk-server-cli -c /etc/ldk-server/config.toml get-node-info
 
 Check status:  systemctl status ldk-server ; journalctl -u ldk-server -f
 StackScript log: /var/log/stackscript.log
-Upgrade later (as root): cd ${SRC} && git pull && git checkout <commit> \\
-    && CARGO_HOME=/opt/cargo RUSTUP_HOME=/opt/rust /opt/cargo/bin/cargo build \\
-    --release --features experimental-lsps2-support \\
+Upgrade later (as root; git + cargo run as the non-root builder user): \\
+    cd ${SRC} \\
+    && runuser -u builder -- env HOME=/opt/builder RUSTUP_HOME=/opt/rust CARGO_HOME=/opt/cargo \\
+       bash -c 'git pull && git checkout <commit> && /opt/cargo/bin/cargo build \\
+       --release --features experimental-lsps2-support' \\
     && install -m0755 target/release/ldk-server* /usr/local/bin/ \\
     && systemctl restart ldk-server   # back up FIRST
 ================================================================================

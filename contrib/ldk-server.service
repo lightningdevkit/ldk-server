@@ -1,6 +1,6 @@
 [Unit]
 Description=LDK Server Lightning Node
-After=network-online.target bitcoind.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]

@@ -66,6 +66,14 @@ setup):
 > same node identity on two instances will cause channel state conflicts and potential fund
 > loss.
 
+> **Warning:** Backups are point-in-time snapshots and go stale as soon as channel state
+> advances. Restoring a stale snapshot on a funded node and letting it run (or force-close)
+> broadcasts since-revoked commitment state, which the counterparty can punish by sweeping
+> the channel funds via penalty transactions. After restoring, do not let the node act
+> (especially force-close) before assessing how old the snapshot is. Your backup cadence
+> bounds the loss window — back up frequently (`sqlite3 .backup` is cheap) and consider
+> live replication (e.g. VSS) as the long-term answer.
+
 ## Security
 
 ### API Key
