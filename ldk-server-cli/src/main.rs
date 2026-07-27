@@ -56,6 +56,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use types::{
 	Amount, CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse,
+	Preimage,
 };
 
 mod types;
@@ -324,7 +325,7 @@ enum Commands {
 			long,
 			help = "An optional hex-encoded 32-byte payment preimage. If provided, it will be used instead of generating a random one."
 		)]
-		preimage: Option<String>,
+		preimage: Option<Preimage>,
 	},
 	#[command(
 		about = "Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer"
@@ -847,7 +848,7 @@ async fn main() {
 						node_id,
 						route_parameters: Some(route_parameters),
 						custom_tlvs: proto_custom_tlvs,
-						preimage,
+						preimage: preimage.map(|p| p.to_hex_string()),
 					})
 					.await,
 			);

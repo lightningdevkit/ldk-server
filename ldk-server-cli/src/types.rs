@@ -16,6 +16,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::ldk_server_grpc::types::{ForwardedPayment, PageToken, Payment};
 use serde::Serialize;
 
@@ -119,6 +120,26 @@ impl FromStr for Amount {
 	}
 }
 
+/// A validated 32-byte payment preimage, parsed from a 64-character hex string.
+#[derive(Debug, Clone)]
+pub struct Preimage(pub [u8; 32]);
+
+impl Preimage {
+	pub fn to_hex_string(&self) -> String {
+		self.0.to_lower_hex_string()
+	}
+}
+
+impl FromStr for Preimage {
+	type Err = String;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		<[u8; 32]>::from_hex(s)
+			.map(Preimage)
+			.map_err(|_| "must be a 64-character hex string (32 bytes)".to_string())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -184,5 +205,26 @@ mod tests {
 		// rejects overflow (u64::MAX sats would overflow when multiplied by 1000)
 		let big = format!("{}sat", u64::MAX);
 		assert!(Amount::from_str(&big).is_err());
+	}
+
+	#[test]
+	fn preimage_parsing_and_roundtrip() {
+		// valid 64-char hex string
+		let hex = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b";
+		let preimage = Preimage::from_str(hex).unwrap();
+		assert_eq!(preimage.0, [0x2b; 32]);
+		assert_eq!(preimage.to_hex_string(), hex);
+
+		// rejects empty string
+		assert!(Preimage::from_str("").is_err());
+
+		// rejects too short (62 chars)
+		assert!(Preimage::from_str(&"ab".repeat(31)).is_err());
+
+		// rejects too long (66 chars)
+		assert!(Preimage::from_str(&"ab".repeat(33)).is_err());
+
+		// rejects non-hex characters
+		assert!(Preimage::from_str(&"zz".repeat(32)).is_err());
 	}
 }
