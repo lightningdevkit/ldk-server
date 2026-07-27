@@ -8,6 +8,7 @@ alias = "ldk_server"                          # Lightning node alias
 #pathfinding_scores_source_url = "https://rapidsync.lightningdevkit.org/scoring/scorer.bin"  # External pathfinding scores source (optional, defaults to this URL on mainnet; set to "" to disable)
 #rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"  # Optional: RGS URL for rapid gossip sync
 #async_payments_role = "client"               # Optional async payments role: "client" or "server"
+#enable_zero_fee_commitments = false          # Enable zero-fee commitment channels (default: false)
 
 # Background probing service (optional)
 # CAUTION: Probes send real HTLCs and can lock outbound liquidity until they time out.

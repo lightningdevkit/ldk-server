@@ -156,6 +156,8 @@ fn main() {
 	ldk_node_config.announcement_addresses = config_file.announcement_addrs;
 	ldk_node_config.network = config_file.network;
 	ldk_node_config.hrn_config = config_file.hrn_config;
+	ldk_node_config.anchor_channels_config.enable_zero_fee_commitments =
+		config_file.enable_zero_fee_commitments;
 
 	let mut builder = Builder::from_config(ldk_node_config);
 	builder.set_log_facade_logger();

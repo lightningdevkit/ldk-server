@@ -70,6 +70,7 @@ pub struct Config {
 	pub pathfinding_scores_source_url: Option<String>,
 	pub probing_config: Option<ProbingConfig>,
 	pub async_payments_role: Option<AsyncPaymentsRole>,
+	pub enable_zero_fee_commitments: bool,
 	pub metrics_enabled: bool,
 	pub poll_metrics_interval: Option<u64>,
 	pub metrics_username: Option<String>,
@@ -144,6 +145,7 @@ struct ConfigBuilder {
 	pathfinding_scores_source_url: Option<String>,
 	probing: Option<ProbingTomlConfig>,
 	async_payments_role: Option<String>,
+	enable_zero_fee_commitments: Option<bool>,
 	metrics_enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
 	metrics_username: Option<String>,
@@ -167,6 +169,8 @@ impl ConfigBuilder {
 				node.pathfinding_scores_source_url.or(self.pathfinding_scores_source_url.clone());
 			self.async_payments_role =
 				node.async_payments_role.or(self.async_payments_role.clone());
+			self.enable_zero_fee_commitments =
+				node.enable_zero_fee_commitments.or(self.enable_zero_fee_commitments);
 			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
 		}
 
@@ -284,6 +288,10 @@ impl ConfigBuilder {
 
 		if let Some(async_payments_role) = &args.node_async_payments_role {
 			self.async_payments_role = Some(async_payments_role.clone());
+		}
+
+		if let Some(enable_zero_fee_commitments) = args.node_enable_zero_fee_commitments {
+			self.enable_zero_fee_commitments = Some(enable_zero_fee_commitments);
 		}
 
 		if args.has_probing_options() {
@@ -595,6 +603,7 @@ impl ConfigBuilder {
 			pathfinding_scores_source_url,
 			probing_config,
 			async_payments_role,
+			enable_zero_fee_commitments: self.enable_zero_fee_commitments.unwrap_or(false),
 			metrics_enabled,
 			poll_metrics_interval,
 			metrics_username,
@@ -633,6 +642,7 @@ struct NodeConfig {
 	alias: Option<String>,
 	pathfinding_scores_source_url: Option<String>,
 	async_payments_role: Option<String>,
+	enable_zero_fee_commitments: Option<bool>,
 	rgs_server_url: Option<String>,
 }
 
@@ -1112,6 +1122,13 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_NODE_ENABLE_ZERO_FEE_COMMITMENTS",
+		help = "Whether to enable zero-fee commitment channels. Defaults to false."
+	)]
+	node_enable_zero_fee_commitments: Option<bool>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_PROBING_STRATEGY",
 		help = "Enable background probing with `high_degree` or `random_walk`."
 	)]
@@ -1289,6 +1306,7 @@ mod tests {
 				alias = "LDK Server"
 				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"
 				async_payments_role = "client"
+				enable_zero_fee_commitments = true
 
 				[tls]
 				cert_path = "/path/to/tls.crt"
@@ -1348,6 +1366,7 @@ mod tests {
 			node_alias: Some(String::from("LDK Server CLI")),
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
 			node_async_payments_role: Some(String::from("server")),
+			node_enable_zero_fee_commitments: Some(false),
 			probing_strategy: None,
 			probing_top_node_count: None,
 			probing_max_hops: None,
@@ -1383,6 +1402,7 @@ mod tests {
 			storage_dir_path: None,
 			pathfinding_scores_source_url: None,
 			node_async_payments_role: None,
+			node_enable_zero_fee_commitments: None,
 			probing_strategy: None,
 			probing_top_node_count: None,
 			probing_max_hops: None,
@@ -1497,6 +1517,7 @@ mod tests {
 			pathfinding_scores_source_url: None,
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Client),
+			enable_zero_fee_commitments: true,
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1522,6 +1543,7 @@ mod tests {
 		assert_eq!(config.log_file_path, expected.log_file_path);
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Client)));
+		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 
@@ -1939,6 +1961,7 @@ mod tests {
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
+			enable_zero_fee_commitments: false,
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1961,6 +1984,7 @@ mod tests {
 		assert!(config.lsps2_service_config.is_none());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
+		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 		assert_eq!(config.log_max_size_bytes, expected.log_max_size_bytes);
@@ -2059,6 +2083,7 @@ mod tests {
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
+			enable_zero_fee_commitments: false,
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -2085,6 +2110,7 @@ mod tests {
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
+		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 	}
@@ -2488,6 +2514,20 @@ mod tests {
 		assert_eq!(args_config.probing_max_locked_msat, Some(500_000));
 		assert_eq!(args_config.probing_diversity_penalty_msat, Some(250));
 		assert_eq!(args_config.probing_cooldown_secs, Some(1800));
+	}
+
+	#[test]
+	fn test_accepts_zero_fee_commitments_arg() {
+		for (value, expected) in [("true", true), ("false", false)] {
+			let args_config = ArgsConfig::try_parse_from([
+				"ldk-server",
+				"--node-enable-zero-fee-commitments",
+				value,
+			])
+			.unwrap();
+
+			assert_eq!(args_config.node_enable_zero_fee_commitments, Some(expected));
+		}
 	}
 
 	#[test]
