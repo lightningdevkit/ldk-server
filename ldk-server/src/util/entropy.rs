@@ -12,12 +12,13 @@ use std::str::FromStr;
 use std::{fs, io};
 
 use ldk_node::bip39::Mnemonic;
-use ldk_node::entropy::{generate_entropy_mnemonic, NodeEntropy};
+use ldk_node::entropy::NodeEntropy;
 use log::info;
 
 use crate::util::write_new;
 
 const DEFAULT_MNEMONIC_FILE: &str = "keys_mnemonic";
+const DEFAULT_MNEMONIC_ENTROPY_BYTES: usize = 32;
 
 pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<NodeEntropy> {
 	let mnemonic_path = storage_dir.join(DEFAULT_MNEMONIC_FILE);
@@ -34,7 +35,7 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 		if let Some(parent) = mnemonic_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		let mnemonic = generate_entropy_mnemonic(None);
+		let mnemonic = generate_entropy_mnemonic()?;
 		write_new(&mnemonic_path, format!("{}\n", mnemonic).as_bytes(), 0o600)?;
 		info!(
 			"Generated new BIP39 mnemonic at {}. Back up this file securely — it is required to recover on-chain funds.",
@@ -44,6 +45,12 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 	};
 
 	Ok(NodeEntropy::from_bip39_mnemonic(mnemonic, None))
+}
+
+fn generate_entropy_mnemonic() -> io::Result<Mnemonic> {
+	let mut entropy = [0u8; DEFAULT_MNEMONIC_ENTROPY_BYTES];
+	getrandom::getrandom(&mut entropy).map_err(io::Error::other)?;
+	Ok(Mnemonic::from_entropy(&entropy).expect("32-byte entropy must produce a valid mnemonic"))
 }
 
 #[cfg(test)]

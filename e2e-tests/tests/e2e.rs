@@ -17,7 +17,9 @@ use e2e_tests::{
 	LdkServerHandle, TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
+use ldk_node::bip39::{rand::rngs::OsRng, Language, Mnemonic};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
+use ldk_node::entropy::NodeEntropy;
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
@@ -1244,8 +1246,9 @@ async fn test_forwarded_payment_event() {
 	let b_addr = SocketAddress::from_str(&format!("127.0.0.1:{}", server_b.p2p_port)).unwrap();
 	builder_c.add_liquidity_source(b_node_id, b_addr, None, true);
 
-	let mnemonic_c = ldk_node::entropy::generate_entropy_mnemonic(None);
-	let node_entropy_c = ldk_node::entropy::NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
+	let mut rng = OsRng;
+	let mnemonic_c = Mnemonic::generate_in_with(&mut rng, Language::English, 24).unwrap();
+	let node_entropy_c = NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
 	let node_c = builder_c.build(node_entropy_c).unwrap();
 
 	node_c.start().unwrap();
