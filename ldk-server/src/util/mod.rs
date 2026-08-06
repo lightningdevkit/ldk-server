@@ -29,8 +29,9 @@ pub(crate) fn write_new(path: &Path, contents: &[u8], mode: u32) -> io::Result<(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use std::path::PathBuf;
+
+	use super::*;
 
 	#[test]
 	fn write_new_sets_requested_mode_and_contents() {

@@ -10,3 +10,7 @@ lto = true
 
 [profile.dev]
 panic = "abort"
+
+[patch."https://github.com/lightningdevkit/ldk-node"]
+# Temporary: watchtower APIs pending upstream merge of https://github.com/lightningdevkit/ldk-node/pull/1031
+ldk-node = { git = "https://github.com/vincenzopalazzo/ldk-node", branch = "watchtower-apis-16eaa6f" }

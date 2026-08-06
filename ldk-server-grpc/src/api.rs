@@ -1237,3 +1237,32 @@ pub struct DecodeOfferResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeEventsRequest {}
+/// Export per-channel watchtower state (latest counterparty commitment transaction(s)
+/// and corresponding justice transactions) for consumption by an external watchtower
+/// client such as a rust-teos (Eye of Satoshi) client.
+///
+/// The endpoint is only served if `watchtower.export_enabled` is set in the server
+/// configuration; otherwise a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WatchtowerStateExportRequest {
+	/// If set, only the state of the channel with this hex-encoded `user_channel_id`
+	/// is exported. Otherwise the state of all channels is exported.
+	#[prost(string, optional, tag = "1")]
+	pub user_channel_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// The response for the `WatchtowerStateExport` RPC. On failure, a gRPC error status
+/// is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WatchtowerStateExportResponse {
+	/// The exported watchtower state, one entry per channel.
+	#[prost(message, repeated, tag = "1")]
+	pub channel_states: ::prost::alloc::vec::Vec<super::types::WatchtowerChannelState>,
+}

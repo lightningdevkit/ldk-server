@@ -1244,6 +1244,69 @@ pub struct Bolt11Feature {
 	#[prost(bool, tag = "3")]
 	pub is_known: bool,
 }
+/// A justice (penalty) transaction claiming the `to_local` output of a counterparty
+/// commitment transaction via the revocation path.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct JusticeTransaction {
+	/// The txid (hex-encoded) of the counterparty commitment transaction this justice
+	/// transaction spends from. This is also the source of the watchtower locator
+	/// (the first 16 bytes of the txid).
+	#[prost(string, tag = "1")]
+	pub commitment_txid: ::prost::alloc::string::String,
+	/// The commitment number of the counterparty commitment transaction.
+	#[prost(uint64, tag = "2")]
+	pub commitment_number: u64,
+	/// The value, in satoshis, of the `to_local` output being claimed.
+	#[prost(uint64, tag = "3")]
+	pub to_local_value_sats: u64,
+	/// The fully-built justice transaction, consensus-serialized. It pays the claimed
+	/// funds (minus fees) to a fresh address controlled by this node's on-chain wallet.
+	///
+	/// The transaction is signed iff `signed` is true. An unsigned transaction is
+	/// returned when the revocation secret for this commitment state has not been
+	/// received from the counterparty yet (i.e., it is their latest state); clients
+	/// should poll again after the next state update to retrieve the signed version.
+	#[prost(bytes = "bytes", tag = "4")]
+	pub justice_tx: ::prost::bytes::Bytes,
+	/// Whether `justice_tx` carries a valid signature spending the commitment
+	/// transaction's `to_local` output.
+	#[prost(bool, tag = "5")]
+	pub signed: bool,
+}
+/// The watchtower-relevant state of a single channel, as exported by the
+/// `WatchtowerStateExport` RPC.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WatchtowerChannelState {
+	/// The channel's funding outpoint.
+	#[prost(message, optional, tag = "1")]
+	pub funding_txo: ::core::option::Option<OutPoint>,
+	/// The hex-encoded local `user_channel_id` of this channel.
+	#[prost(string, tag = "2")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	/// The channel ID (hex-encoded).
+	#[prost(string, tag = "3")]
+	pub channel_id: ::prost::alloc::string::String,
+	/// The node ID of the channel's remote counterparty.
+	#[prost(string, tag = "4")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The `to_self_delay` (in blocks) encumbering the counterparty's `to_local`
+	/// output, i.e., the CSV delay the justice transactions bypass via the
+	/// revocation path.
+	#[prost(uint32, tag = "5")]
+	pub to_self_delay: u32,
+	/// The justice transactions for the latest known counterparty commitment
+	/// state(s). More than one entry may be present while a splice is in flight.
+	#[prost(message, repeated, tag = "6")]
+	pub justice_transactions: ::prost::alloc::vec::Vec<JusticeTransaction>,
+}
 /// Represents the direction of a payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

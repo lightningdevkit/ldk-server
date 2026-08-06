@@ -64,6 +64,7 @@ pub struct Config {
 	pub metrics_password: Option<String>,
 	pub tor_config: Option<TorConfig>,
 	pub hrn_config: HumanReadableNamesConfig,
+	pub watchtower_config: WatchtowerConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +91,13 @@ pub enum ChainSource {
 #[derive(Debug, PartialEq, Eq)]
 pub struct TorConfig {
 	pub proxy_address: SocketAddress,
+}
+
+/// Configuration for watchtower (e.g. rust-teos) client support.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct WatchtowerConfig {
+	/// Whether the `WatchtowerStateExport` endpoint is served. Defaults to `false`.
+	pub export_enabled: bool,
 }
 
 /// A builder for `Config`.
@@ -119,6 +127,7 @@ struct ConfigBuilder {
 	metrics_password: Option<String>,
 	tor_proxy_address: Option<String>,
 	hrn: Option<HrnTomlConfig>,
+	watchtower_export_enabled: Option<bool>,
 }
 
 impl ConfigBuilder {
@@ -190,6 +199,11 @@ impl ConfigBuilder {
 
 		if let Some(hrn) = toml.hrn {
 			self.hrn = Some(hrn);
+		}
+
+		if let Some(watchtower) = toml.watchtower {
+			self.watchtower_export_enabled =
+				watchtower.export_enabled.or(self.watchtower_export_enabled);
 		}
 	}
 
@@ -432,6 +446,9 @@ impl ConfigBuilder {
 			None => HumanReadableNamesConfig::default(),
 		};
 
+		let watchtower_config =
+			WatchtowerConfig { export_enabled: self.watchtower_export_enabled.unwrap_or(false) };
+
 		Ok(Config {
 			network,
 			listening_addrs,
@@ -454,6 +471,7 @@ impl ConfigBuilder {
 			metrics_password,
 			tor_config: tor_proxy_address.map(|proxy_address| TorConfig { proxy_address }),
 			hrn_config,
+			watchtower_config,
 		})
 	}
 }
@@ -473,6 +491,7 @@ pub struct TomlConfig {
 	metrics: Option<MetricsTomlConfig>,
 	tor: Option<TomlTorConfig>,
 	hrn: Option<HrnTomlConfig>,
+	watchtower: Option<WatchtowerTomlConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -548,6 +567,12 @@ struct MetricsTomlConfig {
 #[serde(deny_unknown_fields)]
 struct TomlTorConfig {
 	proxy_address: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WatchtowerTomlConfig {
+	export_enabled: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1102,6 +1127,7 @@ mod tests {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
 			hrn_config: HumanReadableNamesConfig::default(),
+			watchtower_config: WatchtowerConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1477,6 +1503,7 @@ mod tests {
 			metrics_password: None,
 			tor_config: None,
 			hrn_config: HumanReadableNamesConfig::default(),
+			watchtower_config: WatchtowerConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);
@@ -1589,6 +1616,7 @@ mod tests {
 				proxy_address: SocketAddress::from_str("127.0.0.1:9050").unwrap(),
 			}),
 			hrn_config: HumanReadableNamesConfig::default(),
+			watchtower_config: WatchtowerConfig::default(),
 		};
 
 		assert_eq!(config.listening_addrs, expected.listening_addrs);

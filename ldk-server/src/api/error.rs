@@ -83,6 +83,7 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidOffer
 			| NodeError::InvalidRefund
 			| NodeError::InvalidChannelId
+			| NodeError::ChannelMonitorNotFound
 			| NodeError::InvalidNetwork
 			| NodeError::InvalidUri
 			| NodeError::InvalidQuantity

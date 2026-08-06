@@ -52,6 +52,7 @@ pub(crate) mod spontaneous_send;
 pub(crate) mod unified_send;
 pub(crate) mod update_channel_config;
 pub(crate) mod verify_signature;
+pub(crate) mod watchtower_state_export;
 
 pub(crate) fn build_channel_config_from_proto(
 	default_config: ChannelConfig, proto_channel_config: ldk_server_grpc::types::ChannelConfig,

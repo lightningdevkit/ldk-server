@@ -43,6 +43,7 @@ use ldk_server_client::ldk_server_grpc::api::{
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
 	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	WatchtowerStateExportRequest, WatchtowerStateExportResponse,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -528,6 +529,16 @@ enum Commands {
 	},
 	#[command(about = "Export the pathfinding scores used by the router")]
 	ExportPathfindingScores,
+	#[command(
+		about = "Export per-channel watchtower state (counterparty commitments and justice transactions) for an external watchtower client"
+	)]
+	WatchtowerStateExport {
+		#[arg(
+			long,
+			help = "Only export the state of the channel with this hex-encoded user_channel_id"
+		)]
+		user_channel_id: Option<String>,
+	},
 	#[command(about = "List all known short channel IDs in the network graph")]
 	GraphListChannels,
 	#[command(about = "Get channel information from the network graph by short channel ID")]
@@ -1078,6 +1089,14 @@ async fn main() {
 				),
 			);
 		},
+		Commands::WatchtowerStateExport { user_channel_id } => {
+			handle_response_result::<_, Value>(
+				client
+					.watchtower_state_export(WatchtowerStateExportRequest { user_channel_id })
+					.await
+					.map(watchtower_state_export_to_json),
+			);
+		},
 		Commands::GraphListChannels => {
 			handle_response_result::<_, GraphListChannelsResponse>(
 				client.graph_list_channels(GraphListChannelsRequest {}).await,
@@ -1193,6 +1212,37 @@ fn sanitize_for_terminal(s: String) -> String {
 		}
 	}
 	out
+}
+
+fn watchtower_state_export_to_json(response: WatchtowerStateExportResponse) -> Value {
+	let channel_states: Vec<Value> = response
+		.channel_states
+		.into_iter()
+		.map(|state| {
+			let justice_transactions: Vec<Value> = state
+				.justice_transactions
+				.into_iter()
+				.map(|justice_tx| {
+					json!({
+						"commitment_txid": justice_tx.commitment_txid,
+						"commitment_number": justice_tx.commitment_number,
+						"to_local_value_sats": justice_tx.to_local_value_sats,
+						"justice_tx_hex": justice_tx.justice_tx.as_hex().to_string(),
+						"signed": justice_tx.signed,
+					})
+				})
+				.collect();
+			json!({
+				"funding_txo": state.funding_txo,
+				"user_channel_id": state.user_channel_id,
+				"channel_id": state.channel_id,
+				"counterparty_node_id": state.counterparty_node_id,
+				"to_self_delay": state.to_self_delay,
+				"justice_transactions": justice_transactions,
+			})
+		})
+		.collect();
+	json!({ "channel_states": channel_states })
 }
 
 fn handle_response_result<Rs, Js>(response: Result<Rs, LdkServerError>)

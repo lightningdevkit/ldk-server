@@ -50,3 +50,4 @@ pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
 pub const DECODE_OFFER_PATH: &str = "DecodeOffer";
 pub const GET_METRICS_PATH: &str = "metrics";
 pub const SUBSCRIBE_EVENTS_PATH: &str = "SubscribeEvents";
+pub const WATCHTOWER_STATE_EXPORT_PATH: &str = "WatchtowerStateExport";

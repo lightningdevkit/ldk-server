@@ -37,7 +37,7 @@ use ldk_server_grpc::api::{
 	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
 	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	VerifySignatureResponse, WatchtowerStateExportRequest, WatchtowerStateExportResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -51,6 +51,7 @@ use ldk_server_grpc::endpoints::{
 	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH,
 	SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH,
 	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	WATCHTOWER_STATE_EXPORT_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -384,6 +385,14 @@ impl LdkServerClient {
 		&self, request: ExportPathfindingScoresRequest,
 	) -> Result<ExportPathfindingScoresResponse, LdkServerError> {
 		self.grpc_unary(&request, EXPORT_PATHFINDING_SCORES_PATH).await
+	}
+
+	/// Export per-channel watchtower state (latest counterparty commitment transactions
+	/// and corresponding justice transactions) for an external watchtower client.
+	pub async fn watchtower_state_export(
+		&self, request: WatchtowerStateExportRequest,
+	) -> Result<WatchtowerStateExportResponse, LdkServerError> {
+		self.grpc_unary(&request, WATCHTOWER_STATE_EXPORT_PATH).await
 	}
 
 	/// Returns a list of all known short channel IDs in the network graph.

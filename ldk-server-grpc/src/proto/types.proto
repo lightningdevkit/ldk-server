@@ -945,3 +945,56 @@ message Bolt11Feature {
   // Whether this feature is known.
   bool is_known = 3;
 }
+
+// A justice (penalty) transaction claiming the `to_local` output of a counterparty
+// commitment transaction via the revocation path.
+message JusticeTransaction {
+  // The txid (hex-encoded) of the counterparty commitment transaction this justice
+  // transaction spends from. This is also the source of the watchtower locator
+  // (the first 16 bytes of the txid).
+  string commitment_txid = 1;
+
+  // The commitment number of the counterparty commitment transaction.
+  uint64 commitment_number = 2;
+
+  // The value, in satoshis, of the `to_local` output being claimed.
+  uint64 to_local_value_sats = 3;
+
+  // The fully-built justice transaction, consensus-serialized. It pays the claimed
+  // funds (minus fees) to a fresh address controlled by this node's on-chain wallet.
+  //
+  // The transaction is signed iff `signed` is true. An unsigned transaction is
+  // returned when the revocation secret for this commitment state has not been
+  // received from the counterparty yet (i.e., it is their latest state); clients
+  // should poll again after the next state update to retrieve the signed version.
+  bytes justice_tx = 4;
+
+  // Whether `justice_tx` carries a valid signature spending the commitment
+  // transaction's `to_local` output.
+  bool signed = 5;
+}
+
+// The watchtower-relevant state of a single channel, as exported by the
+// `WatchtowerStateExport` RPC.
+message WatchtowerChannelState {
+  // The channel's funding outpoint.
+  OutPoint funding_txo = 1;
+
+  // The hex-encoded local `user_channel_id` of this channel.
+  string user_channel_id = 2;
+
+  // The channel ID (hex-encoded).
+  string channel_id = 3;
+
+  // The node ID of the channel's remote counterparty.
+  string counterparty_node_id = 4;
+
+  // The `to_self_delay` (in blocks) encumbering the counterparty's `to_local`
+  // output, i.e., the CSV delay the justice transactions bypass via the
+  // revocation path.
+  uint32 to_self_delay = 5;
+
+  // The justice transactions for the latest known counterparty commitment
+  // state(s). More than one entry may be present while a splice is in flight.
+  repeated JusticeTransaction justice_transactions = 6;
+}

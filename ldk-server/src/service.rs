@@ -29,7 +29,7 @@ use ldk_server_grpc::endpoints::{
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
 	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
-	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH, WATCHTOWER_STATE_EXPORT_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -79,6 +79,7 @@ use crate::api::spontaneous_send::handle_spontaneous_send_request;
 use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
+use crate::api::watchtower_state_export::handle_watchtower_state_export_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::util::metrics::Metrics;
 
@@ -101,11 +102,11 @@ pub(crate) struct NodeService {
 impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
-		metrics: Option<Arc<Metrics>>, metrics_auth_header: Option<String>,
-		event_sender: broadcast::Sender<EventEnvelope>,
+		watchtower_export_enabled: bool, metrics: Option<Arc<Metrics>>,
+		metrics_auth_header: Option<String>, event_sender: broadcast::Sender<EventEnvelope>,
 		shutdown_rx: tokio::sync::watch::Receiver<bool>,
 	) -> Self {
-		let context = Arc::new(Context { node, paginated_kv_store });
+		let context = Arc::new(Context { node, paginated_kv_store, watchtower_export_enabled });
 		Self { context, api_key, metrics, metrics_auth_header, event_sender, shutdown_rx }
 	}
 }
@@ -164,6 +165,7 @@ fn validate_auth<B>(req: &Request<B>, api_key: &str, body: &[u8]) -> Result<(), 
 pub(crate) struct Context {
 	pub(crate) node: Arc<Node>,
 	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore>,
+	pub(crate) watchtower_export_enabled: bool,
 }
 
 impl Service<Request<Incoming>> for NodeService {
@@ -375,6 +377,10 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				EXPORT_PATHFINDING_SCORES_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_export_pathfinding_scores_request)
+						.await
+				},
+				WATCHTOWER_STATE_EXPORT_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_watchtower_state_export_request)
 						.await
 				},
 				GRAPH_LIST_CHANNELS_PATH => {

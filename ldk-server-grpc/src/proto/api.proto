@@ -899,6 +899,25 @@ message DecodeOfferResponse {
 // Subscribe to a stream of server events.
 message SubscribeEventsRequest {}
 
+// Export per-channel watchtower state (latest counterparty commitment transaction(s)
+// and corresponding justice transactions) for consumption by an external watchtower
+// client such as a rust-teos (Eye of Satoshi) client.
+//
+// The endpoint is only served if `watchtower.export_enabled` is set in the server
+// configuration; otherwise a gRPC error status is returned.
+message WatchtowerStateExportRequest {
+  // If set, only the state of the channel with this hex-encoded `user_channel_id`
+  // is exported. Otherwise the state of all channels is exported.
+  optional string user_channel_id = 1;
+}
+
+// The response for the `WatchtowerStateExport` RPC. On failure, a gRPC error status
+// is returned.
+message WatchtowerStateExportResponse {
+  // The exported watchtower state, one entry per channel.
+  repeated types.WatchtowerChannelState channel_states = 1;
+}
+
 service LightningNode {
   // Retrieve the latest node info.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
@@ -976,4 +995,6 @@ service LightningNode {
   rpc GraphGetNode(GraphGetNodeRequest) returns (GraphGetNodeResponse);
   // Subscribe to a stream of server events.
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream events.EventEnvelope);
+  // Export per-channel watchtower state for an external watchtower client.
+  rpc WatchtowerStateExport(WatchtowerStateExportRequest) returns (WatchtowerStateExportResponse);
 }
