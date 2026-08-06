@@ -140,6 +140,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_bolt11_send(client, args)),
 		),
 		tool_spec(
+			"bolt11_send_underpaying",
+			"Underpay a BOLT11 Lightning invoice",
+			schema::bolt11_send_underpaying_schema,
+			|client, args| Box::pin(handlers::handle_bolt11_send_underpaying(client, args)),
+		),
+		tool_spec(
 			"bolt12_receive",
 			"Create a BOLT12 offer for receiving Lightning payments",
 			schema::bolt12_receive_schema,
