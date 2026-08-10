@@ -15,6 +15,7 @@ pub const PARSE_ERROR: i64 = -32700;
 pub const METHOD_NOT_FOUND: i64 = -32601;
 pub const INVALID_PARAMS: i64 = -32602;
 pub const INTERNAL_ERROR: i64 = -32603;
+pub const UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
 
 /// Classified error produced by MCP tool handlers. The `code` is reused for JSON-RPC error
 /// responses at the envelope level, and for categorising the error text that gets surfaced
@@ -96,5 +97,13 @@ impl JsonRpcResponse {
 impl JsonRpcErrorResponse {
 	pub fn new(id: Value, code: i64, message: String) -> Self {
 		Self { jsonrpc: "2.0".to_string(), id, error: JsonRpcError { code, message, data: None } }
+	}
+
+	pub fn with_data(id: Value, code: i64, message: String, data: Value) -> Self {
+		Self {
+			jsonrpc: "2.0".to_string(),
+			id,
+			error: JsonRpcError { code, message, data: Some(data) },
+		}
 	}
 }

@@ -50,6 +50,10 @@ impl ToolRegistry {
 		&self.definitions
 	}
 
+	pub fn has_tool(&self, name: &str) -> bool {
+		self.handlers.contains_key(name)
+	}
+
 	pub async fn call_tool(
 		&self, client: &LdkServerClient, name: &str, args: Value,
 	) -> ToolCallResult {

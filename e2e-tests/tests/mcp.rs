@@ -15,13 +15,27 @@ use ldk_server_client::ldk_server_grpc::types::{
 use serde_json::json;
 
 #[tokio::test]
-async fn test_mcp_initialize_and_list_tools() {
+async fn test_mcp_discover_initialize_and_list_tools() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;
 	let mut mcp = McpHandle::start(&server);
+	let discover = mcp.call(
+		1,
+		"server/discover",
+		json!({
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientCapabilities": {},
+				"io.modelcontextprotocol/clientInfo": {"name": "e2e-test", "version": "0.1"}
+			}
+		}),
+	);
+	assert_eq!(discover["result"]["supportedVersions"][0], "2026-07-28");
+	assert_eq!(discover["result"]["resultType"], "complete");
+	assert!(discover["result"]["capabilities"]["tools"].is_object());
 
 	let initialize = mcp.call(
-		1,
+		2,
 		"initialize",
 		json!({
 			"protocolVersion": "2025-11-25",
@@ -32,7 +46,17 @@ async fn test_mcp_initialize_and_list_tools() {
 	assert_eq!(initialize["result"]["protocolVersion"], "2025-11-25");
 	assert!(initialize["result"]["capabilities"]["tools"].is_object());
 
-	let tools = mcp.call(2, "tools/list", json!({}));
+	let tools = mcp.call(
+		3,
+		"tools/list",
+		json!({
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}),
+	);
+	assert_eq!(tools["result"]["resultType"], "complete");
 	let tool_names = tools["result"]["tools"].as_array().unwrap();
 	assert!(tool_names.iter().any(|tool| tool["name"] == "get_node_info"));
 	assert!(tool_names.iter().any(|tool| tool["name"] == "onchain_receive"));

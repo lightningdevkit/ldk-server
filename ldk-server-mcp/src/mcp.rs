@@ -10,9 +10,10 @@
 use serde::Serialize;
 use serde_json::Value;
 
-pub const PROTOCOL_VERSION: &str = "2025-11-25";
+pub const PROTOCOL_VERSION: &str = "2026-07-28";
+pub const LEGACY_PROTOCOL_VERSION: &str = "2025-11-25";
 pub const SERVER_NAME: &str = "ldk-server-mcp";
-pub const SERVER_VERSION: &str = "0.1.0";
+pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +40,7 @@ pub struct ServerInfo {
 impl InitializeResult {
 	pub fn new() -> Self {
 		Self {
-			protocol_version: PROTOCOL_VERSION.to_string(),
+			protocol_version: LEGACY_PROTOCOL_VERSION.to_string(),
 			capabilities: Capabilities { tools: ToolsCapability {} },
 			server_info: ServerInfo {
 				name: SERVER_NAME.to_string(),

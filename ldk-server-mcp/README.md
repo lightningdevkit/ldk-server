@@ -99,9 +99,14 @@ Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `me
 
 ## MCP Protocol
 
-- **Protocol version**: `2025-11-25`
+- **Protocol versions**: `2026-07-28` (current), `2025-11-25` (legacy compatibility)
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods**: `initialize`, `tools/list`, `tools/call`, `ping`
+- **Current methods**: `server/discover`, `tools/list`, `tools/call`
+- **Legacy methods**: `initialize`, `ping`
+
+For `2026-07-28`, every request includes the protocol version and client capabilities in
+`params._meta`. Existing clients that use the `2025-11-25` initialization handshake remain
+supported.
 
 ## Testing
 

@@ -32,10 +32,11 @@ src/
 
 ## MCP Protocol
 
-- **Version**: `2025-11-25`
-- **Spec**: https://spec.modelcontextprotocol.io/
+- **Versions**: `2026-07-28` (current), `2025-11-25` (legacy compatibility)
+- **Spec**: https://modelcontextprotocol.io/specification/2026-07-28
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods implemented**: `initialize`, `tools/list`, `tools/call`, `ping`
+- **Current methods implemented**: `server/discover`, `tools/list`, `tools/call`
+- **Legacy methods implemented**: `initialize`, `ping`
 - **Notifications handled**: `notifications/initialized` (ignored, no response)
 
 ## Config

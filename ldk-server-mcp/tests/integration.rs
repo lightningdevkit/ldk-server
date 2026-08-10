@@ -151,6 +151,101 @@ fn test_initialize() {
 }
 
 #[test]
+fn test_discover_latest_protocol() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "server/discover",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientCapabilities": {},
+				"io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0.1"}
+			}
+		}
+	}));
+
+	let result = proc.recv()["result"].clone();
+	assert_eq!(result["resultType"], "complete");
+	assert_eq!(result["supportedVersions"][0], "2026-07-28");
+	assert!(result["supportedVersions"].as_array().unwrap().contains(&json!("2025-11-25")));
+	assert!(result["capabilities"]["tools"].is_object());
+	assert_eq!(result["ttlMs"], 300_000);
+	assert_eq!(result["cacheScope"], "public");
+	assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ldk-server-mcp");
+}
+
+#[test]
+fn test_latest_tools_list_result_fields() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let result = proc.recv()["result"].clone();
+	assert_eq!(result["resultType"], "complete");
+	assert_eq!(result["ttlMs"], 300_000);
+	assert_eq!(result["cacheScope"], "public");
+	assert_eq!(result["tools"].as_array().unwrap().len(), NUM_TOOLS);
+}
+
+#[test]
+fn test_latest_protocol_rejects_unknown_tool_as_protocol_error() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/call",
+		"params": {
+			"name": "nonexistent_tool",
+			"arguments": {},
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32602);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("Unknown tool"));
+}
+
+#[test]
+fn test_rejects_unsupported_protocol_version() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "2099-01-01",
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32022);
+	assert_eq!(resp["error"]["data"]["requested"], "2099-01-01");
+	assert!(resp["error"]["data"]["supported"].as_array().unwrap().contains(&json!("2026-07-28")));
+}
+
+#[test]
 fn test_tools_list() {
 	let mut proc = McpProcess::spawn();
 
