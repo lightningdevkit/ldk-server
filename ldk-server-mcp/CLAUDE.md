@@ -22,8 +22,8 @@ cargo test --manifest-path e2e-tests/Cargo.toml mcp -- --nocapture
 src/
   main.rs        — Entry point: arg parsing, config, stdio JSON-RPC loop, method dispatch
   config.rs      — Config loading (TOML + env vars), mirrors ldk-server-cli config
-  protocol.rs    — JSON-RPC 2.0 request/response types
-  mcp.rs         — MCP protocol types (InitializeResult, ToolDefinition, ToolCallResult)
+  protocol.rs    — JSON-RPC 2.0 validation and request/response types
+  mcp.rs         — MCP request metadata, discovery, tool, and result types
   tools/
     mod.rs       — ToolRegistry: build_tool_registry(), list_tools(), call_tool()
     schema.rs    — JSON Schema definitions for all tool inputs
@@ -32,11 +32,20 @@ src/
 
 ## MCP Protocol
 
-- **Version**: `2025-11-25`
+- **Version**: `2026-07-28`
 - **Spec**: https://spec.modelcontextprotocol.io/
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods implemented**: `initialize`, `tools/list`, `tools/call`, `ping`
-- **Notifications handled**: `notifications/initialized` (ignored, no response)
+- **Methods implemented**: `server/discover`, `tools/list`, `tools/call`
+- **Lifecycle**: stateless; there is no initialization handshake or session
+- **Compatibility**: latest-only; legacy `initialize` and `ping` are unsupported
+- **Notifications**: ignored without a response; no subscriptions are advertised
+
+Every request must include `params._meta` with the
+`io.modelcontextprotocol/protocolVersion` string and an
+`io.modelcontextprotocol/clientCapabilities` object. The optional
+`io.modelcontextprotocol/clientInfo` value must contain string `name` and `version`
+fields when present. Successful responses include `resultType` and server identity
+metadata. Discovery and tool-list results also include public cache metadata.
 
 ## Config
 
