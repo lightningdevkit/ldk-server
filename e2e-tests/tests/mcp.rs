@@ -15,24 +15,26 @@ use ldk_server_client::ldk_server_grpc::types::{
 use serde_json::json;
 
 #[tokio::test]
-async fn test_mcp_initialize_and_list_tools() {
+async fn test_mcp_discover_and_list_tools() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;
 	let mut mcp = McpHandle::start(&server);
 
-	let initialize = mcp.call(
-		1,
-		"initialize",
-		json!({
-			"protocolVersion": "2025-11-25",
-			"capabilities": {},
-			"clientInfo": {"name": "e2e-test", "version": "0.1"}
-		}),
+	let discover = mcp.call(1, "server/discover", json!({}));
+	assert_eq!(discover["result"]["resultType"], "complete");
+	assert_eq!(discover["result"]["supportedVersions"], json!(["2026-07-28"]));
+	assert!(discover["result"]["capabilities"]["tools"].is_object());
+	assert_eq!(
+		discover["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+		"ldk-server-mcp"
 	);
-	assert_eq!(initialize["result"]["protocolVersion"], "2025-11-25");
-	assert!(initialize["result"]["capabilities"]["tools"].is_object());
+	assert_eq!(discover["result"]["ttlMs"], 3_600_000);
+	assert_eq!(discover["result"]["cacheScope"], "public");
 
 	let tools = mcp.call(2, "tools/list", json!({}));
+	assert_eq!(tools["result"]["resultType"], "complete");
+	assert_eq!(tools["result"]["ttlMs"], 3_600_000);
+	assert_eq!(tools["result"]["cacheScope"], "public");
 	let tool_names = tools["result"]["tools"].as_array().unwrap();
 	assert!(tool_names.iter().any(|tool| tool["name"] == "get_node_info"));
 	assert!(tool_names.iter().any(|tool| tool["name"] == "onchain_receive"));
@@ -49,6 +51,11 @@ async fn test_mcp_live_tool_calls() {
 		"name": "get_node_info",
 		"arguments": {}
 	}));
+	assert_eq!(node_info["result"]["resultType"], "complete");
+	assert_eq!(
+		node_info["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+		"ldk-server-mcp"
+	);
 	let node_info_text = node_info["result"]["content"][0]["text"].as_str().unwrap();
 	let node_info_json: serde_json::Value = serde_json::from_str(node_info_text).unwrap();
 	assert_eq!(node_info_json["node_id"], server.node_id());

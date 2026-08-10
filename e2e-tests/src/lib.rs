@@ -556,6 +556,18 @@ impl McpHandle {
 	}
 
 	pub fn call(&mut self, id: u64, method: &str, params: Value) -> Value {
+		let mut params = params;
+		params.as_object_mut().unwrap().insert(
+			"_meta".to_string(),
+			serde_json::json!({
+				"io.modelcontextprotocol/protocolVersion": "2026-07-28",
+				"io.modelcontextprotocol/clientInfo": {
+					"name": "ldk-server-e2e-tests",
+					"version": "0.1.0"
+				},
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}),
+		);
 		self.send(&serde_json::json!({
 			"jsonrpc": "2.0",
 			"id": id,
