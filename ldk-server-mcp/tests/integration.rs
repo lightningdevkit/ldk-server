@@ -11,6 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
+const PROTOCOL_VERSION: &str = "2026-07-28";
 const NUM_TOOLS: usize = 37;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_hash",
@@ -86,6 +87,24 @@ impl McpProcess {
 	}
 
 	fn send(&mut self, msg: &Value) {
+		let mut msg = msg.clone();
+		if msg.get("id").is_some() {
+			let params = msg.as_object_mut().unwrap().entry("params").or_insert_with(|| json!({}));
+			params.as_object_mut().unwrap().entry("_meta").or_insert_with(|| {
+				json!({
+					"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+					"io.modelcontextprotocol/clientInfo": {
+						"name": "ldk-server-mcp-test",
+						"version": "0.1.0"
+					},
+					"io.modelcontextprotocol/clientCapabilities": {}
+				})
+			});
+		}
+		self.send_raw(&msg);
+	}
+
+	fn send_raw(&mut self, msg: &Value) {
 		let line = serde_json::to_string(msg).unwrap();
 		writeln!(self.stdin, "{}", line).expect("Failed to write to stdin");
 		self.stdin.flush().expect("Failed to flush stdin");
@@ -127,27 +146,29 @@ fn assert_unreachable_tool(tool_name: &str, arguments: Value) {
 }
 
 #[test]
-fn test_initialize() {
+fn test_server_discover() {
 	let mut proc = McpProcess::spawn();
 
 	proc.send(&json!({
 		"jsonrpc": "2.0",
 		"id": 1,
-		"method": "initialize",
-		"params": {
-			"protocolVersion": "2025-11-25",
-			"capabilities": {},
-			"clientInfo": {"name": "test", "version": "0.1"}
-		}
+		"method": "server/discover",
+		"params": {}
 	}));
 
 	let resp = proc.recv();
 	assert_eq!(resp["jsonrpc"], "2.0");
 	assert_eq!(resp["id"], 1);
-	assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
+	assert_eq!(resp["result"]["resultType"], "complete");
+	assert_eq!(resp["result"]["supportedVersions"], json!([PROTOCOL_VERSION]));
 	assert!(resp["result"]["capabilities"]["tools"].is_object());
-	assert_eq!(resp["result"]["serverInfo"]["name"], "ldk-server-mcp");
-	assert_eq!(resp["result"]["serverInfo"]["version"], "0.1.0");
+	assert_eq!(
+		resp["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+		"ldk-server-mcp"
+	);
+	assert_eq!(resp["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["version"], "0.1.0");
+	assert_eq!(resp["result"]["ttlMs"], 3_600_000);
+	assert_eq!(resp["result"]["cacheScope"], "public");
 }
 
 #[test]
@@ -164,6 +185,13 @@ fn test_tools_list() {
 	let resp = proc.recv();
 	assert_eq!(resp["jsonrpc"], "2.0");
 	assert_eq!(resp["id"], 1);
+	assert_eq!(resp["result"]["resultType"], "complete");
+	assert_eq!(resp["result"]["ttlMs"], 3_600_000);
+	assert_eq!(resp["result"]["cacheScope"], "public");
+	assert_eq!(
+		resp["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+		"ldk-server-mcp"
+	);
 
 	let tools = resp["result"]["tools"].as_array().unwrap();
 	assert_eq!(tools.len(), NUM_TOOLS, "Expected {NUM_TOOLS} tools, got {}", tools.len());
@@ -186,7 +214,7 @@ fn test_tools_list() {
 }
 
 #[test]
-fn test_ping() {
+fn test_removed_ping_returns_method_not_found() {
 	let mut proc = McpProcess::spawn();
 
 	proc.send(&json!({
@@ -198,10 +226,143 @@ fn test_ping() {
 	let resp = proc.recv();
 	assert_eq!(resp["jsonrpc"], "2.0");
 	assert_eq!(resp["id"], 1);
-	// Per the MCP spec, ping is answered with an empty result object.
-	assert!(resp["result"].is_object(), "Expected result object, got: {}", resp["result"]);
-	assert_eq!(resp["result"].as_object().unwrap().len(), 0, "Expected empty result object");
-	assert!(resp.get("error").is_none(), "Ping must not return an error");
+	assert_eq!(resp["error"]["code"], -32601);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("ping"));
+}
+
+#[test]
+fn test_initialize_reports_supported_modern_version() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "initialize",
+		"params": {
+			"protocolVersion": "2025-11-25",
+			"capabilities": {},
+			"clientInfo": {"name": "legacy-test", "version": "0.1.0"}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32601);
+	assert_eq!(resp["error"]["data"]["supported"], json!([PROTOCOL_VERSION]));
+}
+
+#[test]
+fn test_missing_request_metadata_is_invalid_params() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32602);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("_meta"));
+}
+
+#[test]
+fn test_unsupported_protocol_version_reports_supported_versions() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": "1900-01-01",
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32022);
+	assert_eq!(resp["error"]["data"]["supported"], json!([PROTOCOL_VERSION]));
+	assert_eq!(resp["error"]["data"]["requested"], "1900-01-01");
+}
+
+#[test]
+fn test_missing_client_capabilities_is_invalid_params() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32602);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("clientCapabilities"));
+}
+
+#[test]
+fn test_malformed_client_info_is_invalid_params() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+				"io.modelcontextprotocol/clientInfo": {"name": "missing-version"},
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32602);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("clientInfo"));
+}
+
+#[test]
+fn test_invalid_json_rpc_envelope_is_invalid_request() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "1.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {
+			"_meta": {
+				"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+				"io.modelcontextprotocol/clientCapabilities": {}
+			}
+		}
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32600);
+}
+
+#[test]
+fn test_non_object_params_are_invalid_request() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": []
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32600);
 }
 
 #[test]
@@ -221,9 +382,8 @@ fn test_tools_call_unknown_tool() {
 	let resp = proc.recv();
 	assert_eq!(resp["jsonrpc"], "2.0");
 	assert_eq!(resp["id"], 1);
-	assert_eq!(resp["result"]["isError"], true);
-	let text = resp["result"]["content"][0]["text"].as_str().unwrap();
-	assert!(text.contains("Unknown tool"), "Expected 'Unknown tool' in error, got: {text}");
+	assert_eq!(resp["error"]["code"], -32602);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("Unknown tool"));
 }
 
 #[test]
@@ -243,7 +403,12 @@ fn test_tools_call_unreachable_server() {
 	let resp = proc.recv();
 	assert_eq!(resp["jsonrpc"], "2.0");
 	assert_eq!(resp["id"], 1);
+	assert_eq!(resp["result"]["resultType"], "complete");
 	assert_eq!(resp["result"]["isError"], true);
+	assert_eq!(
+		resp["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+		"ldk-server-mcp"
+	);
 	let text = resp["result"]["content"][0]["text"].as_str().unwrap();
 	assert!(!text.is_empty(), "Expected non-empty error message");
 }
@@ -260,7 +425,7 @@ fn test_bolt11_receive_via_jit_channel_unreachable() {
 			"name": "bolt11_receive_via_jit_channel",
 			"arguments": {
 				"amount_msat": 1000,
-				"description": "test jit"
+				"description": {"kind": {"direct": "test jit"}}
 			}
 		}
 	}));
@@ -277,7 +442,7 @@ fn test_bolt11_receive_via_jit_channel_unreachable() {
 fn test_bolt11_receive_variable_amount_via_jit_channel_unreachable() {
 	assert_unreachable_tool(
 		"bolt11_receive_variable_amount_via_jit_channel",
-		json!({ "description": "test jit" }),
+		json!({ "description": {"kind": {"direct": "test jit"}} }),
 	);
 }
 
@@ -287,7 +452,7 @@ fn test_bolt11_receive_for_hash_unreachable() {
 		"bolt11_receive_for_hash",
 		json!({
 			"payment_hash": "00".repeat(32),
-			"description": "test hodl"
+			"description": {"kind": {"direct": "test hodl"}}
 		}),
 	);
 }
@@ -332,27 +497,39 @@ fn test_decode_offer_unreachable() {
 fn test_notification_no_response() {
 	let mut proc = McpProcess::spawn();
 
-	// Send a notification (no id) - should produce no response
+	// Send a notification (no id) - should produce no response.
 	proc.send(&json!({
 		"jsonrpc": "2.0",
-		"method": "notifications/initialized"
+		"method": "notifications/cancelled",
+		"params": {"requestId": 999}
 	}));
 
 	// Send a real request after the notification
 	proc.send(&json!({
 		"jsonrpc": "2.0",
 		"id": 42,
-		"method": "initialize",
-		"params": {
-			"protocolVersion": "2025-11-25",
-			"capabilities": {},
-			"clientInfo": {"name": "test", "version": "0.1"}
-		}
+		"method": "tools/list",
+		"params": {}
 	}));
 
 	// The first response we get should be for id 42, not for the notification
 	let resp = proc.recv();
 	assert_eq!(resp["id"], 42);
+}
+
+#[test]
+fn test_json_rpc_batch_is_invalid_request() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!([{
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "tools/list",
+		"params": {}
+	}]));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32600);
 }
 
 #[test]

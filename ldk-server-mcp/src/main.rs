@@ -14,15 +14,83 @@ mod tools;
 
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::GetNodeInfoRequest;
+use serde::Serialize;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::mcp::InitializeResult;
+use crate::mcp::{request_protocol_version, DiscoverResult, ListToolsResult, PROTOCOL_VERSION};
 use crate::protocol::{
 	JsonRpcErrorResponse, JsonRpcRequest, JsonRpcResponse, INVALID_PARAMS, METHOD_NOT_FOUND,
-	PARSE_ERROR,
+	PARSE_ERROR, UNSUPPORTED_PROTOCOL_VERSION,
 };
-use crate::tools::build_tool_registry;
+use crate::tools::{build_tool_registry, ToolRegistry};
+
+fn result_response(id: Value, result: impl Serialize) -> Value {
+	serde_json::to_value(JsonRpcResponse::new(id, serde_json::to_value(result).unwrap())).unwrap()
+}
+
+fn error_response(id: Value, code: i64, message: impl Into<String>) -> Value {
+	serde_json::to_value(JsonRpcErrorResponse::new(id, code, message.into())).unwrap()
+}
+
+fn error_response_with_data(
+	id: Value, code: i64, message: impl Into<String>, data: Value,
+) -> Value {
+	serde_json::to_value(JsonRpcErrorResponse::with_data(id, code, message.into(), data)).unwrap()
+}
+
+async fn handle_request(
+	request: JsonRpcRequest, client: &LdkServerClient, registry: &ToolRegistry,
+) -> Value {
+	let id = request.id.clone();
+	if request.method == "initialize" {
+		return error_response_with_data(
+			id,
+			METHOD_NOT_FOUND,
+			format!("initialize is not supported; this server requires MCP {PROTOCOL_VERSION}"),
+			serde_json::json!({ "supported": [PROTOCOL_VERSION] }),
+		);
+	}
+
+	let protocol_version = match request_protocol_version(request.params.as_ref()) {
+		Ok(protocol_version) => protocol_version,
+		Err(message) => return error_response(id, INVALID_PARAMS, message),
+	};
+	if protocol_version != PROTOCOL_VERSION {
+		return error_response_with_data(
+			id,
+			UNSUPPORTED_PROTOCOL_VERSION,
+			"Unsupported protocol version",
+			serde_json::json!({
+				"supported": [PROTOCOL_VERSION],
+				"requested": protocol_version,
+			}),
+		);
+	}
+
+	match request.method.as_str() {
+		"server/discover" => result_response(id, DiscoverResult::new()),
+		"tools/list" => result_response(id, ListToolsResult::new(registry.list_tools())),
+		"tools/call" => {
+			let params = request.params.as_ref().unwrap();
+			let Some(tool_name) = params.get("name").and_then(Value::as_str) else {
+				return error_response(id, INVALID_PARAMS, "Missing required parameter: name");
+			};
+			let tool_args = match params.get("arguments") {
+				Some(arguments) if !arguments.is_object() => {
+					return error_response(id, INVALID_PARAMS, "arguments must be an object");
+				},
+				Some(arguments) => arguments.clone(),
+				None => serde_json::json!({}),
+			};
+			match registry.call_tool(client, tool_name, tool_args).await {
+				Ok(result) => result_response(id, result),
+				Err(e) => error_response(id, e.code, e.message),
+			}
+		},
+		_ => error_response(id, METHOD_NOT_FOUND, format!("Method not found: {}", request.method)),
+	}
+}
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +130,7 @@ async fn main() {
 
 	// Probe the server so misconfiguration surfaces on startup rather than on
 	// the first tool call. We warn instead of exiting so the MCP protocol loop
-	// still answers `initialize` and `tools/list` even when the server is
+	// still answers `server/discover` and `tools/list` even when the server is
 	// temporarily unreachable.
 	if let Err(e) = client.get_node_info(GetNodeInfoRequest {}).await {
 		eprintln!("Warning: Failed to reach ldk-server on startup: {e}");
@@ -93,73 +161,17 @@ async fn main() {
 			continue;
 		}
 
-		let request: JsonRpcRequest = match serde_json::from_str(trimmed) {
-			Ok(r) => r,
-			Err(_) => {
-				let err =
-					JsonRpcErrorResponse::new(Value::Null, PARSE_ERROR, "Parse error".to_string());
-				let resp = serde_json::to_string(&err).unwrap();
-				let _ = stdout.write_all(resp.as_bytes()).await;
-				let _ = stdout.write_all(b"\n").await;
-				let _ = stdout.flush().await;
-				continue;
+		let response = match serde_json::from_str(trimmed) {
+			Ok(message) => match JsonRpcRequest::from_value(message) {
+				Ok(Some(request)) => handle_request(request, &client, &registry).await,
+				Ok(None) => continue,
+				Err(err) => serde_json::to_value(err).unwrap(),
 			},
+			Err(_) => error_response(Value::Null, PARSE_ERROR, "Parse error"),
 		};
 
-		// Notifications have no id — do not respond
-		if request.id.is_none() {
-			continue;
-		}
-
-		let id = request.id.unwrap();
-
-		let response_str = match request.method.as_str() {
-			"initialize" => {
-				let result = InitializeResult::new();
-				let resp = JsonRpcResponse::new(id, serde_json::to_value(result).unwrap());
-				serde_json::to_string(&resp).unwrap()
-			},
-			"tools/list" => {
-				let tools = registry.list_tools();
-				let resp = JsonRpcResponse::new(id, serde_json::json!({ "tools": tools }));
-				serde_json::to_string(&resp).unwrap()
-			},
-			"ping" => {
-				// Per the MCP spec, a ping must be answered with an empty result object.
-				let resp = JsonRpcResponse::new(id, serde_json::json!({}));
-				serde_json::to_string(&resp).unwrap()
-			},
-			"tools/call" => {
-				let params = request.params.unwrap_or(Value::Null);
-				match params.get("name").and_then(|v| v.as_str()) {
-					Some(tool_name) => {
-						let tool_args =
-							params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-						let result = registry.call_tool(&client, tool_name, tool_args).await;
-						let resp = JsonRpcResponse::new(id, serde_json::to_value(result).unwrap());
-						serde_json::to_string(&resp).unwrap()
-					},
-					None => {
-						let err = JsonRpcErrorResponse::new(
-							id,
-							INVALID_PARAMS,
-							"Missing required parameter: name".to_string(),
-						);
-						serde_json::to_string(&err).unwrap()
-					},
-				}
-			},
-			_ => {
-				let err = JsonRpcErrorResponse::new(
-					id,
-					METHOD_NOT_FOUND,
-					format!("Method not found: {}", request.method),
-				);
-				serde_json::to_string(&err).unwrap()
-			},
-		};
-
-		let _ = stdout.write_all(response_str.as_bytes()).await;
+		let response = serde_json::to_string(&response).unwrap();
+		let _ = stdout.write_all(response.as_bytes()).await;
 		let _ = stdout.write_all(b"\n").await;
 		let _ = stdout.flush().await;
 	}

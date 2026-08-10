@@ -52,17 +52,21 @@ impl ToolRegistry {
 
 	pub async fn call_tool(
 		&self, client: &LdkServerClient, name: &str, args: Value,
-	) -> ToolCallResult {
+	) -> Result<ToolCallResult, McpError> {
 		let Some(handler) = self.handlers.get(name) else {
-			return ToolCallResult::error(format!("Unknown tool: {name}"));
+			return Err(McpError::invalid_params(format!("Unknown tool: {name}")));
 		};
 		match handler(client, args).await {
 			Ok(value) => {
-				let text = serde_json::to_string(&value)
-					.unwrap_or_else(|e| format!("Failed to serialize response: {e}"));
-				ToolCallResult::success(text)
+				let text = serde_json::to_string(&value).map_err(|e| {
+					McpError::internal(format!("Failed to serialize response: {e}"))
+				})?;
+				Ok(ToolCallResult::success(text))
 			},
-			Err(e) => ToolCallResult::error(format!("{}: {}", e.category(), e.message)),
+			Err(e) if e.is_tool_execution() => {
+				Ok(ToolCallResult::execution_error(format!("{}: {}", e.category(), e.message)))
+			},
+			Err(e) => Err(e),
 		}
 	}
 }
