@@ -159,6 +159,11 @@ message PaymentSuccessful {
   string payment_id = 1;
   // The payment details for the payment in event.
   types.Payment payment = 2;
+  // The hex-encoded payment preimage. Needed to build a BOLT 12 payer proof.
+  optional string payment_preimage = 3;
+  // The hex-encoded paid BOLT 12 invoice, when the payment was for a standard BOLT 12 invoice.
+  // Unset for non-BOLT12 payments and for static invoices used in async payments.
+  optional string bolt12_invoice = 4;
 }
 
 // PaymentFailed indicates a sent payment has failed.

@@ -1057,6 +1057,55 @@ async fn test_cli_bolt12_refund() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_cli_bolt12_create_payer_proof() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	let offer_resp = server_b
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "payer proof offer".to_string(),
+			amount_msat: Some(10_000_000),
+			expiry_secs: None,
+			quantity: None,
+		})
+		.await
+		.unwrap();
+
+	let send_output = run_cli(&server_a, &["bolt12-send", &offer_resp.offer]);
+	let send_payment_id = send_output["payment_id"].as_str().unwrap();
+	assert!(!send_payment_id.is_empty());
+
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
+		panic!("expected PaymentSuccessful");
+	};
+	assert_eq!(successful.payment_id, send_payment_id);
+	let payment_preimage = successful.payment_preimage.as_ref().expect("preimage");
+	let invoice = successful.bolt12_invoice.as_ref().expect("bolt12 invoice");
+
+	let proof_output = run_cli(
+		&server_a,
+		&[
+			"bolt12-create-payer-proof",
+			send_payment_id,
+			payment_preimage,
+			invoice,
+			"--include-offer-description",
+			"--include-invoice-amount",
+			"--note",
+			"Paid in full",
+		],
+	);
+	assert!(!proof_output["payer_proof"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_cli_spontaneous_send() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;

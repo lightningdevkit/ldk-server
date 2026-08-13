@@ -30,6 +30,7 @@ use ldk_node::config::{Config, ElectrumSyncConfig, EsploraSyncConfig};
 use ldk_node::lightning::events::{ClosureReason, PaymentFailureReason};
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
+use ldk_node::lightning::util::ser::Writeable;
 use ldk_node::{Builder, CustomTlvRecord, Event, Node};
 use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
@@ -529,11 +530,17 @@ fn main() {
 								metrics.update_all_balances(&event_node);
 							}
 						},
-						Event::PaymentSuccessful {payment_id, ..} => {
+						Event::PaymentSuccessful { payment_id, payment_preimage, bolt12_invoice, .. } => {
+							let payment_preimage = payment_preimage.map(|p| p.to_string());
+							let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
+								invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
+							});
 							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
 									payment_id: payment_id.to_string(),
 									payment: Some(payment_ref.clone()),
+									payment_preimage,
+									bolt12_invoice,
 								}),
 								&event_node,
 								&event_sender,

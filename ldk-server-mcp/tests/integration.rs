@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 40;
+const NUM_TOOLS: usize = 41;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
@@ -21,6 +21,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_receive_via_jit_channel",
 	"bolt11_send",
 	"bolt11_send_underpaying",
+	"bolt12_create_payer_proof",
 	"bolt12_receive",
 	"bolt12_receive_refund",
 	"bolt12_send",

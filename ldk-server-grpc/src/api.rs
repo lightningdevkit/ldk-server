@@ -560,6 +560,40 @@ pub struct Bolt12ReceiveRefundResponse {
 	#[prost(string, tag = "1")]
 	pub payment_hash: ::prost::alloc::string::String,
 }
+/// Create a BOLT 12 payer proof for a payment this node made.
+/// Inputs come from `PaymentSuccessful`: `payment_id`, `payment_preimage`, and `bolt12_invoice`.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.create_payer_proof>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12CreatePayerProofRequest {
+	/// The local identifier used to track the payment, in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
+	/// The hex-encoded 32-byte payment preimage from `PaymentSuccessful`.
+	#[prost(string, tag = "2")]
+	pub payment_preimage: ::prost::alloc::string::String,
+	/// The hex-encoded BOLT 12 invoice from `PaymentSuccessful.bolt12_invoice`.
+	/// Static invoices used for async payments cannot be proven.
+	#[prost(string, tag = "3")]
+	pub invoice: ::prost::alloc::string::String,
+	/// Controls which optional invoice fields the proof discloses.
+	#[prost(message, optional, tag = "4")]
+	pub options: ::core::option::Option<super::types::PayerProofOptions>,
+}
+/// The response for the `Bolt12CreatePayerProof` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12CreatePayerProofResponse {
+	/// The bech32-encoded payer proof.
+	#[prost(string, tag = "1")]
+	pub payer_proof: ::prost::alloc::string::String,
+}
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
