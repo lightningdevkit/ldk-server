@@ -154,8 +154,8 @@ message Bolt11ReceiveResponse {
 
 // Return a BOLT11 payable invoice for a given payment hash.
 // The inbound payment will NOT be automatically claimed upon arrival.
-// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForHash`
-// or manually failed by calling `Bolt11FailForHash`.
+// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+// or manually failed by calling `Bolt11FailForId`.
 // See more:
 // - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash
 // - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash
@@ -184,14 +184,13 @@ message Bolt11ReceiveForHashResponse {
   string invoice = 1;
 }
 
-// Manually claim a payment for a given payment hash with the corresponding preimage.
+// Manually claim a payment for a given payment ID with the corresponding preimage.
 // This should be used to claim payments created via `Bolt11ReceiveForHash`.
-// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash
-message Bolt11ClaimForHashRequest {
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id
+message Bolt11ClaimForIdRequest {
 
-  // The hex-encoded 32-byte payment hash.
-  // If provided, it will be used to verify that the preimage matches.
-  optional string payment_hash = 1;
+  // The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+  string payment_id = 1;
 
   // The amount in millisatoshi that is claimable.
   // If not provided, skips amount verification.
@@ -201,20 +200,20 @@ message Bolt11ClaimForHashRequest {
   string preimage = 3;
 }
 
-// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
-message Bolt11ClaimForHashResponse {}
+// The response for the `Bolt11ClaimForId` RPC. On failure, a gRPC error status is returned.
+message Bolt11ClaimForIdResponse {}
 
-// Manually fail a payment for a given payment hash.
+// Manually fail a payment for a given payment ID.
 // This should be used to reject payments created via `Bolt11ReceiveForHash`.
-// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash
-message Bolt11FailForHashRequest {
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id
+message Bolt11FailForIdRequest {
 
-  // The hex-encoded 32-byte payment hash.
-  string payment_hash = 1;
+  // The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+  string payment_id = 1;
 }
 
-// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
-message Bolt11FailForHashResponse {}
+// The response for the `Bolt11FailForId` RPC. On failure, a gRPC error status is returned.
+message Bolt11FailForIdResponse {}
 
 // Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 // LSPS2 just-in-time channel.
@@ -956,10 +955,10 @@ service LightningNode {
   rpc Bolt11Receive(Bolt11ReceiveRequest) returns (Bolt11ReceiveResponse);
   // Return a BOLT11 payable invoice for a given payment hash.
   rpc Bolt11ReceiveForHash(Bolt11ReceiveForHashRequest) returns (Bolt11ReceiveForHashResponse);
-  // Manually claim a payment for a given payment hash.
-  rpc Bolt11ClaimForHash(Bolt11ClaimForHashRequest) returns (Bolt11ClaimForHashResponse);
-  // Manually fail a payment for a given payment hash.
-  rpc Bolt11FailForHash(Bolt11FailForHashRequest) returns (Bolt11FailForHashResponse);
+  // Manually claim a payment for a given payment ID.
+  rpc Bolt11ClaimForId(Bolt11ClaimForIdRequest) returns (Bolt11ClaimForIdResponse);
+  // Manually fail a payment for a given payment ID.
+  rpc Bolt11FailForId(Bolt11FailForIdRequest) returns (Bolt11FailForIdResponse);
   // Return a BOLT11 invoice for receiving via a JIT channel.
   rpc Bolt11ReceiveViaJitChannel(Bolt11ReceiveViaJitChannelRequest) returns (Bolt11ReceiveViaJitChannelResponse);
   // Return a variable-amount BOLT11 invoice for receiving via a JIT channel.

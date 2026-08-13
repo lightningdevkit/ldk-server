@@ -31,7 +31,36 @@
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use ldk_node::payment::PaymentStatus;
-use ldk_node::Node;
+use ldk_node::{Node, NodeError};
+use log::error;
+
+#[derive(Default)]
+struct PaymentCounts {
+	total: i64,
+	successful: i64,
+	pending: i64,
+	failed: i64,
+}
+
+fn payment_status_counts(node: &Node) -> Result<PaymentCounts, NodeError> {
+	let mut counts = PaymentCounts::default();
+	let mut page_token = None;
+	loop {
+		let page = node.list_payments(page_token)?;
+		for payment in page.payments {
+			counts.total += 1;
+			match payment.status {
+				PaymentStatus::Succeeded => counts.successful += 1,
+				PaymentStatus::Pending => counts.pending += 1,
+				PaymentStatus::Failed => counts.failed += 1,
+			}
+		}
+		match page.next_page_token {
+			Some(token) => page_token = Some(token),
+			None => return Ok(counts),
+		}
+	}
+}
 
 /// Holds all the metrics that are tracked for LDK Server.
 ///
@@ -75,6 +104,13 @@ impl Metrics {
 		self.total_peers_count.store(total_peers_count, Ordering::Relaxed);
 	}
 
+	fn store_payment_counts(&self, counts: PaymentCounts) {
+		self.total_payments_count.store(counts.total, Ordering::Relaxed);
+		self.total_successful_payments_count.store(counts.successful, Ordering::Relaxed);
+		self.total_pending_payments_count.store(counts.pending, Ordering::Relaxed);
+		self.total_failed_payments_count.store(counts.failed, Ordering::Relaxed);
+	}
+
 	pub fn update_payments_count(&self, is_successful: bool) {
 		if is_successful {
 			self.total_successful_payments_count.fetch_add(1, Ordering::Relaxed);
@@ -92,20 +128,10 @@ impl Metrics {
 	}
 
 	pub fn initialize_payment_metrics(&self, node: &Node) {
-		let mut successful_payments_count = 0;
-		let mut failed_payments_count = 0;
-		let mut pending_payments_count = 0;
-
-		for payment_details in node.list_payments() {
-			match payment_details.status {
-				PaymentStatus::Succeeded => successful_payments_count += 1,
-				PaymentStatus::Failed => failed_payments_count += 1,
-				PaymentStatus::Pending => pending_payments_count += 1,
-			}
+		match payment_status_counts(node) {
+			Ok(counts) => self.store_payment_counts(counts),
+			Err(e) => error!("Failed to initialize payment metrics: {e}"),
 		}
-		self.total_successful_payments_count.store(successful_payments_count, Ordering::Relaxed);
-		self.total_failed_payments_count.store(failed_payments_count, Ordering::Relaxed);
-		self.total_pending_payments_count.store(pending_payments_count, Ordering::Relaxed);
 
 		let channels_count = node.list_channels().len() as i64;
 		self.total_channels_count.store(channels_count, Ordering::Relaxed);
@@ -129,17 +155,12 @@ impl Metrics {
 	}
 
 	pub fn update_all_pollable_metrics(&self, node: &Node) {
-		let all_payments = node.list_payments();
 		let all_channels = node.list_channels();
 
-		let payments_count = all_payments.len() as i64;
-		self.total_payments_count.store(payments_count, Ordering::Relaxed);
-
-		let pending_payments_count = all_payments
-			.iter()
-			.filter(|payment_details| payment_details.status == PaymentStatus::Pending)
-			.count() as i64;
-		self.total_pending_payments_count.store(pending_payments_count, Ordering::Relaxed);
+		match payment_status_counts(node) {
+			Ok(counts) => self.store_payment_counts(counts),
+			Err(e) => error!("Failed to update payment metrics: {e}"),
+		}
 
 		let public_channels_count =
 			all_channels.iter().filter(|channel_details| channel_details.is_announced).count()

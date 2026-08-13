@@ -13,8 +13,8 @@ use serde_json::{json, Value};
 
 const NUM_TOOLS: usize = 38;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
-	"bolt11_claim_for_hash",
-	"bolt11_fail_for_hash",
+	"bolt11_claim_for_id",
+	"bolt11_fail_for_id",
 	"bolt11_receive",
 	"bolt11_receive_for_hash",
 	"bolt11_receive_variable_amount_via_jit_channel",
@@ -294,19 +294,19 @@ fn test_bolt11_receive_for_hash_unreachable() {
 }
 
 #[test]
-fn test_bolt11_claim_for_hash_unreachable() {
+fn test_bolt11_claim_for_id_unreachable() {
 	assert_unreachable_tool(
-		"bolt11_claim_for_hash",
+		"bolt11_claim_for_id",
 		json!({
-			"payment_hash": "11".repeat(32),
+			"payment_id": "11".repeat(32),
 			"preimage": "22".repeat(32)
 		}),
 	);
 }
 
 #[test]
-fn test_bolt11_fail_for_hash_unreachable() {
-	assert_unreachable_tool("bolt11_fail_for_hash", json!({ "payment_hash": "33".repeat(32) }));
+fn test_bolt11_fail_for_id_unreachable() {
+	assert_unreachable_tool("bolt11_fail_for_id", json!({ "payment_id": "33".repeat(32) }));
 }
 
 #[test]

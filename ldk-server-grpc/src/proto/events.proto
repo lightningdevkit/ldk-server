@@ -94,33 +94,41 @@ message ChannelStateChanged {
 
 // PaymentReceived indicates a payment has been received.
 message PaymentReceived {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
   // Custom TLV records attached to the incoming payment, if any.
-  repeated types.CustomTlvRecord custom_records = 2;
+  repeated types.CustomTlvRecord custom_records = 3;
 }
 
 // PaymentSuccessful indicates a sent payment was successful.
 message PaymentSuccessful {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
 }
 
 // PaymentFailed indicates a sent payment has failed.
 message PaymentFailed {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
 }
 
 // PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
 // This event is only emitted for payments created via `Bolt11ReceiveForHash`.
 message PaymentClaimable {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the claimable payment.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
   // Custom TLV records attached to the claimable payment, if any.
-  repeated types.CustomTlvRecord custom_records = 2;
+  repeated types.CustomTlvRecord custom_records = 3;
   // The block height by which this payment must be claimed before it is failed back.
-  optional uint32 claim_deadline = 3;
+  optional uint32 claim_deadline = 4;
 }
 
 // PaymentForwarded indicates a payment was forwarded through the node.

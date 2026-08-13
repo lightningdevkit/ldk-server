@@ -10,7 +10,7 @@
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::{
-	Bolt11ClaimForHashRequest, Bolt11FailForHashRequest, Bolt11ReceiveForHashRequest,
+	Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveForHashRequest,
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
 	Bolt12ReceiveRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
@@ -169,19 +169,19 @@ pub async fn handle_bolt11_receive_for_hash(
 	serialize_response(response)
 }
 
-pub async fn handle_bolt11_claim_for_hash(
+pub async fn handle_bolt11_claim_for_id(
 	client: &LdkServerClient, args: Value,
 ) -> Result<Value, McpError> {
-	let request: Bolt11ClaimForHashRequest = parse_request(args)?;
-	let response = client.bolt11_claim_for_hash(request).await.map_err(McpError::from)?;
+	let request: Bolt11ClaimForIdRequest = parse_request(args)?;
+	let response = client.bolt11_claim_for_id(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 
-pub async fn handle_bolt11_fail_for_hash(
+pub async fn handle_bolt11_fail_for_id(
 	client: &LdkServerClient, args: Value,
 ) -> Result<Value, McpError> {
-	let request: Bolt11FailForHashRequest = parse_request(args)?;
-	let response = client.bolt11_fail_for_hash(request).await.map_err(McpError::from)?;
+	let request: Bolt11FailForIdRequest = parse_request(args)?;
+	let response = client.bolt11_fail_for_id(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

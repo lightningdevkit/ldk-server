@@ -218,13 +218,13 @@ pub fn bolt11_receive_for_hash_schema() -> Value {
 	})
 }
 
-pub fn bolt11_claim_for_hash_schema() -> Value {
+pub fn bolt11_claim_for_id_schema() -> Value {
 	json!({
 		"type": "object",
 		"properties": {
-			"payment_hash": {
+			"payment_id": {
 				"type": "string",
-				"description": "The hex-encoded 32-byte payment hash. If provided, verifies that the preimage matches"
+				"description": "The hex-encoded 32-byte payment ID from PaymentClaimable"
 			},
 			"claimable_amount_msat": {
 				"type": "integer",
@@ -235,20 +235,20 @@ pub fn bolt11_claim_for_hash_schema() -> Value {
 				"description": "The hex-encoded 32-byte payment preimage"
 			}
 		},
-		"required": ["preimage"]
+		"required": ["payment_id", "preimage"]
 	})
 }
 
-pub fn bolt11_fail_for_hash_schema() -> Value {
+pub fn bolt11_fail_for_id_schema() -> Value {
 	json!({
 		"type": "object",
 		"properties": {
-			"payment_hash": {
+			"payment_id": {
 				"type": "string",
-				"description": "The hex-encoded 32-byte payment hash"
+				"description": "The hex-encoded 32-byte payment ID from PaymentClaimable"
 			}
 		},
-		"required": ["payment_hash"]
+		"required": ["payment_id"]
 	})
 }
 
