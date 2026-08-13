@@ -1,9 +1,11 @@
 # ldk-server-mcp
 
 An [MCP (Model Context Protocol)](https://spec.modelcontextprotocol.io/) server that
-exposes [LDK Server](https://github.com/lightningdevkit/ldk-server) operations as tools for AI agents. It communicates
-over JSON-RPC 2.0 via stdio and connects to an LDK Server instance over TLS using the [
-`ldk-server-client`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-client) library.
+exposes [LDK Server](https://github.com/lightningdevkit/ldk-server) operations as
+tools for AI agents. It implements the stateless MCP `2026-07-28` protocol over
+JSON-RPC 2.0 via stdio and connects to an LDK Server instance over TLS using the
+[`ldk-server-client`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-client)
+library.
 
 This crate lives inside the `ldk-server` workspace.
 
@@ -99,9 +101,39 @@ Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `me
 
 ## MCP Protocol
 
-- **Protocol version**: `2025-11-25`
+- **Protocol version**: `2026-07-28`
 - **Transport**: stdio (one JSON-RPC 2.0 message per line)
-- **Methods**: `initialize`, `tools/list`, `tools/call`, `ping`
+- **Methods**: `server/discover`, `tools/list`, `tools/call`
+
+The protocol is stateless: there is no initialization handshake or server-side
+session. Every request must carry the protocol version and client capabilities in
+`params._meta`. Client information is optional.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "server/discover",
+  "params": {
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {},
+      "io.modelcontextprotocol/clientInfo": {
+        "name": "example-client",
+        "version": "1.0.0"
+      }
+    }
+  }
+}
+```
+
+`server/discover` reports the supported version and server capabilities.
+`server/discover` and `tools/list` are public-cacheable for the returned `ttlMs`;
+all successful results include `resultType` and server information in `_meta`.
+
+This server intentionally supports only MCP `2026-07-28`. The legacy `initialize`
+and `ping` methods are not implemented, so clients using the stateful MCP lifecycle
+must be upgraded before connecting.
 
 ## Testing
 
