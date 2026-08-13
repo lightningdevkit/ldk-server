@@ -378,6 +378,30 @@ message Bolt12SendResponse {
   string payment_id = 1;
 }
 
+// Create a BOLT 12 payer proof for a payment this node made.
+// Inputs come from `PaymentSuccessful`: `payment_id`, `payment_preimage`, and `bolt12_invoice`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.create_payer_proof
+message Bolt12CreatePayerProofRequest {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
+
+  // The hex-encoded 32-byte payment preimage from `PaymentSuccessful`.
+  string payment_preimage = 2;
+
+  // The hex-encoded BOLT 12 invoice from `PaymentSuccessful.bolt12_invoice`.
+  // Static invoices used for async payments cannot be proven.
+  string invoice = 3;
+
+  // Controls which optional invoice fields the proof discloses.
+  optional types.PayerProofOptions options = 4;
+}
+
+// The response for the `Bolt12CreatePayerProof` RPC. On failure, a gRPC error status is returned.
+message Bolt12CreatePayerProofResponse {
+  // The bech32-encoded payer proof.
+  string payer_proof = 1;
+}
+
 // Send a spontaneous payment, also known as "keysend", to a node.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send
 message SpontaneousSendRequest {
@@ -972,6 +996,8 @@ service LightningNode {
   rpc Bolt12Receive(Bolt12ReceiveRequest) returns (Bolt12ReceiveResponse);
   // Send a payment for a BOLT12 offer.
   rpc Bolt12Send(Bolt12SendRequest) returns (Bolt12SendResponse);
+  // Create a BOLT 12 payer proof for a payment this node made.
+  rpc Bolt12CreatePayerProof(Bolt12CreatePayerProofRequest) returns (Bolt12CreatePayerProofResponse);
   // Send a spontaneous payment (keysend).
   rpc SpontaneousSend(SpontaneousSendRequest) returns (SpontaneousSendResponse);
   // Create a new outbound channel.

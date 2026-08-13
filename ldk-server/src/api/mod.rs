@@ -24,6 +24,7 @@ pub(crate) mod bolt11_receive;
 pub(crate) mod bolt11_receive_for_hash;
 pub(crate) mod bolt11_receive_via_jit_channel;
 pub(crate) mod bolt11_send;
+pub(crate) mod bolt12_create_payer_proof;
 pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_send;
 pub(crate) mod close_channel;

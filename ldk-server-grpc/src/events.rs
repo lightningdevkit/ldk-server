@@ -170,6 +170,13 @@ pub struct PaymentSuccessful {
 	/// The payment details for the payment in event.
 	#[prost(message, optional, tag = "2")]
 	pub payment: ::core::option::Option<super::types::Payment>,
+	/// The hex-encoded payment preimage. Needed to build a BOLT 12 payer proof.
+	#[prost(string, optional, tag = "3")]
+	pub payment_preimage: ::core::option::Option<::prost::alloc::string::String>,
+	/// The hex-encoded paid BOLT 12 invoice, when the payment was for a standard BOLT 12 invoice.
+	/// Unset for non-BOLT12 payments and for static invoices used in async payments.
+	#[prost(string, optional, tag = "4")]
+	pub bolt12_invoice: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// PaymentFailed indicates a sent payment has failed.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

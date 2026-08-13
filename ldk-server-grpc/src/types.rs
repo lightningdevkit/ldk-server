@@ -48,6 +48,33 @@ pub struct Payment {
 	#[prost(uint64, tag = "6")]
 	pub latest_update_timestamp: u64,
 }
+/// Options that control which BOLT 12 invoice fields a payer proof discloses.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PayerProofOptions.html>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PayerProofOptions {
+	/// An optional note to attach to the payer proof itself.
+	#[prost(string, optional, tag = "1")]
+	pub note: ::core::option::Option<::prost::alloc::string::String>,
+	/// Whether to disclose the offer description.
+	#[prost(bool, tag = "2")]
+	pub include_offer_description: bool,
+	/// Whether to disclose the offer issuer.
+	#[prost(bool, tag = "3")]
+	pub include_offer_issuer: bool,
+	/// Whether to disclose the invoice amount.
+	#[prost(bool, tag = "4")]
+	pub include_invoice_amount: bool,
+	/// Whether to disclose the invoice creation timestamp.
+	#[prost(bool, tag = "5")]
+	pub include_invoice_created_at: bool,
+	/// Additional TLV types to disclose, for fields not covered by the flags above.
+	#[prost(uint64, repeated, tag = "6")]
+	pub extra_tlv_types: ::prost::alloc::vec::Vec<u64>,
+}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]

@@ -130,8 +130,9 @@ when the invoice is paid.
 
 | RPC             | Description                                                             |
 |-----------------|-------------------------------------------------------------------------|
-| `Bolt12Receive` | Create a BOLT12 offer (fixed or variable amount)                        |
-| `Bolt12Send`    | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12Receive`            | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12Send`               | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12CreatePayerProof`   | Create a BOLT 12 payer proof from a successful payment                  |
 
 ### Spontaneous and Unified Send
 
