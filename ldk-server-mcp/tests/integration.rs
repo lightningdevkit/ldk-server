@@ -11,7 +11,12 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const PROTOCOL_VERSION: &str = "2026-07-28";
+#[allow(dead_code)]
+#[path = "../src/mcp.rs"]
+mod mcp;
+
+use mcp::PROTOCOL_VERSION;
+
 const NUM_TOOLS: usize = 37;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_hash",
@@ -217,7 +222,7 @@ fn test_tools_list() {
 fn test_removed_ping_returns_method_not_found() {
 	let mut proc = McpProcess::spawn();
 
-	proc.send(&json!({
+	proc.send_raw(&json!({
 		"jsonrpc": "2.0",
 		"id": 1,
 		"method": "ping"
@@ -276,8 +281,7 @@ fn test_unsupported_protocol_version_reports_supported_versions() {
 		"method": "tools/list",
 		"params": {
 			"_meta": {
-				"io.modelcontextprotocol/protocolVersion": "1900-01-01",
-				"io.modelcontextprotocol/clientCapabilities": {}
+				"io.modelcontextprotocol/protocolVersion": "1900-01-01"
 			}
 		}
 	}));
@@ -286,6 +290,21 @@ fn test_unsupported_protocol_version_reports_supported_versions() {
 	assert_eq!(resp["error"]["code"], -32022);
 	assert_eq!(resp["error"]["data"]["supported"], json!([PROTOCOL_VERSION]));
 	assert_eq!(resp["error"]["data"]["requested"], "1900-01-01");
+}
+
+#[test]
+fn test_unknown_method_without_metadata_returns_method_not_found() {
+	let mut proc = McpProcess::spawn();
+
+	proc.send_raw(&json!({
+		"jsonrpc": "2.0",
+		"id": 1,
+		"method": "unknown/method"
+	}));
+
+	let resp = proc.recv();
+	assert_eq!(resp["error"]["code"], -32601);
+	assert!(resp["error"]["message"].as_str().unwrap().contains("unknown/method"));
 }
 
 #[test]

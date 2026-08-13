@@ -73,16 +73,15 @@ impl DiscoverResult {
 }
 
 pub fn request_protocol_version(params: Option<&Value>) -> Result<&str, String> {
-	let params = params.and_then(Value::as_object).ok_or("params must be an object")?;
-	let metadata = params
-		.get("_meta")
-		.and_then(Value::as_object)
-		.ok_or("Missing or invalid required parameter: _meta")?;
+	let metadata = request_metadata(params)?;
 
-	let protocol_version = metadata
-		.get("io.modelcontextprotocol/protocolVersion")
-		.and_then(Value::as_str)
-		.ok_or("Missing or invalid _meta.io.modelcontextprotocol/protocolVersion")?;
+	metadata.get("io.modelcontextprotocol/protocolVersion").and_then(Value::as_str).ok_or_else(
+		|| "Missing or invalid _meta.io.modelcontextprotocol/protocolVersion".to_string(),
+	)
+}
+
+pub fn validate_client_metadata(params: Option<&Value>) -> Result<(), String> {
+	let metadata = request_metadata(params)?;
 
 	if !metadata.get("io.modelcontextprotocol/clientCapabilities").is_some_and(Value::is_object) {
 		return Err(
@@ -100,7 +99,15 @@ pub fn request_protocol_version(params: Option<&Value>) -> Result<&str, String> 
 		}
 	}
 
-	Ok(protocol_version)
+	Ok(())
+}
+
+fn request_metadata(params: Option<&Value>) -> Result<&serde_json::Map<String, Value>, String> {
+	let params = params.and_then(Value::as_object).ok_or("params must be an object")?;
+	params
+		.get("_meta")
+		.and_then(Value::as_object)
+		.ok_or_else(|| "Missing or invalid required parameter: _meta".to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
