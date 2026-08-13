@@ -5,7 +5,7 @@ package types;
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PaymentDetails.html
 message Payment {
   // An identifier used to uniquely identify a payment in hex-encoded form.
-  string id = 1;
+  string payment_id = 1;
 
   // The kind of the payment.
   PaymentKind kind = 2;
@@ -419,7 +419,6 @@ message Channel {
   // The minimum difference in CLTV expiry between an ingoing HTLC and its outgoing counterpart,
   // such that the outgoing HTLC is forwardable to this counterparty.
   optional uint32 counterparty_forwarding_info_cltv_expiry_delta = 25;
-
   // The channel's `short_channel_id`, if we've negotiated the funding transaction with our
   // counterparty already and it's reached the required number of confirmations.
   //
@@ -454,6 +453,10 @@ message Channel {
   // Will be unset until channel negotiation has completed and determined whether this channel
   // uses anchor or legacy reserve behavior.
   optional ReserveType reserve_type = 32;
+
+  // The negotiated channel-type features, keyed by the signaled BOLT feature bit.
+  // This map is empty until channel negotiation determines the channel type.
+  map<uint32, Feature> channel_type = 33;
 }
 
 // ChannelConfig represents the configuration settings for a channel in a Lightning Network node.

@@ -17,7 +17,7 @@
 pub struct Payment {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
 	#[prost(string, tag = "1")]
-	pub id: ::prost::alloc::string::String,
+	pub payment_id: ::prost::alloc::string::String,
 	/// The kind of the payment.
 	#[prost(message, optional, tag = "2")]
 	pub kind: ::core::option::Option<PaymentKind>,
@@ -499,6 +499,10 @@ pub struct Channel {
 	/// uses anchor or legacy reserve behavior.
 	#[prost(enumeration = "ReserveType", optional, tag = "32")]
 	pub reserve_type: ::core::option::Option<i32>,
+	/// The negotiated channel-type features, keyed by the signaled BOLT feature bit.
+	/// This map is empty until channel negotiation determines the channel type.
+	#[prost(btree_map = "uint32, message", tag = "33")]
+	pub channel_type: ::prost::alloc::collections::BTreeMap<u32, Feature>,
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>

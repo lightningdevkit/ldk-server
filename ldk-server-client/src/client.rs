@@ -16,8 +16,8 @@ use hyper::body::HttpBody as _;
 use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use ldk_server_grpc::api::{
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
+	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
@@ -42,7 +42,7 @@ use ldk_server_grpc::api::{
 	VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
-	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
+	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH, BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH,
@@ -210,18 +210,18 @@ impl LdkServerClient {
 		self.grpc_unary(&request, BOLT11_RECEIVE_FOR_HASH_PATH).await
 	}
 
-	/// Manually claim a payment for a given payment hash.
-	pub async fn bolt11_claim_for_hash(
-		&self, request: Bolt11ClaimForHashRequest,
-	) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
-		self.grpc_unary(&request, BOLT11_CLAIM_FOR_HASH_PATH).await
+	/// Manually claim a payment for a given payment ID.
+	pub async fn bolt11_claim_for_id(
+		&self, request: Bolt11ClaimForIdRequest,
+	) -> Result<Bolt11ClaimForIdResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT11_CLAIM_FOR_ID_PATH).await
 	}
 
-	/// Manually fail a payment for a given payment hash.
-	pub async fn bolt11_fail_for_hash(
-		&self, request: Bolt11FailForHashRequest,
-	) -> Result<Bolt11FailForHashResponse, LdkServerError> {
-		self.grpc_unary(&request, BOLT11_FAIL_FOR_HASH_PATH).await
+	/// Manually fail a payment for a given payment ID.
+	pub async fn bolt11_fail_for_id(
+		&self, request: Bolt11FailForIdRequest,
+	) -> Result<Bolt11FailForIdResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT11_FAIL_FOR_ID_PATH).await
 	}
 
 	/// Retrieve a new fixed-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.

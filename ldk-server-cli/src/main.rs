@@ -24,8 +24,8 @@ use ldk_server_client::error::LdkServerErrorCode::{
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
+	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
@@ -163,7 +163,9 @@ enum Commands {
 		expiry_secs: Option<u32>,
 	},
 	#[command(about = "Claim a held payment by providing the preimage")]
-	Bolt11ClaimForHash {
+	Bolt11ClaimForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 		#[arg(help = "The hex-encoded 32-byte payment preimage")]
 		preimage: String,
 		#[arg(
@@ -172,17 +174,11 @@ enum Commands {
 			help = "The claimable amount, e.g. 50sat or 50000msat, only used for verifying we are claiming the expected amount"
 		)]
 		claimable_amount: Option<Amount>,
-		#[arg(
-			short,
-			long,
-			help = "The hex-encoded 32-byte payment hash, used to verify the preimage matches"
-		)]
-		payment_hash: Option<String>,
 	},
 	#[command(about = "Fail/reject a held payment")]
-	Bolt11FailForHash {
-		#[arg(help = "The hex-encoded 32-byte payment hash")]
-		payment_hash: String,
+	Bolt11FailForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 	},
 	#[command(about = "Create a fixed-amount BOLT11 invoice to receive via an LSPS2 JIT channel")]
 	Bolt11ReceiveViaJitChannel {
@@ -763,20 +759,20 @@ async fn main() {
 				client.bolt11_receive_for_hash(request).await,
 			);
 		},
-		Commands::Bolt11ClaimForHash { preimage, claimable_amount, payment_hash } => {
-			handle_response_result::<_, Bolt11ClaimForHashResponse>(
+		Commands::Bolt11ClaimForId { payment_id, preimage, claimable_amount } => {
+			handle_response_result::<_, Bolt11ClaimForIdResponse>(
 				client
-					.bolt11_claim_for_hash(Bolt11ClaimForHashRequest {
-						payment_hash,
+					.bolt11_claim_for_id(Bolt11ClaimForIdRequest {
+						payment_id,
 						claimable_amount_msat: claimable_amount.map(|a| a.to_msat()),
 						preimage,
 					})
 					.await,
 			);
 		},
-		Commands::Bolt11FailForHash { payment_hash } => {
-			handle_response_result::<_, Bolt11FailForHashResponse>(
-				client.bolt11_fail_for_hash(Bolt11FailForHashRequest { payment_hash }).await,
+		Commands::Bolt11FailForId { payment_id } => {
+			handle_response_result::<_, Bolt11FailForIdResponse>(
+				client.bolt11_fail_for_id(Bolt11FailForIdRequest { payment_id }).await,
 			);
 		},
 		Commands::Bolt11ReceiveViaJitChannel {
