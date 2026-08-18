@@ -11,7 +11,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_grpc::api::{Bolt11SendRequest, Bolt11SendResponse};
+use ldk_server_grpc::api::{
+	Bolt11SendRequest, Bolt11SendResponse, Bolt11SendUnderpayingRequest,
+	Bolt11SendUnderpayingResponse,
+};
 
 use crate::api::build_route_parameters_config_from_proto;
 use crate::api::error::LdkServerError;
@@ -33,5 +36,23 @@ pub(crate) async fn handle_bolt11_send_request(
 	}?;
 
 	let response = Bolt11SendResponse { payment_id: payment_id.to_string() };
+	Ok(response)
+}
+
+pub(crate) async fn handle_bolt11_send_underpaying_request(
+	context: Arc<Context>, request: Bolt11SendUnderpayingRequest,
+) -> Result<Bolt11SendUnderpayingResponse, LdkServerError> {
+	let invoice = Bolt11Invoice::from_str(request.invoice.as_str())
+		.map_err(|_| ldk_node::NodeError::InvalidInvoice)?;
+
+	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+
+	let payment_id = context.node.bolt11_payment().send_using_amount_underpaying(
+		&invoice,
+		request.amount_msat,
+		route_parameters,
+	)?;
+
+	let response = Bolt11SendUnderpayingResponse { payment_id: payment_id.to_string() };
 	Ok(response)
 }

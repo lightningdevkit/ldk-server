@@ -93,10 +93,17 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 
 ### BOLT11 Payments
 
-| RPC             | Description                                                       |
-|-----------------|-------------------------------------------------------------------|
-| `Bolt11Receive` | Create an invoice (fixed or variable amount) with automatic claim |
-| `Bolt11Send`    | Pay a BOLT11 invoice (with optional routing config)               |
+| RPC                     | Description                                                       |
+|-------------------------|-------------------------------------------------------------------|
+| `Bolt11Receive`         | Create an invoice (fixed or variable amount) with automatic claim |
+| `Bolt11Send`            | Pay a BOLT11 invoice (with optional routing config)               |
+| `Bolt11SendUnderpaying` | Send part of the amount for a fixed-amount BOLT11 invoice         |
+
+> [!NOTE]
+> `Bolt11SendUnderpaying` sends one part of a multi-part payment (MPP) for a fixed-amount
+> BOLT11 invoice. Other nodes must send compatible partial payments for the same invoice
+> until the combined amount equals the invoice amount. Without those payments, the
+> receiver holds the incomplete MPP payment and eventually fails it.
 
 ### BOLT11 Hodl Invoices
 

@@ -140,6 +140,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_bolt11_send(client, args)),
 		),
 		tool_spec(
+			"bolt11_send_underpaying",
+			"Send part of a fixed-amount BOLT11 invoice. Other nodes must send partial payments for the same invoice until the combined amount equals the invoice amount",
+			schema::bolt11_send_underpaying_schema,
+			|client, args| Box::pin(handlers::handle_bolt11_send_underpaying(client, args)),
+		),
+		tool_spec(
 			"bolt12_receive",
 			"Create a BOLT12 offer for receiving Lightning payments",
 			schema::bolt12_receive_schema,
