@@ -64,6 +64,7 @@ See [Getting Started](docs/getting-started.md) for a full walkthrough.
 | [API Guide](docs/api-guide.md) | gRPC transport, authentication, and endpoint reference |
 | [Tor](docs/tor.md) | Connecting to and receiving connections over Tor |
 | [Operations](docs/operations.md) | Production deployment, backups, and monitoring |
+| [Nix deployment](docs/nix.md) | Reproducible builds and a NixOS service module |
 
 ### API
 
