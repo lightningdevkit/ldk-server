@@ -209,11 +209,12 @@ Two resolution methods are supported via the `mode` field:
   <network>/                # e.g., bitcoin/, regtest/, signet/
     api_key                # API key
     ldk-server.log         # Log file
-    ldk_node_data.sqlite   # LDK Node state (channels, on-chain wallet)
-    ldk_server_data.sqlite # Payment and forwarding history
+    ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
+    ldk_server_data.sqlite # Forwarded-payment history
 ```
 
 The mnemonic is the node's master secret, required to recover on-chain funds. On first start,
 ldk-server generates a fresh 24-word BIP39 mnemonic at `<storage_dir>/keys_mnemonic` if the file
-does not already exist. `ldk_node_data.sqlite` holds channel state, both are required to recover
-channel funds. See [Operations - Backups](operations.md#backups) for backup guidance.
+does not already exist. `ldk_node_data.sqlite` holds channel state and payment history. Both files
+are required to recover channel funds. See [Operations - Backups](operations.md#backups) for backup
+guidance.

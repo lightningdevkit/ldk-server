@@ -46,8 +46,7 @@ use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE, PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
@@ -504,7 +503,7 @@ fn main() {
 								.map(node_to_proto_custom_tlv)
 								.collect();
 
-							send_event_and_upsert_payment(
+							send_payment_event(
 								&payment_id,
 								move |payment_ref| {
 									event_envelope::Event::PaymentReceived(events::PaymentReceived {
@@ -515,7 +514,6 @@ fn main() {
 								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store),
 							);
 
 							if let Some(metrics) = &metrics {
@@ -527,7 +525,7 @@ fn main() {
 							let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
 								invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
 							});
-							send_event_and_upsert_payment(&payment_id,
+							send_payment_event(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
 									payment_id: payment_id.to_string(),
 									payment: Some(payment_ref.clone()),
@@ -535,8 +533,7 @@ fn main() {
 									bolt12_invoice,
 								}),
 								&event_node,
-								&event_sender,
-								Arc::clone(&paginated_store));
+								&event_sender);
 
 							if let Some(metrics) = &metrics {
 								metrics.update_payments_count(true);
@@ -544,21 +541,20 @@ fn main() {
 							}
 						},
 						Event::PaymentFailed {payment_id, ..} => {
-							send_event_and_upsert_payment(&payment_id,
+							send_payment_event(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment_id: payment_id.to_string(),
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
-								&event_sender,
-								Arc::clone(&paginated_store));
+								&event_sender);
 
 							if let Some(metrics) = &metrics {
 								metrics.update_payments_count(false);
 							}
 						},
 						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, .. } => {
-							send_event_and_upsert_payment(
+							send_payment_event(
 								&payment_id,
 								|payment_ref| {
 									event_envelope::Event::PaymentClaimable(
@@ -572,7 +568,6 @@ fn main() {
 								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store),
 							);
 						},
 						Event::PaymentForwarded {
@@ -706,10 +701,9 @@ fn main() {
 	log::logger().flush();
 }
 
-fn send_event_and_upsert_payment(
+fn send_payment_event(
 	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
-	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
 	match event_node.payment(payment_id) {
 		Ok(Some(payment_details)) => {
@@ -720,7 +714,9 @@ fn send_event_and_upsert_payment(
 				debug!("No event subscribers connected, skipping event: {e}");
 			}
 
-			upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
+			if let Err(e) = event_node.event_handled() {
+				error!("Failed to mark event as handled: {e}");
+			}
 		},
 		Ok(None) => error!("Unable to find payment with payment ID: {payment_id}"),
 		Err(e) => error!("Failed to retrieve payment with payment ID {payment_id}: {e}"),
@@ -876,30 +872,6 @@ fn closure_reason_details(
 		| ClosureReason::CounterpartyCoopClosedUnfundedChannel
 		| ClosureReason::LocallyCoopClosedUnfundedChannel
 		| ClosureReason::FundingBatchClosure => None,
-	}
-}
-
-fn upsert_payment_details(
-	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment: &Payment,
-) {
-	let time =
-		SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
-
-	match paginated_store.write(
-		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-		&payment.payment_id,
-		time,
-		&payment.encode_to_vec(),
-	) {
-		Ok(_) => {
-			if let Err(e) = event_node.event_handled() {
-				error!("Failed to mark event as handled: {e}");
-			}
-		},
-		Err(e) => {
-			error!("Failed to write payment to persistence: {e}");
-		},
 	}
 }
 
