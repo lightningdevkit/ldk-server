@@ -37,6 +37,33 @@ fn parse_request<T: DeserializeOwned>(args: Value) -> Result<T, McpError> {
 	serde_json::from_value(args).map_err(|e| McpError::invalid_params(e.to_string()))
 }
 
+fn parse_request_with_amount<T: DeserializeOwned>(
+	mut args: Value, amount_field: &str,
+) -> Result<T, McpError> {
+	{
+		let args =
+			args.as_object_mut().ok_or_else(|| McpError::invalid_params("Expected an object"))?;
+		let amount = args
+			.remove(amount_field)
+			.ok_or_else(|| McpError::invalid_params(format!("Missing `{amount_field}`")))?;
+		let amount = match amount {
+			Value::String(value) if value == "all" => json!({"all_funds": {}}),
+			Value::Number(_) => {
+				let mut amount_choice = serde_json::Map::new();
+				amount_choice.insert(amount_field.to_string(), amount);
+				Value::Object(amount_choice)
+			},
+			_ => {
+				return Err(McpError::invalid_params(format!(
+					"`{amount_field}` must be an integer or 'all'"
+				)));
+			},
+		};
+		args.insert("amount".to_string(), amount);
+	}
+	parse_request(args)
+}
+
 fn serialize_response<T: Serialize>(response: T) -> Result<Value, McpError> {
 	serde_json::to_value(response)
 		.map_err(|e| McpError::internal(format!("Failed to serialize response: {e}")))
@@ -241,13 +268,13 @@ pub async fn handle_unified_send(client: &LdkServerClient, args: Value) -> Resul
 }
 
 pub async fn handle_open_channel(client: &LdkServerClient, args: Value) -> Result<Value, McpError> {
-	let request: OpenChannelRequest = parse_request(args)?;
+	let request: OpenChannelRequest = parse_request_with_amount(args, "channel_amount_sats")?;
 	let response = client.open_channel(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 
 pub async fn handle_splice_in(client: &LdkServerClient, args: Value) -> Result<Value, McpError> {
-	let request: SpliceInRequest = parse_request(args)?;
+	let request: SpliceInRequest = parse_request_with_amount(args, "splice_amount_sats")?;
 	let response = client.splice_in(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
@@ -422,7 +449,46 @@ pub async fn handle_graph_get_node(
 
 #[cfg(test)]
 mod tests {
+	use ldk_server_client::ldk_server_grpc::api::{open_channel_request, splice_in_request};
+
 	use super::*;
+
+	const NODE_PUBKEY: &str = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+	#[test]
+	fn parse_request_with_amount_accepts_all() {
+		let request: OpenChannelRequest = parse_request_with_amount(
+			json!({
+				"node_pubkey": NODE_PUBKEY,
+				"address": "127.0.0.1:9735",
+				"channel_amount_sats": "all"
+			}),
+			"channel_amount_sats",
+		)
+		.unwrap();
+
+		assert!(matches!(request.amount, Some(open_channel_request::Amount::AllFunds(_))));
+	}
+
+	#[test]
+	fn parse_request_with_amount_preserves_exact_amount() {
+		let splice_amount_sats = 50_000;
+		let request: SpliceInRequest = parse_request_with_amount(
+			json!({
+				"user_channel_id": "42",
+				"counterparty_node_id": NODE_PUBKEY,
+				"splice_amount_sats": splice_amount_sats
+			}),
+			"splice_amount_sats",
+		)
+		.unwrap();
+
+		assert!(matches!(
+			request.amount,
+			Some(splice_in_request::Amount::SpliceAmountSats(amount_sats))
+				if amount_sats == splice_amount_sats
+		));
+	}
 
 	#[test]
 	fn parse_request_with_route_parameters_fills_missing_defaults() {

@@ -408,6 +408,9 @@ message SpontaneousSendResponse {
   string payment_id = 1;
 }
 
+// Selects all available on-chain funds.
+message AllFunds {}
+
 // Creates a new outbound channel to the given remote node.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect_open_channel
 message OpenChannelRequest {
@@ -419,8 +422,14 @@ message OpenChannelRequest {
   // It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
   string address = 2;
 
-  // The amount of satoshis the caller is willing to commit to the channel.
-  uint64 channel_amount_sats = 3;
+  // Required. The funds to commit to the channel.
+  oneof amount {
+    // Commit the given amount of satoshis while retaining any required Anchor channel reserves.
+    uint64 channel_amount_sats = 3;
+
+    // Commit all available on-chain funds, minus fees and any required Anchor channel reserves.
+    AllFunds all_funds = 8;
+  }
 
   // The amount of satoshis to push to the remote side as part of the initial commitment state.
   optional uint64 push_to_counterparty_msat = 4;
@@ -452,8 +461,14 @@ message SpliceInRequest {
   // The hex-encoded public key of the channel's counterparty node.
   string counterparty_node_id = 2;
 
-  // The amount of sats to splice into the channel.
-  uint64 splice_amount_sats = 3;
+  // Required. The funds to splice into the channel.
+  oneof amount {
+    // Splice in the given amount of satoshis while retaining any required Anchor channel reserves.
+    uint64 splice_amount_sats = 3;
+
+    // Splice in all available confirmed on-chain funds, minus fees and any required Anchor channel reserves.
+    AllFunds all_funds = 4;
+  }
 }
 
 // The response for the `SpliceIn` RPC. On failure, a gRPC error status is returned.

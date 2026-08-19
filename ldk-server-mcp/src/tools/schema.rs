@@ -433,8 +433,11 @@ pub fn open_channel_schema() -> Value {
 				"description": "Address of the remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
 			},
 			"channel_amount_sats": {
-				"type": "integer",
-				"description": "The amount in satoshis to commit to the channel"
+				"oneOf": [
+					{"type": "integer"},
+					{"type": "string", "const": "all"}
+				],
+				"description": "The amount in satoshis to commit to the channel, or 'all' to use all available on-chain funds"
 			},
 			"push_to_counterparty_msat": {
 				"type": "integer",
@@ -467,8 +470,11 @@ pub fn splice_in_schema() -> Value {
 				"description": "The hex-encoded public key of the channel's counterparty node"
 			},
 			"splice_amount_sats": {
-				"type": "integer",
-				"description": "The amount in satoshis to splice into the channel"
+				"oneOf": [
+					{"type": "integer"},
+					{"type": "string", "const": "all"}
+				],
+				"description": "The amount in satoshis to splice into the channel, or 'all' to use all available on-chain funds"
 			}
 		},
 		"required": ["user_channel_id", "counterparty_node_id", "splice_amount_sats"]

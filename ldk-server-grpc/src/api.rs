@@ -521,6 +521,13 @@ pub struct SpontaneousSendResponse {
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
 }
+/// Selects all available on-chain funds.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AllFunds {}
 /// Creates a new outbound channel to the given remote node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.connect_open_channel>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -536,9 +543,6 @@ pub struct OpenChannelRequest {
 	/// It can be of type IPv4:port, IPv6:port, OnionV3:port or hostname:port
 	#[prost(string, tag = "2")]
 	pub address: ::prost::alloc::string::String,
-	/// The amount of satoshis the caller is willing to commit to the channel.
-	#[prost(uint64, tag = "3")]
-	pub channel_amount_sats: u64,
 	/// The amount of satoshis to push to the remote side as part of the initial commitment state.
 	#[prost(uint64, optional, tag = "4")]
 	pub push_to_counterparty_msat: ::core::option::Option<u64>,
@@ -551,6 +555,25 @@ pub struct OpenChannelRequest {
 	/// Allow the counterparty to spend all its channel balance. This cannot be set together with `announce_channel`.
 	#[prost(bool, tag = "7")]
 	pub disable_counterparty_reserve: bool,
+	/// Required. The funds to commit to the channel.
+	#[prost(oneof = "open_channel_request::Amount", tags = "3, 8")]
+	pub amount: ::core::option::Option<open_channel_request::Amount>,
+}
+/// Nested message and enum types in `OpenChannelRequest`.
+pub mod open_channel_request {
+	/// Required. The funds to commit to the channel.
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Amount {
+		/// Commit the given amount of satoshis while retaining any required Anchor channel reserves.
+		#[prost(uint64, tag = "3")]
+		ChannelAmountSats(u64),
+		/// Commit all available on-chain funds, minus fees and any required Anchor channel reserves.
+		#[prost(message, tag = "8")]
+		AllFunds(super::AllFunds),
+	}
 }
 /// The response for the `OpenChannel` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -577,9 +600,25 @@ pub struct SpliceInRequest {
 	/// The hex-encoded public key of the channel's counterparty node.
 	#[prost(string, tag = "2")]
 	pub counterparty_node_id: ::prost::alloc::string::String,
-	/// The amount of sats to splice into the channel.
-	#[prost(uint64, tag = "3")]
-	pub splice_amount_sats: u64,
+	/// Required. The funds to splice into the channel.
+	#[prost(oneof = "splice_in_request::Amount", tags = "3, 4")]
+	pub amount: ::core::option::Option<splice_in_request::Amount>,
+}
+/// Nested message and enum types in `SpliceInRequest`.
+pub mod splice_in_request {
+	/// Required. The funds to splice into the channel.
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Amount {
+		/// Splice in the given amount of satoshis while retaining any required Anchor channel reserves.
+		#[prost(uint64, tag = "3")]
+		SpliceAmountSats(u64),
+		/// Splice in all available confirmed on-chain funds, minus fees and any required Anchor channel reserves.
+		#[prost(message, tag = "4")]
+		AllFunds(super::AllFunds),
+	}
 }
 /// The response for the `SpliceIn` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

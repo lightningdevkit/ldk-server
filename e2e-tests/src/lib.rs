@@ -18,7 +18,8 @@ use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_grpc::api::{
-	GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest, OpenChannelRequest,
+	open_channel_request, GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest,
+	OpenChannelRequest,
 };
 use serde_json::Value;
 
@@ -737,7 +738,9 @@ pub async fn setup_funded_channel(
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			channel_amount_sats,
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(
+				channel_amount_sats,
+			)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
