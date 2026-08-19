@@ -23,10 +23,10 @@ use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
 use ldk_server_client::ldk_server_grpc::api::{
-	open_channel_request, splice_in_request, AllFunds, Bolt11ClaimForHashRequest,
-	Bolt11ClaimForHashResponse, Bolt11FailForHashRequest, Bolt11FailForHashResponse,
-	Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse, Bolt11ReceiveRequest,
-	Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
+	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
+	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRequest,
@@ -116,14 +116,9 @@ enum Commands {
 		#[arg(help = "The address to send coins to")]
 		address: String,
 		#[arg(
-			help = "The amount to send, e.g. 50sat or 50000msat, must be a whole sat amount, cannot send msats on-chain. Will respect any on-chain reserve needed for anchor channels"
+			help = "The amount to send, e.g. 50sat or 50000msat, or 'all' to use all available on-chain funds. Exact amounts must be a whole sat amount. Will respect any on-chain reserve needed for anchor channels"
 		)]
-		amount: Option<Amount>,
-		#[arg(
-			long,
-			help = "Send all available balance to the address while retaining on-chain reserves for anchor channels"
-		)]
-		send_all: Option<bool>,
+		amount: AmountOrAll,
 		#[arg(
 			long,
 			help = "Fee rate in satoshis per virtual byte. If not set, a reasonable estimate will be used"
@@ -661,15 +656,17 @@ async fn main() {
 				client.onchain_receive(OnchainReceiveRequest {}).await,
 			);
 		},
-		Commands::OnchainSend { address, amount, send_all, fee_rate_sat_per_vb } => {
-			let amount_sats = amount.map(|a| a.to_sat().unwrap_or_else(|e| handle_error_msg(e)));
+		Commands::OnchainSend { address, amount, fee_rate_sat_per_vb } => {
+			let amount = match amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
+				Some(amount_sats) => onchain_send_request::Amount::AmountSats(amount_sats),
+				None => onchain_send_request::Amount::AllFunds(AllFunds {}),
+			};
 			handle_response_result::<_, OnchainSendResponse>(
 				client
 					.onchain_send(OnchainSendRequest {
 						address,
-						amount_sats,
-						send_all,
 						fee_rate_sat_per_vb,
+						amount: Some(amount),
 					})
 					.await,
 			);

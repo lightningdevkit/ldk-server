@@ -376,7 +376,7 @@ async fn test_cli_onchain_send_all() {
 	let balances_before = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
 
 	let address = bitcoind.bitcoind.client.new_address().unwrap().to_string();
-	let output = run_cli(&server, &["onchain-send", &address, "--send-all", "true"]);
+	let output = run_cli(&server, &["onchain-send", &address, "all"]);
 	assert!(!output["txid"].as_str().unwrap().is_empty());
 
 	mine_and_sync(&bitcoind, &[&server], 6).await;

@@ -109,6 +109,7 @@ pub struct OnchainReceiveResponse {
 	pub address: ::prost::alloc::string::String,
 }
 /// Send an on-chain payment to the given address.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_to_address>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
@@ -118,23 +119,29 @@ pub struct OnchainSendRequest {
 	/// The address to send coins to.
 	#[prost(string, tag = "1")]
 	pub address: ::prost::alloc::string::String,
-	/// The amount in satoshis to send.
-	/// While sending the specified amount, we will respect any on-chain reserve we need to keep,
-	/// i.e., won't allow to cut into `total_anchor_channels_reserve_sats`.
-	/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_to_address>
-	#[prost(uint64, optional, tag = "2")]
-	pub amount_sats: ::core::option::Option<u64>,
-	/// If set, the amount_sats field should be unset.
-	/// It indicates that the node will send all available balance to the specified address.
-	///
-	/// Any on-chain reserves needed for Anchor channels will be retained.
-	/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_all_to_address>
-	#[prost(bool, optional, tag = "3")]
-	pub send_all: ::core::option::Option<bool>,
 	/// If `fee_rate_sat_per_vb` is set it will be used on the resulting transaction. Otherwise we'll retrieve
 	/// a reasonable estimate from BitcoinD.
 	#[prost(uint64, optional, tag = "4")]
 	pub fee_rate_sat_per_vb: ::core::option::Option<u64>,
+	/// Required. The amount to send.
+	#[prost(oneof = "onchain_send_request::Amount", tags = "2, 3")]
+	pub amount: ::core::option::Option<onchain_send_request::Amount>,
+}
+/// Nested message and enum types in `OnchainSendRequest`.
+pub mod onchain_send_request {
+	/// Required. The amount to send.
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Amount {
+		/// Send the given amount of satoshis while retaining any required Anchor channel reserves.
+		#[prost(uint64, tag = "2")]
+		AmountSats(u64),
+		/// Send all available on-chain funds, minus fees and any required Anchor channel reserves.
+		#[prost(message, tag = "3")]
+		AllFunds(super::AllFunds),
+	}
 }
 /// The response for the `OnchainSend` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

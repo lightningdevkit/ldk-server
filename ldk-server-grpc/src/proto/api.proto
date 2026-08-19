@@ -91,23 +91,20 @@ message OnchainReceiveResponse {
 }
 
 // Send an on-chain payment to the given address.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_to_address
 message OnchainSendRequest {
 
   // The address to send coins to.
   string address = 1;
 
-  // The amount in satoshis to send.
-  // While sending the specified amount, we will respect any on-chain reserve we need to keep,
-  // i.e., won't allow to cut into `total_anchor_channels_reserve_sats`.
-  // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_to_address
-  optional uint64 amount_sats = 2;
+  // Required. The amount to send.
+  oneof amount {
+    // Send the given amount of satoshis while retaining any required Anchor channel reserves.
+    uint64 amount_sats = 2;
 
-  // If set, the amount_sats field should be unset.
-  // It indicates that the node will send all available balance to the specified address.
-  //
-  // Any on-chain reserves needed for Anchor channels will be retained.
-  // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.send_all_to_address
-  optional bool send_all = 3;
+    // Send all available on-chain funds, minus fees and any required Anchor channel reserves.
+    AllFunds all_funds = 3;
+  }
 
   // If `fee_rate_sat_per_vb` is set it will be used on the resulting transaction. Otherwise we'll retrieve
   // a reasonable estimate from BitcoinD.

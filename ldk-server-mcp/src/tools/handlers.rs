@@ -142,7 +142,7 @@ pub async fn handle_onchain_receive(
 }
 
 pub async fn handle_onchain_send(client: &LdkServerClient, args: Value) -> Result<Value, McpError> {
-	let request: OnchainSendRequest = parse_request(args)?;
+	let request: OnchainSendRequest = parse_request_with_amount(args, "amount_sats")?;
 	let response = client.onchain_send(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
@@ -449,7 +449,9 @@ pub async fn handle_graph_get_node(
 
 #[cfg(test)]
 mod tests {
-	use ldk_server_client::ldk_server_grpc::api::{open_channel_request, splice_in_request};
+	use ldk_server_client::ldk_server_grpc::api::{
+		onchain_send_request, open_channel_request, splice_in_request,
+	};
 
 	use super::*;
 
@@ -488,6 +490,20 @@ mod tests {
 			Some(splice_in_request::Amount::SpliceAmountSats(amount_sats))
 				if amount_sats == splice_amount_sats
 		));
+	}
+
+	#[test]
+	fn parse_request_with_amount_populates_onchain_oneof() {
+		let request: OnchainSendRequest = parse_request_with_amount(
+			json!({
+				"address": "bc1qexample",
+				"amount_sats": "all"
+			}),
+			"amount_sats",
+		)
+		.unwrap();
+
+		assert!(matches!(request.amount, Some(onchain_send_request::Amount::AllFunds(_))));
 	}
 
 	#[test]
