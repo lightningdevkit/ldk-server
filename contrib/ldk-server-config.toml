@@ -29,7 +29,14 @@ alias = "ldk_server"                          # Lightning node alias
 
 # Storage settings
 [storage.disk]
-dir_path = "/tmp/ldk-server/"                 # Path for LDK and BDK data persistence, optional, defaults to ~/Library/Application Support/ldk-server/ on macOS, ~/.ldk-server/ on Linux
+dir_path = "/tmp/ldk-server/"                 # Path for local ldk-server data, optional, defaults to ~/Library/Application Support/ldk-server/ on macOS, ~/.ldk-server/ on Linux
+
+# Optional LDK Node PostgreSQL storage for wallet and channel state.
+#[storage.postgres]
+#connection_string = "postgresql://postgres:postgres@localhost:5432" # PostgreSQL connection string. Do not include dbname if db_name is set.
+#db_name = "ldk_db"                         # Optional database name.
+#kv_table_name = "ldk_data"                 # Optional KV table name.
+#certificate_path = "/path/to/postgres-ca.pem" # Optional CA certificate PEM file for TLS PostgreSQL connections.
 
 [log]
 level = "Debug"                               # Log level (Error, Warn, Info, Debug, Trace)
