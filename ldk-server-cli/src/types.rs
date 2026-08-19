@@ -120,6 +120,35 @@ impl FromStr for Amount {
 	}
 }
 
+/// An exact on-chain amount or all available on-chain funds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmountOrAll {
+	Exact(Amount),
+	All,
+}
+
+impl AmountOrAll {
+	/// Returns the exact amount in satoshis, or `None` when all funds should be used.
+	pub fn to_sat(self) -> Result<Option<u64>, String> {
+		match self {
+			Self::Exact(amount) => amount.to_sat().map(Some),
+			Self::All => Ok(None),
+		}
+	}
+}
+
+impl FromStr for AmountOrAll {
+	type Err = String;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s.trim() == "all" {
+			Ok(Self::All)
+		} else {
+			Amount::from_str(s).map(Self::Exact)
+		}
+	}
+}
+
 /// A validated 32-byte payment preimage, parsed from a 64-character hex string.
 #[derive(Debug, Clone)]
 pub struct Preimage(pub [u8; 32]);
@@ -205,6 +234,14 @@ mod tests {
 		// rejects overflow (u64::MAX sats would overflow when multiplied by 1000)
 		let big = format!("{}sat", u64::MAX);
 		assert!(Amount::from_str(&big).is_err());
+	}
+
+	#[test]
+	fn amount_or_all_parses_exact_amount_or_all() {
+		assert_eq!(AmountOrAll::from_str("all").unwrap(), AmountOrAll::All);
+		assert_eq!(AmountOrAll::from_str(" all ").unwrap(), AmountOrAll::All);
+		assert_eq!(AmountOrAll::from_str("100sat").unwrap().to_sat().unwrap(), Some(100));
+		assert_eq!(AmountOrAll::All.to_sat().unwrap(), None);
 	}
 
 	#[test]

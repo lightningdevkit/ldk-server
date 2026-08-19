@@ -11,10 +11,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use ldk_node::bitcoin::{Address, FeeRate};
+use ldk_server_grpc::api::onchain_send_request::Amount;
 use ldk_server_grpc::api::{OnchainSendRequest, OnchainSendResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
+use crate::api::require_amount;
 use crate::service::Context;
 
 pub(crate) async fn handle_onchain_send_request(
@@ -31,18 +33,12 @@ pub(crate) async fn handle_onchain_send_request(
 		})?;
 
 	let fee_rate = request.fee_rate_sat_per_vb.and_then(FeeRate::from_sat_per_vb);
-	let txid = match (request.amount_sats, request.send_all) {
-		(Some(amount_sats), None) => {
+	let txid = match require_amount(request.amount)? {
+		Amount::AmountSats(amount_sats) => {
 			context.node.onchain_payment().send_to_address(&address, amount_sats, fee_rate)?
 		},
-		(None, Some(true)) => {
+		Amount::AllFunds(_) => {
 			context.node.onchain_payment().send_all_to_address(&address, true, fee_rate)?
-		},
-		_ => {
-			return Err(LdkServerError::new(
-				InvalidRequestError,
-				"Must specify either `send_all` or `amount_sats`, but not both or neither",
-			))
 		},
 	};
 	let response = OnchainSendResponse { txid: txid.to_string() };

@@ -23,8 +23,8 @@ use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
-	Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetBalancesRequest, OnchainReceiveRequest,
-	OpenChannelRequest,
+	open_channel_request, Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetBalancesRequest,
+	OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -376,7 +376,7 @@ async fn test_cli_onchain_send_all() {
 	let balances_before = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
 
 	let address = bitcoind.bitcoind.client.new_address().unwrap().to_string();
-	let output = run_cli(&server, &["onchain-send", &address, "--send-all", "true"]);
+	let output = run_cli(&server, &["onchain-send", &address, "all"]);
 	assert!(!output["txid"].as_str().unwrap().is_empty());
 
 	mine_and_sync(&bitcoind, &[&server], 6).await;
@@ -435,8 +435,7 @@ async fn test_cli_list_peers() {
 
 // === CLI tests: Group 4 — Two-node with channel ===
 
-#[tokio::test]
-async fn test_cli_open_channel() {
+async fn open_channel_via_cli(channel_amount: &str) {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -454,9 +453,25 @@ async fn test_cli_open_channel() {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&["open-channel", server_b.node_id(), &addr, "100000sat", "--announce-channel"],
+		&[
+			"open-channel",
+			server_b.node_id(),
+			&addr,
+			channel_amount,
+			"--announce-channel",
+		],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cli_open_channel() {
+	open_channel_via_cli("100000sat").await;
+}
+
+#[tokio::test]
+async fn test_cli_open_channel_with_all() {
+	open_channel_via_cli("all").await;
 }
 
 #[tokio::test]
@@ -481,7 +496,9 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			channel_amount_sats: 100_000,
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(
+				100_000,
+			)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -645,7 +662,9 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			channel_amount_sats: 100_000,
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(
+				100_000,
+			)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -1119,16 +1138,27 @@ async fn test_cli_force_close_channel() {
 	assert!(channels_output["channels"].as_array().unwrap().is_empty());
 }
 
-#[tokio::test]
-async fn test_cli_splice_in() {
+async fn splice_in_via_cli(splice_amount: &str) {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output =
-		run_cli(&server_a, &["splice-in", &user_channel_id, server_b.node_id(), "50000sat"]);
+	let output = run_cli(
+		&server_a,
+		&["splice-in", &user_channel_id, server_b.node_id(), splice_amount],
+	);
 	assert!(output.is_object());
+}
+
+#[tokio::test]
+async fn test_cli_splice_in() {
+	splice_in_via_cli("50000sat").await;
+}
+
+#[tokio::test]
+async fn test_cli_splice_in_with_all() {
+	splice_in_via_cli("all").await;
 }
 
 #[tokio::test]

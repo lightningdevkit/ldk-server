@@ -23,6 +23,7 @@ use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
 };
 use ldk_server_client::ldk_server_grpc::api::{
+	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
 	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
 	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
@@ -56,8 +57,8 @@ use ldk_server_client::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use types::{
-	Amount, CliListForwardedPaymentsResponse, CliListPaymentsResponse, CliPaginatedResponse,
-	Preimage,
+	Amount, AmountOrAll, CliListForwardedPaymentsResponse, CliListPaymentsResponse,
+	CliPaginatedResponse, Preimage,
 };
 
 mod types;
@@ -115,14 +116,9 @@ enum Commands {
 		#[arg(help = "The address to send coins to")]
 		address: String,
 		#[arg(
-			help = "The amount to send, e.g. 50sat or 50000msat, must be a whole sat amount, cannot send msats on-chain. Will respect any on-chain reserve needed for anchor channels"
+			help = "The amount to send, e.g. 50sat or 50000msat, or 'all' to use all available on-chain funds. Exact amounts must be a whole sat amount. Will respect any on-chain reserve needed for anchor channels"
 		)]
-		amount: Option<Amount>,
-		#[arg(
-			long,
-			help = "Send all available balance to the address while retaining on-chain reserves for anchor channels"
-		)]
-		send_all: Option<bool>,
+		amount: AmountOrAll,
 		#[arg(
 			long,
 			help = "Fee rate in satoshis per virtual byte. If not set, a reasonable estimate will be used"
@@ -419,9 +415,9 @@ enum Commands {
 		)]
 		address: String,
 		#[arg(
-			help = "The amount to commit to the channel, e.g. 100sat or 100000msat, must be a whole sat amount, cannot send msats on-chain."
+			help = "The amount to commit to the channel, e.g. 100sat or 100000msat, or 'all' to use all available on-chain funds. Exact amounts must be a whole sat amount."
 		)]
-		channel_amount: Amount,
+		channel_amount: AmountOrAll,
 		#[arg(long, help = "Amount to push to the remote side, e.g. 50sat or 50000msat")]
 		push_to_counterparty: Option<Amount>,
 		#[arg(long, help = "Whether the channel should be public")]
@@ -457,9 +453,9 @@ enum Commands {
 		#[arg(help = "The hex-encoded public key of the channel's counterparty node")]
 		counterparty_node_id: String,
 		#[arg(
-			help = "The amount to splice into the channel, e.g. 50sat or 50000msat, must be a whole sat amount, cannot send msats on-chain."
+			help = "The amount to splice into the channel, e.g. 50sat or 50000msat, or 'all' to use all available on-chain funds. Exact amounts must be a whole sat amount."
 		)]
-		splice_amount: Amount,
+		splice_amount: AmountOrAll,
 	},
 	#[command(about = "Decrease the channel balance by the given amount")]
 	SpliceOut {
@@ -660,15 +656,17 @@ async fn main() {
 				client.onchain_receive(OnchainReceiveRequest {}).await,
 			);
 		},
-		Commands::OnchainSend { address, amount, send_all, fee_rate_sat_per_vb } => {
-			let amount_sats = amount.map(|a| a.to_sat().unwrap_or_else(|e| handle_error_msg(e)));
+		Commands::OnchainSend { address, amount, fee_rate_sat_per_vb } => {
+			let amount = match amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
+				Some(amount_sats) => onchain_send_request::Amount::AmountSats(amount_sats),
+				None => onchain_send_request::Amount::AllFunds(AllFunds {}),
+			};
 			handle_response_result::<_, OnchainSendResponse>(
 				client
 					.onchain_send(OnchainSendRequest {
 						address,
-						amount_sats,
-						send_all,
 						fee_rate_sat_per_vb,
+						amount: Some(amount),
 					})
 					.await,
 			);
@@ -983,8 +981,10 @@ async fn main() {
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
 		} => {
-			let channel_amount_sats =
-				channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e));
+			let amount = match channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
+				Some(amount_sats) => open_channel_request::Amount::ChannelAmountSats(amount_sats),
+				None => open_channel_request::Amount::AllFunds(AllFunds {}),
+			};
 			let push_to_counterparty_msat = push_to_counterparty.map(|a| a.to_msat());
 			let channel_config = build_open_channel_config(
 				forwarding_fee_proportional_millionths,
@@ -1003,7 +1003,7 @@ async fn main() {
 					.open_channel(OpenChannelRequest {
 						node_pubkey,
 						address,
-						channel_amount_sats,
+						amount: Some(amount),
 						push_to_counterparty_msat,
 						channel_config,
 						announce_channel,
@@ -1013,13 +1013,16 @@ async fn main() {
 			);
 		},
 		Commands::SpliceIn { user_channel_id, counterparty_node_id, splice_amount } => {
-			let splice_amount_sats = splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e));
+			let amount = match splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
+				Some(amount_sats) => splice_in_request::Amount::SpliceAmountSats(amount_sats),
+				None => splice_in_request::Amount::AllFunds(AllFunds {}),
+			};
 			handle_response_result::<_, SpliceInResponse>(
 				client
 					.splice_in(SpliceInRequest {
 						user_channel_id,
 						counterparty_node_id,
-						splice_amount_sats,
+						amount: Some(amount),
 					})
 					.await,
 			);

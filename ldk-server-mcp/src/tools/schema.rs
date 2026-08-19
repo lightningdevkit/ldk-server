@@ -163,19 +163,18 @@ pub fn onchain_send_schema() -> Value {
 				"description": "The Bitcoin address to send coins to"
 			},
 			"amount_sats": {
-				"type": "integer",
-				"description": "The amount in satoshis to send. Respects on-chain reserve for anchor channels"
-			},
-			"send_all": {
-				"type": "boolean",
-				"description": "If true, send all available balance while retaining on-chain reserves for anchor channels (amount_sats must be unset)"
+				"oneOf": [
+					{"type": "integer"},
+					{"type": "string", "const": "all"}
+				],
+				"description": "The amount in satoshis to send, or 'all' to use all available on-chain funds. Respects on-chain reserve for anchor channels"
 			},
 			"fee_rate_sat_per_vb": {
 				"type": "integer",
 				"description": "Fee rate in satoshis per virtual byte. If not set, a reasonable estimate will be used"
 			}
 		},
-		"required": ["address"]
+		"required": ["address", "amount_sats"]
 	})
 }
 
@@ -433,8 +432,11 @@ pub fn open_channel_schema() -> Value {
 				"description": "Address of the remote peer (IPv4:port, IPv6:port, OnionV3:port, or hostname:port)"
 			},
 			"channel_amount_sats": {
-				"type": "integer",
-				"description": "The amount in satoshis to commit to the channel"
+				"oneOf": [
+					{"type": "integer"},
+					{"type": "string", "const": "all"}
+				],
+				"description": "The amount in satoshis to commit to the channel, or 'all' to use all available on-chain funds"
 			},
 			"push_to_counterparty_msat": {
 				"type": "integer",
@@ -467,8 +469,11 @@ pub fn splice_in_schema() -> Value {
 				"description": "The hex-encoded public key of the channel's counterparty node"
 			},
 			"splice_amount_sats": {
-				"type": "integer",
-				"description": "The amount in satoshis to splice into the channel"
+				"oneOf": [
+					{"type": "integer"},
+					{"type": "string", "const": "all"}
+				],
+				"description": "The amount in satoshis to splice into the channel, or 'all' to use all available on-chain funds"
 			}
 		},
 		"required": ["user_channel_id", "counterparty_node_id", "splice_amount_sats"]

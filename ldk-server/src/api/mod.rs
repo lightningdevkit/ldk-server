@@ -52,6 +52,15 @@ pub(crate) mod unified_send;
 pub(crate) mod update_channel_config;
 pub(crate) mod verify_signature;
 
+pub(crate) fn require_amount<T>(amount: Option<T>) -> Result<T, LdkServerError> {
+	amount.ok_or_else(|| {
+		LdkServerError::new(
+			InvalidRequestError,
+			"Must specify either an exact amount or all available funds",
+		)
+	})
+}
+
 pub(crate) fn build_channel_config_from_proto(
 	default_config: ChannelConfig, proto_channel_config: ldk_server_grpc::types::ChannelConfig,
 ) -> Result<ChannelConfig, LdkServerError> {
@@ -139,6 +148,12 @@ pub(crate) fn node_to_proto_custom_tlv(node: &NodeCustomTlvRecord) -> ProtoCusto
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn amount_is_required() {
+		assert_eq!(require_amount(Some(42)).unwrap(), 42);
+		assert!(require_amount::<u64>(None).is_err());
+	}
 
 	#[test]
 	fn proto_to_node_custom_tlv_preserves_fields() {
