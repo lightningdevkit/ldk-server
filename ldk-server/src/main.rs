@@ -47,8 +47,7 @@ use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::io::persist::sqlite_store::SqliteStore;
 use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE, PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
+	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
@@ -507,23 +506,21 @@ fn main() {
 								payment_id, payment_hash, amount_msat
 							);
 
-							let proto_custom_records: Vec<_> = custom_records
-								.iter()
-								.map(node_to_proto_custom_tlv)
-								.collect();
-
-							send_event_and_upsert_payment(
+							send_payment_event(
 								&payment_id,
-								move |payment_ref| {
+								move |payment| {
+									let custom_records = custom_records
+										.iter()
+										.map(node_to_proto_custom_tlv)
+										.collect();
 									event_envelope::Event::PaymentReceived(events::PaymentReceived {
 										payment_id: payment_id.to_string(),
-										payment: Some(payment_ref.clone()),
-										custom_records: proto_custom_records,
+										payment: Some(payment),
+										custom_records,
 									})
 								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store),
 							);
 
 							if let Some(metrics) = &metrics {
@@ -531,20 +528,21 @@ fn main() {
 							}
 						},
 						Event::PaymentSuccessful { payment_id, payment_preimage, bolt12_invoice, .. } => {
-							let payment_preimage = payment_preimage.map(|p| p.to_string());
-							let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
-								invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
-							});
-							send_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
-									payment_id: payment_id.to_string(),
-									payment: Some(payment_ref.clone()),
-									payment_preimage,
-									bolt12_invoice,
-								}),
+							send_payment_event(&payment_id,
+								move |payment| {
+									let payment_preimage = payment_preimage.map(|p| p.to_string());
+									let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
+										invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
+									});
+									event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
+										payment_id: payment_id.to_string(),
+										payment: Some(payment),
+										payment_preimage,
+										bolt12_invoice,
+									})
+								},
 								&event_node,
-								&event_sender,
-								Arc::clone(&paginated_store));
+								&event_sender);
 
 							if let Some(metrics) = &metrics {
 								metrics.update_all_balances(&event_node);
@@ -552,24 +550,23 @@ fn main() {
 						},
 						Event::PaymentFailed {payment_id, reason, ..} => {
 							let proto_reason = reason.as_ref().map(payment_failure_reason_to_proto);
-							send_event_and_upsert_payment(&payment_id,
-								move |payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
+							send_payment_event(&payment_id,
+								move |payment| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment_id: payment_id.to_string(),
-									payment: Some(payment_ref.clone()),
+									payment: Some(payment),
 									reason: proto_reason.map(|r| r as i32),
 								}),
 								&event_node,
-								&event_sender,
-								Arc::clone(&paginated_store));
+								&event_sender);
 
 						},
 						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, .. } => {
-							send_event_and_upsert_payment(
+							send_payment_event(
 								&payment_id,
-								|payment_ref| {
+								|payment| {
 									event_envelope::Event::PaymentClaimable(
 										build_payment_claimable_proto(
-											payment_ref,
+											payment,
 											&custom_records,
 											claim_deadline,
 											payment_id.to_string(),
@@ -578,7 +575,6 @@ fn main() {
 								},
 								&event_node,
 								&event_sender,
-								Arc::clone(&paginated_store),
 							);
 						},
 						Event::PaymentForwarded {
@@ -758,24 +754,43 @@ fn main() {
 	log::logger().flush();
 }
 
-fn send_event_and_upsert_payment(
-	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
+fn send_payment_event(
+	payment_id: &PaymentId, payment_to_event: impl FnOnce(Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
-	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
+	if event_sender.receiver_count() == 0 {
+		debug!("No event subscribers connected, skipping payment event");
+		if let Err(e) = event_node.event_handled() {
+			error!("Failed to mark event as handled: {e}");
+		}
+		return;
+	}
+
 	match event_node.payment(payment_id) {
 		Ok(Some(payment_details)) => {
 			let payment = payment_to_proto(payment_details);
 
-			let event = payment_to_event(&payment);
+			let event = payment_to_event(payment);
 			if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
 				debug!("No event subscribers connected, skipping event: {e}");
 			}
 
-			upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
+			if let Err(e) = event_node.event_handled() {
+				error!("Failed to mark event as handled: {e}");
+			}
 		},
-		Ok(None) => error!("Unable to find payment with payment ID: {payment_id}"),
-		Err(e) => error!("Failed to retrieve payment with payment ID {payment_id}: {e}"),
+		Ok(None) => {
+			error!("Unable to find payment with payment ID: {payment_id}");
+			if let Err(e) = event_node.event_handled() {
+				error!("Failed to mark event as handled: {e}");
+			}
+		},
+		Err(e) => {
+			error!("Failed to retrieve payment with payment ID {payment_id}: {e}");
+			if let Err(e) = event_node.event_handled() {
+				error!("Failed to mark event as handled: {e}");
+			}
+		},
 	}
 }
 
@@ -954,30 +969,6 @@ fn closure_reason_details(
 	}
 }
 
-fn upsert_payment_details(
-	event_node: &Node, paginated_store: Arc<dyn PaginatedKVStore>, payment: &Payment,
-) {
-	let time =
-		SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
-
-	match paginated_store.write(
-		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-		&payment.payment_id,
-		time,
-		&payment.encode_to_vec(),
-	) {
-		Ok(_) => {
-			if let Err(e) = event_node.event_handled() {
-				error!("Failed to mark event as handled: {e}");
-			}
-		},
-		Err(e) => {
-			error!("Failed to write payment to persistence: {e}");
-		},
-	}
-}
-
 /// Loads the API key from a file, or generates a new one if it doesn't exist.
 /// The API key file is stored with 0400 permissions (read-only for owner).
 fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
@@ -1018,14 +1009,14 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 }
 
 fn build_payment_claimable_proto(
-	payment_ref: &Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
+	payment: Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
 	payment_id: String,
 ) -> events::PaymentClaimable {
 	let proto_custom_records: Vec<_> =
 		custom_records.iter().map(node_to_proto_custom_tlv).collect();
 	events::PaymentClaimable {
 		payment_id,
-		payment: Some(payment_ref.clone()),
+		payment: Some(payment),
 		custom_records: proto_custom_records,
 		claim_deadline,
 	}
@@ -1156,7 +1147,7 @@ mod tests {
 			CustomTlvRecord { type_num: 65537, value: vec![1, 2, 3] },
 			CustomTlvRecord { type_num: 65538, value: Vec::new() },
 		];
-		let proto = build_payment_claimable_proto(&payment, &records, None, "abc123".to_string());
+		let proto = build_payment_claimable_proto(payment, &records, None, "abc123".to_string());
 		assert_eq!(proto.payment_id, "abc123");
 		assert_eq!(proto.custom_records.len(), 2);
 		assert_eq!(proto.custom_records[0].type_num, 65537);

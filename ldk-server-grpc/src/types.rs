@@ -938,18 +938,6 @@ pub struct AwaitingThresholdConfirmations {
 	#[prost(uint64, tag = "5")]
 	pub amount_satoshis: u64,
 }
-/// Token used to determine start of next page in paginated APIs.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "serde", serde(default))]
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PageToken {
-	#[prost(string, tag = "1")]
-	pub token: ::prost::alloc::string::String,
-	#[prost(int64, tag = "2")]
-	pub index: i64,
-}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]

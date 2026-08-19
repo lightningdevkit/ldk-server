@@ -791,12 +791,6 @@ message AwaitingThresholdConfirmations {
   uint64 amount_satoshis = 5;
 }
 
-// Token used to determine start of next page in paginated APIs.
-message PageToken {
-  string token = 1;
-  int64 index = 2;
-}
-
 message Bolt11InvoiceDescription {
   oneof kind {
     string direct = 1;
