@@ -19,13 +19,13 @@ use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
 use ldk_server_grpc::endpoints::{
-	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
+	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
-	BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH, CLOSE_CHANNEL_PATH,
+	CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
@@ -42,8 +42,8 @@ use ldk_server_grpc::grpc::{
 use prost::Message;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
-use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
+use crate::api::bolt11_claim_for_id::handle_bolt11_claim_for_id_request;
+use crate::api::bolt11_fail_for_id::handle_bolt11_fail_for_id_request;
 use crate::api::bolt11_receive::handle_bolt11_receive_request;
 use crate::api::bolt11_receive_for_hash::handle_bolt11_receive_for_hash_request;
 use crate::api::bolt11_receive_via_jit_channel::{
@@ -51,6 +51,7 @@ use crate::api::bolt11_receive_via_jit_channel::{
 	handle_bolt11_receive_via_jit_channel_request,
 };
 use crate::api::bolt11_send::{handle_bolt11_send_request, handle_bolt11_send_underpaying_request};
+use crate::api::bolt12_create_payer_proof::handle_bolt12_create_payer_proof_request;
 use crate::api::bolt12_receive::handle_bolt12_receive_request;
 use crate::api::bolt12_send::handle_bolt12_send_request;
 use crate::api::close_channel::{handle_close_channel_request, handle_force_close_channel_request};
@@ -292,13 +293,11 @@ impl Service<Request<Incoming>> for NodeService {
 					handle_grpc_unary(context, body_bytes, handle_bolt11_receive_for_hash_request)
 						.await
 				},
-				BOLT11_CLAIM_FOR_HASH_PATH => {
-					handle_grpc_unary(context, body_bytes, handle_bolt11_claim_for_hash_request)
-						.await
+				BOLT11_CLAIM_FOR_ID_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bolt11_claim_for_id_request).await
 				},
-				BOLT11_FAIL_FOR_HASH_PATH => {
-					handle_grpc_unary(context, body_bytes, handle_bolt11_fail_for_hash_request)
-						.await
+				BOLT11_FAIL_FOR_ID_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bolt11_fail_for_id_request).await
 				},
 				BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH => {
 					handle_grpc_unary(
@@ -328,6 +327,10 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				BOLT12_SEND_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_bolt12_send_request).await
+				},
+				BOLT12_CREATE_PAYER_PROOF_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bolt12_create_payer_proof_request)
+						.await
 				},
 				OPEN_CHANNEL_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_open_channel).await

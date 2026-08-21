@@ -21,4 +21,4 @@ ldk-server-client = { path = "../ldk-server-client" }
 ldk-server-grpc = { path = "../ldk-server-grpc", features = ["serde"] }
 serde_json = "1.0"
 hex-conservative = { version = "0.2", features = ["std"] }
-ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "056447c28221be02c3d39f8c6ae430a67ebbd850" }
+ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "19106b3eb51ee7fe48dae83c386fa88c69634898" }

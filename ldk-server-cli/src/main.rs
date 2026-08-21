@@ -24,31 +24,32 @@ use ldk_server_client::error::LdkServerErrorCode::{
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
+	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRequest,
-	Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest,
-	CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest,
-	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
-	DisconnectPeerResponse, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
-	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
+	Bolt12CreatePayerProofResponse, Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRequest,
+	Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest,
+	DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
+	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
+	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
+	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
+	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
+	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
-	PageToken, RouteParametersConfig,
+	PageToken, PayerProofOptions, RouteParametersConfig,
 };
 use ldk_server_client::{
 	DEFAULT_EXPIRY_SECS, DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF, DEFAULT_MAX_PATH_COUNT,
@@ -162,7 +163,9 @@ enum Commands {
 		expiry_secs: Option<u32>,
 	},
 	#[command(about = "Claim a held payment by providing the preimage")]
-	Bolt11ClaimForHash {
+	Bolt11ClaimForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 		#[arg(help = "The hex-encoded 32-byte payment preimage")]
 		preimage: String,
 		#[arg(
@@ -171,17 +174,11 @@ enum Commands {
 			help = "The claimable amount, e.g. 50sat or 50000msat, only used for verifying we are claiming the expected amount"
 		)]
 		claimable_amount: Option<Amount>,
-		#[arg(
-			short,
-			long,
-			help = "The hex-encoded 32-byte payment hash, used to verify the preimage matches"
-		)]
-		payment_hash: Option<String>,
 	},
 	#[command(about = "Fail/reject a held payment")]
-	Bolt11FailForHash {
-		#[arg(help = "The hex-encoded 32-byte payment hash")]
-		payment_hash: String,
+	Bolt11FailForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 	},
 	#[command(about = "Create a fixed-amount BOLT11 invoice to receive via an LSPS2 JIT channel")]
 	Bolt11ReceiveViaJitChannel {
@@ -318,6 +315,27 @@ enum Commands {
 			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(about = "Create a BOLT 12 payer proof for a payment this node made")]
+	Bolt12CreatePayerProof {
+		#[arg(help = "The hex-encoded payment id from PaymentSuccessful")]
+		payment_id: String,
+		#[arg(help = "The hex-encoded 32-byte payment preimage from PaymentSuccessful")]
+		payment_preimage: String,
+		#[arg(help = "The hex-encoded BOLT 12 invoice from PaymentSuccessful")]
+		invoice: String,
+		#[arg(long, help = "Optional note to attach to the payer proof")]
+		note: Option<String>,
+		#[arg(long, help = "Disclose the offer description in the proof")]
+		include_offer_description: bool,
+		#[arg(long, help = "Disclose the offer issuer in the proof")]
+		include_offer_issuer: bool,
+		#[arg(long, help = "Disclose the invoice amount in the proof")]
+		include_invoice_amount: bool,
+		#[arg(long, help = "Disclose the invoice creation timestamp in the proof")]
+		include_invoice_created_at: bool,
+		#[arg(long, help = "Additional TLV types to disclose")]
+		extra_tlv_types: Vec<u64>,
 	},
 	#[command(about = "Send a spontaneous payment (keysend) to a node")]
 	SpontaneousSend {
@@ -720,20 +738,20 @@ async fn main() {
 				client.bolt11_receive_for_hash(request).await,
 			);
 		},
-		Commands::Bolt11ClaimForHash { preimage, claimable_amount, payment_hash } => {
-			handle_response_result::<_, Bolt11ClaimForHashResponse>(
+		Commands::Bolt11ClaimForId { payment_id, preimage, claimable_amount } => {
+			handle_response_result::<_, Bolt11ClaimForIdResponse>(
 				client
-					.bolt11_claim_for_hash(Bolt11ClaimForHashRequest {
-						payment_hash,
+					.bolt11_claim_for_id(Bolt11ClaimForIdRequest {
+						payment_id,
 						claimable_amount_msat: claimable_amount.map(|a| a.to_msat()),
 						preimage,
 					})
 					.await,
 			);
 		},
-		Commands::Bolt11FailForHash { payment_hash } => {
-			handle_response_result::<_, Bolt11FailForHashResponse>(
-				client.bolt11_fail_for_hash(Bolt11FailForHashRequest { payment_hash }).await,
+		Commands::Bolt11FailForId { payment_id } => {
+			handle_response_result::<_, Bolt11FailForIdResponse>(
+				client.bolt11_fail_for_id(Bolt11FailForIdRequest { payment_id }).await,
 			);
 		},
 		Commands::Bolt11ReceiveViaJitChannel {
@@ -868,6 +886,36 @@ async fn main() {
 						quantity,
 						payer_note,
 						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
+		Commands::Bolt12CreatePayerProof {
+			payment_id,
+			payment_preimage,
+			invoice,
+			note,
+			include_offer_description,
+			include_offer_issuer,
+			include_invoice_amount,
+			include_invoice_created_at,
+			extra_tlv_types,
+		} => {
+			let options = PayerProofOptions {
+				note,
+				include_offer_description,
+				include_offer_issuer,
+				include_invoice_amount,
+				include_invoice_created_at,
+				extra_tlv_types,
+			};
+			handle_response_result::<_, Bolt12CreatePayerProofResponse>(
+				client
+					.bolt12_create_payer_proof(Bolt12CreatePayerProofRequest {
+						payment_id,
+						payment_preimage,
+						invoice,
+						options: Some(options),
 					})
 					.await,
 			);

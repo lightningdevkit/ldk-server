@@ -113,8 +113,8 @@ These RPCs support a manual claim/fail workflow for held payments. See
 | RPC                    | Description                                                        |
 |------------------------|--------------------------------------------------------------------|
 | `Bolt11ReceiveForHash` | Create an invoice for a given payment hash (manual claim required) |
-| `Bolt11ClaimForHash`   | Claim a held payment by providing the preimage                     |
-| `Bolt11FailForHash`    | Reject a held payment                                              |
+| `Bolt11ClaimForId`      | Claim a held payment by its payment ID and preimage                |
+| `Bolt11FailForId`       | Reject a held payment by its payment ID                            |
 
 ### BOLT11 JIT Channels (LSPS2)
 
@@ -130,8 +130,9 @@ when the invoice is paid.
 
 | RPC             | Description                                                             |
 |-----------------|-------------------------------------------------------------------------|
-| `Bolt12Receive` | Create a BOLT12 offer (fixed or variable amount)                        |
-| `Bolt12Send`    | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12Receive`            | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12Send`               | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12CreatePayerProof`   | Create a BOLT 12 payer proof from a successful payment                  |
 
 ### Spontaneous and Unified Send
 
@@ -230,11 +231,11 @@ optional Basic Auth. See [Configuration](configuration.md#metrics) for setup.
 Hodl invoices allow you to inspect and conditionally accept incoming payments:
 
 1. **Create the invoice:** Call `Bolt11ReceiveForHash` with a payment hash you control.
-2. **Wait for payment:** Subscribe to events via `SubscribeEvents` and watch for a
-   `PaymentClaimable` event matching your payment hash.
+2. **Wait for payment:** Subscribe via `SubscribeEvents`. Save the payment ID from the matching
+   `PaymentClaimable` event.
 3. **Decide:**
-    - **Accept:** Call `Bolt11ClaimForHash` with the preimage corresponding to the payment hash.
-    - **Reject:** Call `Bolt11FailForHash` with the payment hash.
+    - **Accept:** Call `Bolt11ClaimForId` with the payment ID and corresponding preimage.
+    - **Reject:** Call `Bolt11FailForId` with the payment ID.
 
 The payment is held in a pending state until you explicitly claim or fail it. **You must
 always call one of these.** If you do neither, the HTLC will eventually time out, which
