@@ -175,16 +175,12 @@ pub fn resolve_api_key(
 		},
 		None => "bitcoin".to_string(),
 	};
-	if let Some(dir) = storage_dir(config) {
-		let path = api_key_path_for_storage_dir(dir, &network);
-		if let Some(api_key) = read_api_key(&path)? {
-			return Ok(Some(api_key));
-		}
-	}
-
-	match get_default_api_key_path(&network) {
-		Some(path) => read_api_key(&path),
-		None => Ok(None),
+	match storage_dir(config) {
+		Some(dir) => read_api_key(&api_key_path_for_storage_dir(dir, &network)),
+		None => match get_default_api_key_path(&network) {
+			Some(path) => read_api_key(&path),
+			None => Ok(None),
+		},
 	}
 }
 
@@ -253,12 +249,37 @@ fn default_grpc_service_address() -> String {
 #[cfg(test)]
 mod tests {
 	use std::fs;
+	use std::sync::Mutex;
 	use std::time::{SystemTime, UNIX_EPOCH};
 
 	use super::{
-		load_config, read_tls_certificate, resolve_api_key, resolve_base_url, Config, API_KEY_FILE,
-		CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+		get_default_api_key_path, load_config, read_tls_certificate, resolve_api_key,
+		resolve_base_url, Config, API_KEY_FILE, CONFIG_FILE_SIZE_LIMIT,
+		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
+
+	static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+	#[cfg(target_os = "windows")]
+	fn set_default_data_dir(temp_dir: &std::path::Path) -> (String, Option<String>) {
+		let old_value = std::env::var("APPDATA").ok();
+		std::env::set_var("APPDATA", temp_dir);
+		("APPDATA".to_string(), old_value)
+	}
+
+	#[cfg(not(target_os = "windows"))]
+	fn set_default_data_dir(temp_dir: &std::path::Path) -> (String, Option<String>) {
+		let old_value = std::env::var("HOME").ok();
+		std::env::set_var("HOME", temp_dir);
+		("HOME".to_string(), old_value)
+	}
+
+	fn restore_env_var(name: &str, value: Option<String>) {
+		match value {
+			Some(value) => std::env::set_var(name, value),
+			None => std::env::remove_var(name),
+		}
+	}
 
 	#[test]
 	fn config_defaults_grpc_service_address() {
@@ -377,6 +398,39 @@ mod tests {
 		assert!(resolve_api_key(None, Some(&config)).unwrap().is_none());
 
 		fs::remove_dir_all(storage_dir).unwrap();
+	}
+
+	#[test]
+	fn resolve_api_key_does_not_cross_storage_instances() {
+		let _lock = ENV_LOCK.lock().unwrap();
+		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let temp_dir = std::env::temp_dir()
+			.join(format!("ldk-server-client-key-instance-{}-{nonce}", std::process::id()));
+		let configured_storage = temp_dir.join("configured");
+		fs::create_dir_all(&configured_storage).unwrap();
+
+		let (default_dir_env_var, old_default_dir) = set_default_data_dir(&temp_dir);
+		let default_api_key = get_default_api_key_path("regtest").unwrap();
+		fs::create_dir_all(default_api_key.parent().unwrap()).unwrap();
+		fs::write(&default_api_key, [0xAB; 32]).unwrap();
+
+		let config: Config = toml::from_str(&format!(
+			r#"
+				[node]
+				network = "regtest"
+
+				[storage.disk]
+				dir_path = "{}"
+			"#,
+			configured_storage.display()
+		))
+		.unwrap();
+
+		let resolved = resolve_api_key(None, Some(&config));
+
+		restore_env_var(&default_dir_env_var, old_default_dir);
+		fs::remove_dir_all(temp_dir).unwrap();
+		assert!(resolved.unwrap().is_none());
 	}
 
 	#[test]
