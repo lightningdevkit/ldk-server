@@ -43,7 +43,7 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::api::bolt11_claim_for_id::handle_bolt11_claim_for_id_request;
 use crate::api::bolt11_fail_for_id::handle_bolt11_fail_for_id_request;
@@ -104,6 +104,8 @@ const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 
 // Maximum request body size: 10 MB
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+const MAX_CONCURRENT_BODY_READS: usize = 8;
+static REQUEST_BODY_SEMAPHORE: Semaphore = Semaphore::const_new(MAX_CONCURRENT_BODY_READS);
 
 #[derive(Clone)]
 pub(crate) struct NodeService {
@@ -601,6 +603,9 @@ where
 		_ => {},
 	}
 	let content_length = request_content_length(headers)?;
+	let _body_permit = REQUEST_BODY_SEMAPHORE
+		.try_acquire()
+		.map_err(|_| GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "Too many concurrent requests"))?;
 	let limited_body = Limited::new(body, MAX_BODY_SIZE);
 	let bytes = match limited_body.collect().await {
 		Ok(collected) => collected.to_bytes(),
