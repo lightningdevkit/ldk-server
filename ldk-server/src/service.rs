@@ -40,7 +40,7 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE, GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 
 use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
 use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
@@ -88,6 +88,8 @@ const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 
 // Maximum request body size: 10 MB
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+const MAX_CONCURRENT_BODY_READS: usize = 8;
+static REQUEST_BODY_SEMAPHORE: Semaphore = Semaphore::const_new(MAX_CONCURRENT_BODY_READS);
 
 #[derive(Clone)]
 pub(crate) struct NodeService {
@@ -217,6 +219,10 @@ impl Service<Request<Incoming>> for NodeService {
 		if let Err(status) = validate_grpc_request(&req) {
 			return Box::pin(async move { Ok(grpc_error_response(status)) });
 		}
+		if req.headers().get("x-auth").is_none() {
+			let status = GrpcStatus::new(GRPC_STATUS_UNAUTHENTICATED, "Missing x-auth metadata");
+			return Box::pin(async move { Ok(grpc_error_response(status)) });
+		}
 
 		let context = Arc::clone(&self.context);
 		let path = req.uri().path().to_string();
@@ -257,6 +263,15 @@ impl Service<Request<Incoming>> for NodeService {
 		let shutdown_rx = self.shutdown_rx.clone();
 		let (request_parts, request_body) = req.into_parts();
 		let future: Self::Future = Box::pin(async move {
+			let body_permit = match REQUEST_BODY_SEMAPHORE.try_acquire() {
+				Ok(permit) => permit,
+				Err(_) => {
+					return Ok(grpc_error_response(GrpcStatus::new(
+						GRPC_STATUS_UNAVAILABLE,
+						"Too many concurrent requests",
+					)));
+				},
+			};
 			let content_length = match request_content_length(&request_parts.headers) {
 				Ok(content_length) => content_length,
 				Err(status) => return Ok(grpc_error_response(status)),
@@ -265,6 +280,7 @@ impl Service<Request<Incoming>> for NodeService {
 				Ok(bytes) => bytes,
 				Err(status) => return Ok(grpc_error_response(status)),
 			};
+			drop(body_permit);
 
 			let auth_req = Request::from_parts(request_parts, ());
 			if let Err(e) = validate_auth(&auth_req, &api_key, &body_bytes) {

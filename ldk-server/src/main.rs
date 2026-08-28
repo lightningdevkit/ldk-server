@@ -58,6 +58,7 @@ use crate::util::{systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
+const MAX_CONCURRENT_HTTP2_STREAMS: u32 = 32;
 const MAX_PENDING_TLS_HANDSHAKES: usize = 64;
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -673,7 +674,9 @@ fn main() {
 								{
 									Ok(Ok(tls_stream)) => {
 										let io_stream = TokioIo::new(tls_stream);
-										if let Err(err) = http2::Builder::new(TokioExecutor::new()).serve_connection(io_stream, node_service).await {
+										let mut builder = http2::Builder::new(TokioExecutor::new());
+										builder.max_concurrent_streams(MAX_CONCURRENT_HTTP2_STREAMS);
+										if let Err(err) = builder.serve_connection(io_stream, node_service).await {
 											error!("Failed to serve TLS connection: {err}");
 										}
 									},
