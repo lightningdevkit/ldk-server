@@ -12,7 +12,12 @@ use ldk_server_client::ldk_server_grpc::api::Bolt11ReceiveRequest;
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
 };
-use serde_json::json;
+use serde_json::{json, Value};
+
+fn tool_result_json(response: &Value) -> Value {
+	let text = response["result"]["content"][0]["text"].as_str().unwrap();
+	serde_json::from_str(text).unwrap()
+}
 
 #[tokio::test]
 async fn test_mcp_initialize_and_list_tools() {
@@ -49,17 +54,14 @@ async fn test_mcp_live_tool_calls() {
 		"name": "get_node_info",
 		"arguments": {}
 	}));
-	let node_info_text = node_info["result"]["content"][0]["text"].as_str().unwrap();
-	let node_info_json: serde_json::Value = serde_json::from_str(node_info_text).unwrap();
+	let node_info_json = tool_result_json(&node_info);
 	assert_eq!(node_info_json["node_id"], server.node_id());
 
 	let onchain_receive = mcp.call(2, "tools/call", json!({
 		"name": "onchain_receive",
 		"arguments": {}
 	}));
-	let onchain_receive_text = onchain_receive["result"]["content"][0]["text"].as_str().unwrap();
-	let onchain_receive_json: serde_json::Value =
-		serde_json::from_str(onchain_receive_text).unwrap();
+	let onchain_receive_json = tool_result_json(&onchain_receive);
 	assert!(onchain_receive_json["address"].as_str().unwrap().starts_with("bcrt1"));
 
 	let invoice = server
@@ -78,9 +80,7 @@ async fn test_mcp_live_tool_calls() {
 		"name": "decode_invoice",
 		"arguments": { "invoice": invoice.invoice }
 	}));
-	let decode_invoice_text = decode_invoice["result"]["content"][0]["text"].as_str().unwrap();
-	let decode_invoice_json: serde_json::Value =
-		serde_json::from_str(decode_invoice_text).unwrap();
+	let decode_invoice_json = tool_result_json(&decode_invoice);
 	assert_eq!(decode_invoice_json["destination"], server.node_id());
 	assert_eq!(decode_invoice_json["description"], "mcp decode");
 	assert_eq!(decode_invoice_json["amount_msat"], 50_000_000u64);

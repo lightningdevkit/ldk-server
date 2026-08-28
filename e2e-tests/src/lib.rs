@@ -15,13 +15,17 @@ use std::time::Duration;
 
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
-use ldk_server_client::client::LdkServerClient;
+use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
+use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
+use ldk_server_client::ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::api::{
 	open_channel_request, GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest,
 	OpenChannelRequest,
 };
 use serde_json::Value;
+
+const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Wrapper around a managed bitcoind process for regtest.
 pub struct TestBitcoind {
@@ -485,6 +489,22 @@ pub async fn wait_for_file(path: &Path, timeout: Duration) {
 		}
 		tokio::time::sleep(Duration::from_millis(100)).await;
 	}
+}
+
+/// Wait for the next event that matches the predicate.
+pub async fn wait_for_event(
+	events: &mut EventStream, pred: impl Fn(&Event) -> bool,
+) -> EventEnvelope {
+	tokio::time::timeout(EVENT_TIMEOUT, async {
+		while let Some(Ok(event)) = events.next_message().await {
+			if event.event.as_ref().is_some_and(&pred) {
+				return event;
+			}
+		}
+		panic!("Event stream ended without matching event");
+	})
+	.await
+	.expect("Timed out waiting for event")
 }
 
 /// Poll get_node_info until the server responds successfully.

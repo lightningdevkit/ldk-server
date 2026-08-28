@@ -13,42 +13,26 @@ use std::time::Duration;
 
 use e2e_tests::{
 	find_available_port, mine_and_sync, run_cli, run_cli_raw, run_cli_with_config,
-	setup_funded_channel, wait_for_onchain_balance, wait_for_usable_channel, LdkServerConfig,
-	LdkServerHandle, TestBitcoind,
+	setup_funded_channel, wait_for_event, wait_for_onchain_balance, wait_for_usable_channel,
+	LdkServerConfig, LdkServerHandle, TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_client::client::EventStream;
 use ldk_server_client::ldk_server_grpc::api::{
 	open_channel_request, Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetBalancesRequest,
 	OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
-	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind, EventEnvelope,
+	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
 };
 use ldk_server_grpc::types::payment_kind;
-
-const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
-
-async fn wait_for_event(events: &mut EventStream, pred: impl Fn(&Event) -> bool) -> EventEnvelope {
-	tokio::time::timeout(EVENT_TIMEOUT, async {
-		while let Some(Ok(ev)) = events.next_message().await {
-			if ev.event.as_ref().is_some_and(&pred) {
-				return ev;
-			}
-		}
-		panic!("Event stream ended without matching event");
-	})
-	.await
-	.expect("Timed out waiting for event")
-}
 
 #[tokio::test]
 async fn test_cli_get_node_info() {
