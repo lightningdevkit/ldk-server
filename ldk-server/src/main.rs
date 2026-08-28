@@ -26,7 +26,7 @@ use hyper::server::conn::http2;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use ldk_node::bitcoin::Network;
 use ldk_node::config::{Config, ElectrumSyncConfig, EsploraSyncConfig};
-use ldk_node::lightning::events::ClosureReason;
+use ldk_node::lightning::events::{ClosureReason, PaymentFailureReason};
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::ln::types::ChannelId;
 use ldk_node::{Builder, CustomTlvRecord, Event, Node};
@@ -534,12 +534,14 @@ fn main() {
 								metrics.update_all_balances(&event_node);
 							}
 						},
-						Event::PaymentFailed {payment_id, ..} => {
+						Event::PaymentFailed {payment_id, reason, ..} => {
 							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
+							let proto_reason = reason.as_ref().map(payment_failure_reason_to_proto);
 
 							send_event_and_upsert_payment(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
+								move |payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment: Some(payment_ref.clone()),
+									reason: proto_reason.map(|r| r as i32),
 								}),
 								&event_node,
 								&event_sender,
@@ -763,6 +765,29 @@ fn closure_initiator_from_reason(
 		| Some(ClosureReason::HTLCsTimedOut { .. })
 		| Some(ClosureReason::PeerFeerateTooLow { .. }) => events::ChannelClosureInitiator::Unknown,
 		None => events::ChannelClosureInitiator::Unspecified,
+	}
+}
+
+fn payment_failure_reason_to_proto(reason: &PaymentFailureReason) -> events::PaymentFailureReason {
+	match reason {
+		PaymentFailureReason::RecipientRejected => events::PaymentFailureReason::RecipientRejected,
+		PaymentFailureReason::UserAbandoned => events::PaymentFailureReason::UserAbandoned,
+		PaymentFailureReason::RetriesExhausted => events::PaymentFailureReason::RetriesExhausted,
+		PaymentFailureReason::PaymentExpired => events::PaymentFailureReason::PaymentExpired,
+		PaymentFailureReason::RouteNotFound => events::PaymentFailureReason::RouteNotFound,
+		PaymentFailureReason::UnexpectedError => events::PaymentFailureReason::UnexpectedError,
+		PaymentFailureReason::UnknownRequiredFeatures => {
+			events::PaymentFailureReason::UnknownRequiredFeatures
+		},
+		PaymentFailureReason::InvoiceRequestExpired => {
+			events::PaymentFailureReason::InvoiceRequestExpired
+		},
+		PaymentFailureReason::InvoiceRequestRejected => {
+			events::PaymentFailureReason::InvoiceRequestRejected
+		},
+		PaymentFailureReason::BlindedPathCreationFailed => {
+			events::PaymentFailureReason::BlindedPathCreationFailed
+		},
 	}
 }
 

@@ -175,6 +175,13 @@ pub struct PaymentFailed {
 	/// The payment details for the payment in event.
 	#[prost(message, optional, tag = "1")]
 	pub payment: ::core::option::Option<super::types::Payment>,
+	/// The reason the payment failed, if known.
+	///
+	/// This is only available on the emitted event; `GetPaymentDetails` cannot
+	/// recover it as LDK Node does not currently persist the failure reason in
+	/// `PaymentDetails`.
+	#[prost(enumeration = "PaymentFailureReason", optional, tag = "2")]
+	pub reason: ::core::option::Option<i32>,
 }
 /// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
 /// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
@@ -271,6 +278,87 @@ impl ChannelClosureInitiator {
 			"CHANNEL_CLOSURE_INITIATOR_LOCAL" => Some(Self::Local),
 			"CHANNEL_CLOSURE_INITIATOR_REMOTE" => Some(Self::Remote),
 			"CHANNEL_CLOSURE_INITIATOR_UNKNOWN" => Some(Self::Unknown),
+			_ => None,
+		}
+	}
+}
+/// PaymentFailureReason mirrors LDK's `lightning::events::PaymentFailureReason`,
+/// indicating why a sent payment failed.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PaymentFailureReason {
+	Unspecified = 0,
+	/// The intended recipient rejected our payment.
+	RecipientRejected = 1,
+	/// The user chose to abandon this payment by calling `abandon_payment`.
+	UserAbandoned = 2,
+	/// We exhausted all of our retry attempts while trying to send the payment,
+	/// or we exhausted the configured retry timeout.
+	RetriesExhausted = 3,
+	/// Either the BOLT12 invoice was expired by the time we received it or the
+	/// payment expired while retrying.
+	PaymentExpired = 4,
+	/// We failed to find a route while sending or retrying the payment.
+	RouteNotFound = 5,
+	/// An unexpected error occurred, generally indicating a problem with the router.
+	UnexpectedError = 6,
+	/// An invoice was received that required unknown features.
+	UnknownRequiredFeatures = 7,
+	/// A BOLT12 invoice was not received in a reasonable amount of time.
+	InvoiceRequestExpired = 8,
+	/// An invoice request for the payment was rejected by the recipient.
+	InvoiceRequestRejected = 9,
+	/// Failed to create a blinded path back to ourselves.
+	BlindedPathCreationFailed = 10,
+}
+impl PaymentFailureReason {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			PaymentFailureReason::Unspecified => "PAYMENT_FAILURE_REASON_UNSPECIFIED",
+			PaymentFailureReason::RecipientRejected => "PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED",
+			PaymentFailureReason::UserAbandoned => "PAYMENT_FAILURE_REASON_USER_ABANDONED",
+			PaymentFailureReason::RetriesExhausted => "PAYMENT_FAILURE_REASON_RETRIES_EXHAUSTED",
+			PaymentFailureReason::PaymentExpired => "PAYMENT_FAILURE_REASON_PAYMENT_EXPIRED",
+			PaymentFailureReason::RouteNotFound => "PAYMENT_FAILURE_REASON_ROUTE_NOT_FOUND",
+			PaymentFailureReason::UnexpectedError => "PAYMENT_FAILURE_REASON_UNEXPECTED_ERROR",
+			PaymentFailureReason::UnknownRequiredFeatures => {
+				"PAYMENT_FAILURE_REASON_UNKNOWN_REQUIRED_FEATURES"
+			},
+			PaymentFailureReason::InvoiceRequestExpired => {
+				"PAYMENT_FAILURE_REASON_INVOICE_REQUEST_EXPIRED"
+			},
+			PaymentFailureReason::InvoiceRequestRejected => {
+				"PAYMENT_FAILURE_REASON_INVOICE_REQUEST_REJECTED"
+			},
+			PaymentFailureReason::BlindedPathCreationFailed => {
+				"PAYMENT_FAILURE_REASON_BLINDED_PATH_CREATION_FAILED"
+			},
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"PAYMENT_FAILURE_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+			"PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED" => Some(Self::RecipientRejected),
+			"PAYMENT_FAILURE_REASON_USER_ABANDONED" => Some(Self::UserAbandoned),
+			"PAYMENT_FAILURE_REASON_RETRIES_EXHAUSTED" => Some(Self::RetriesExhausted),
+			"PAYMENT_FAILURE_REASON_PAYMENT_EXPIRED" => Some(Self::PaymentExpired),
+			"PAYMENT_FAILURE_REASON_ROUTE_NOT_FOUND" => Some(Self::RouteNotFound),
+			"PAYMENT_FAILURE_REASON_UNEXPECTED_ERROR" => Some(Self::UnexpectedError),
+			"PAYMENT_FAILURE_REASON_UNKNOWN_REQUIRED_FEATURES" => {
+				Some(Self::UnknownRequiredFeatures)
+			},
+			"PAYMENT_FAILURE_REASON_INVOICE_REQUEST_EXPIRED" => Some(Self::InvoiceRequestExpired),
+			"PAYMENT_FAILURE_REASON_INVOICE_REQUEST_REJECTED" => Some(Self::InvoiceRequestRejected),
+			"PAYMENT_FAILURE_REASON_BLINDED_PATH_CREATION_FAILED" => {
+				Some(Self::BlindedPathCreationFailed)
+			},
 			_ => None,
 		}
 	}

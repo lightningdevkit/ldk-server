@@ -29,6 +29,34 @@ enum ChannelClosureInitiator {
   CHANNEL_CLOSURE_INITIATOR_UNKNOWN = 3;
 }
 
+// PaymentFailureReason mirrors LDK's `lightning::events::PaymentFailureReason`,
+// indicating why a sent payment failed.
+enum PaymentFailureReason {
+  PAYMENT_FAILURE_REASON_UNSPECIFIED = 0;
+  // The intended recipient rejected our payment.
+  PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED = 1;
+  // The user chose to abandon this payment by calling `abandon_payment`.
+  PAYMENT_FAILURE_REASON_USER_ABANDONED = 2;
+  // We exhausted all of our retry attempts while trying to send the payment,
+  // or we exhausted the configured retry timeout.
+  PAYMENT_FAILURE_REASON_RETRIES_EXHAUSTED = 3;
+  // Either the BOLT12 invoice was expired by the time we received it or the
+  // payment expired while retrying.
+  PAYMENT_FAILURE_REASON_PAYMENT_EXPIRED = 4;
+  // We failed to find a route while sending or retrying the payment.
+  PAYMENT_FAILURE_REASON_ROUTE_NOT_FOUND = 5;
+  // An unexpected error occurred, generally indicating a problem with the router.
+  PAYMENT_FAILURE_REASON_UNEXPECTED_ERROR = 6;
+  // An invoice was received that required unknown features.
+  PAYMENT_FAILURE_REASON_UNKNOWN_REQUIRED_FEATURES = 7;
+  // A BOLT12 invoice was not received in a reasonable amount of time.
+  PAYMENT_FAILURE_REASON_INVOICE_REQUEST_EXPIRED = 8;
+  // An invoice request for the payment was rejected by the recipient.
+  PAYMENT_FAILURE_REASON_INVOICE_REQUEST_REJECTED = 9;
+  // Failed to create a blinded path back to ourselves.
+  PAYMENT_FAILURE_REASON_BLINDED_PATH_CREATION_FAILED = 10;
+}
+
 enum ChannelStateChangeReasonKind {
   CHANNEL_STATE_CHANGE_REASON_KIND_UNSPECIFIED = 0;
   CHANNEL_STATE_CHANGE_REASON_KIND_COUNTERPARTY_FORCE_CLOSED = 1;
@@ -110,6 +138,12 @@ message PaymentSuccessful {
 message PaymentFailed {
   // The payment details for the payment in event.
   types.Payment payment = 1;
+  // The reason the payment failed, if known.
+  //
+  // This is only available on the emitted event; `GetPaymentDetails` cannot
+  // recover it as LDK Node does not currently persist the failure reason in
+  // `PaymentDetails`.
+  optional PaymentFailureReason reason = 2;
 }
 
 // PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
