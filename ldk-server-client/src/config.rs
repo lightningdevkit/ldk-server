@@ -168,7 +168,13 @@ pub fn resolve_api_key(
 		return Ok(override_key);
 	}
 
-	let network = config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
+	let network = match config {
+		Some(config) => match config.network() {
+			Ok(network) => network,
+			Err(_) => return Ok(None),
+		},
+		None => "bitcoin".to_string(),
+	};
 	if let Some(dir) = storage_dir(config) {
 		let path = api_key_path_for_storage_dir(dir, &network);
 		if let Some(api_key) = read_api_key(&path)? {
@@ -246,9 +252,12 @@ fn default_grpc_service_address() -> String {
 
 #[cfg(test)]
 mod tests {
+	use std::fs;
+	use std::time::{SystemTime, UNIX_EPOCH};
+
 	use super::{
-		load_config, read_tls_certificate, resolve_base_url, Config, CONFIG_FILE_SIZE_LIMIT,
-		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+		load_config, read_tls_certificate, resolve_api_key, resolve_base_url, Config, API_KEY_FILE,
+		CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
 
 	#[test]
@@ -343,6 +352,31 @@ mod tests {
 	#[test]
 	fn resolve_base_url_falls_back_to_default() {
 		assert_eq!(resolve_base_url(None, None), DEFAULT_GRPC_SERVICE_ADDRESS);
+	}
+
+	#[test]
+	fn resolve_api_key_rejects_unsupported_network() {
+		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let storage_dir = std::env::temp_dir()
+			.join(format!("ldk-server-client-invalid-network-{}-{nonce}", std::process::id()));
+		fs::create_dir_all(storage_dir.join("bitcoin")).unwrap();
+		fs::write(storage_dir.join("bitcoin").join(API_KEY_FILE), [0xAB; 32]).unwrap();
+
+		let config: Config = toml::from_str(&format!(
+			r#"
+				[node]
+				network = "bitcion"
+
+				[storage.disk]
+				dir_path = "{}"
+			"#,
+			storage_dir.display()
+		))
+		.unwrap();
+
+		assert!(resolve_api_key(None, Some(&config)).unwrap().is_none());
+
+		fs::remove_dir_all(storage_dir).unwrap();
 	}
 
 	#[test]
