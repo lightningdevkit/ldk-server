@@ -126,12 +126,14 @@ when the invoice is paid.
 | `Bolt11ReceiveViaJitChannel`               | Create a fixed-amount invoice with JIT channel opening    |
 | `Bolt11ReceiveVariableAmountViaJitChannel` | Create a variable-amount invoice with JIT channel opening |
 
-### BOLT12 Offers
+### BOLT12 Offers and Refunds
 
-| RPC             | Description                                                             |
-|-----------------|-------------------------------------------------------------------------|
-| `Bolt12Receive` | Create a BOLT12 offer (fixed or variable amount)                        |
-| `Bolt12Send`    | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| RPC                   | Description                                                             |
+|-----------------------|-------------------------------------------------------------------------|
+| `Bolt12Receive`       | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12Send`          | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12SendRefund`    | Create a BOLT12 refund that this node will pay                          |
+| `Bolt12ReceiveRefund` | Request an incoming payment for a BOLT12 refund                         |
 
 ### Spontaneous and Unified Send
 

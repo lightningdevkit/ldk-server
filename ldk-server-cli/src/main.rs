@@ -29,13 +29,14 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRequest,
-	Bolt12ReceiveResponse, Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest,
-	CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest,
-	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
-	DisconnectPeerResponse, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
-	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRefundRequest,
+	Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest, Bolt12ReceiveResponse,
+	Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest, Bolt12SendResponse,
+	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
 	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
 	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
 	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
@@ -318,6 +319,43 @@ enum Commands {
 			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(about = "Create a BOLT12 refund")]
+	Bolt12SendRefund {
+		#[arg(help = "Amount to refund, e.g. 50sat or 50000msat")]
+		amount: Amount,
+		#[arg(long, default_value_t = DEFAULT_EXPIRY_SECS, help = "Refund expiry time in seconds")]
+		expiry_secs: u32,
+		#[arg(short, long, help = "Number of items being refunded")]
+		quantity: Option<u64>,
+		#[arg(
+			short,
+			long,
+			help = "Note to include for the recipient. Will be reflected back in the invoice"
+		)]
+		payer_note: Option<String>,
+		#[arg(
+			long,
+			help = "Maximum total routing fee, e.g. 50sat or 50000msat. Defaults to 1% of the payment amount + 50 sats"
+		)]
+		max_total_routing_fee: Option<Amount>,
+		#[arg(long, help = "Maximum total CLTV delta we accept for the route (default: 1008)")]
+		max_total_cltv_expiry_delta: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum number of paths that may be used by MPP payments (default: 10)"
+		)]
+		max_path_count: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
+		)]
+		max_channel_saturation_power_of_half: Option<u32>,
+	},
+	#[command(about = "Request payment for a BOLT12 refund")]
+	Bolt12ReceiveRefund {
+		#[arg(help = "A BOLT12 refund from the node that will send the payment")]
+		refund: String,
 	},
 	#[command(about = "Send a spontaneous payment (keysend) to a node")]
 	SpontaneousSend {
@@ -870,6 +908,43 @@ async fn main() {
 						route_parameters: Some(route_parameters),
 					})
 					.await,
+			);
+		},
+		Commands::Bolt12SendRefund {
+			amount,
+			expiry_secs,
+			quantity,
+			payer_note,
+			max_total_routing_fee,
+			max_total_cltv_expiry_delta,
+			max_path_count,
+			max_channel_saturation_power_of_half,
+		} => {
+			let max_total_routing_fee_msat = max_total_routing_fee.map(|a| a.to_msat());
+			let route_parameters = RouteParametersConfig {
+				max_total_routing_fee_msat,
+				max_total_cltv_expiry_delta: max_total_cltv_expiry_delta
+					.unwrap_or(DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA),
+				max_path_count: max_path_count.unwrap_or(DEFAULT_MAX_PATH_COUNT),
+				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
+					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
+			};
+
+			handle_response_result::<_, Bolt12SendRefundResponse>(
+				client
+					.bolt12_send_refund(Bolt12SendRefundRequest {
+						amount_msat: amount.to_msat(),
+						expiry_secs,
+						quantity,
+						payer_note,
+						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
+		Commands::Bolt12ReceiveRefund { refund } => {
+			handle_response_result::<_, Bolt12ReceiveRefundResponse>(
+				client.bolt12_receive_refund(Bolt12ReceiveRefundRequest { refund }).await,
 			);
 		},
 		Commands::SpontaneousSend {

@@ -20,6 +20,7 @@ use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
+use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::ldk_server_grpc::api::{
 	open_channel_request, Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetBalancesRequest,
@@ -969,6 +970,55 @@ async fn test_cli_bolt12_send() {
 	// Send via CLI from A
 	let output = run_cli(&server_a, &["bolt12-send", &offer_resp.offer, "10000sat"]);
 	assert!(!output["payment_id"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cli_bolt12_refund() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+	let mut events_b = server_b.client().subscribe_events().await.unwrap();
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	// Give B outbound liquidity for the refund payment.
+	let offer = server_b
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "refund funding payment".to_string(),
+			amount_msat: Some(10_000_000),
+			expiry_secs: None,
+			quantity: None,
+		})
+		.await
+		.unwrap();
+	run_cli(&server_a, &["bolt12-send", &offer.offer]);
+	wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
+
+	let output = run_cli(
+		&server_b,
+		&["bolt12-send-refund", "5000sat", "--quantity", "1", "--payer-note", "test refund"],
+	);
+	let refund_str = output["refund"].as_str().unwrap();
+	assert!(refund_str.starts_with("lnr"), "Expected lnr prefix, got: {refund_str}");
+	let refund = Refund::from_str(refund_str).unwrap();
+	assert_eq!(refund.amount_msats(), 5_000_000);
+	assert_eq!(refund.quantity(), Some(1));
+	assert_eq!(refund.payer_note().unwrap().to_string(), "test refund");
+
+	let output = run_cli(&server_a, &["bolt12-receive-refund", refund_str]);
+	let payment_hash = output["payment_hash"].as_str().unwrap();
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentReceived(_))).await;
+	let Some(Event::PaymentReceived(payment_received)) = event_a.event else {
+		panic!("expected PaymentReceived");
+	};
+	let payment = payment_received.payment.unwrap();
+	let Some(payment_kind::Kind::Bolt12Refund(refund)) = payment.kind.unwrap().kind else {
+		panic!("expected BOLT12 refund kind");
+	};
+	assert_eq!(refund.hash.as_deref(), Some(payment_hash));
+	wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentSuccessful(_))).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

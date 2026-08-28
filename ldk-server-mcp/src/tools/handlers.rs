@@ -13,11 +13,11 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ClaimForHashRequest, Bolt11FailForHashRequest, Bolt11ReceiveForHashRequest,
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
-	Bolt12ReceiveRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
-	DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, GetBalancesRequest,
-	GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
-	GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
+	Bolt12ReceiveRefundRequest, Bolt12ReceiveRequest, Bolt12SendRefundRequest, Bolt12SendRequest,
+	CloseChannelRequest, ConnectPeerRequest, DecodeInvoiceRequest, DecodeOfferRequest,
+	DisconnectPeerRequest, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
+	GetBalancesRequest, GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest,
+	GraphGetNodeRequest, GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
 	OnchainSendRequest, OpenChannelRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
 	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
@@ -244,6 +244,28 @@ pub async fn handle_bolt12_send(client: &LdkServerClient, args: Value) -> Result
 			&mut request.route_parameters
 		})?;
 	let response = client.bolt12_send(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt12_send_refund(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let mut request: Bolt12SendRefundRequest =
+		parse_request_with_route_parameters(args, |request: &mut Bolt12SendRefundRequest| {
+			&mut request.route_parameters
+		})?;
+	if request.expiry_secs == 0 {
+		request.expiry_secs = DEFAULT_EXPIRY_SECS;
+	}
+	let response = client.bolt12_send_refund(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt12_receive_refund(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt12ReceiveRefundRequest = parse_request(args)?;
+	let response = client.bolt12_receive_refund(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

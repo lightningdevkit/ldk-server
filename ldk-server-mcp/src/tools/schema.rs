@@ -379,6 +379,45 @@ pub fn bolt12_send_schema() -> Value {
 	})
 }
 
+pub fn bolt12_send_refund_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"amount_msat": {
+				"type": "integer",
+				"description": "Amount in millisatoshis to refund"
+			},
+			"expiry_secs": {
+				"type": "integer",
+				"description": "Refund expiry time in seconds (defaults to 86400 if omitted or 0)"
+			},
+			"quantity": {
+				"type": "integer",
+				"description": "Number of items being refunded"
+			},
+			"payer_note": {
+				"type": "string",
+				"description": "Note to include for the refund recipient"
+			},
+			"route_parameters": route_parameters_config_schema()
+		},
+		"required": ["amount_msat"]
+	})
+}
+
+pub fn bolt12_receive_refund_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"refund": {
+				"type": "string",
+				"description": "A BOLT12 refund from the node that will send the payment"
+			}
+		},
+		"required": ["refund"]
+	})
+}
+
 pub fn spontaneous_send_schema() -> Value {
 	json!({
 		"type": "object",

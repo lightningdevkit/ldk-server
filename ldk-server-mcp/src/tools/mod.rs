@@ -158,6 +158,18 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_bolt12_send(client, args)),
 		),
 		tool_spec(
+			"bolt12_send_refund",
+			"Create a BOLT12 refund that this node will pay",
+			schema::bolt12_send_refund_schema,
+			|client, args| Box::pin(handlers::handle_bolt12_send_refund(client, args)),
+		),
+		tool_spec(
+			"bolt12_receive_refund",
+			"Request an incoming payment for a BOLT12 refund",
+			schema::bolt12_receive_refund_schema,
+			|client, args| Box::pin(handlers::handle_bolt12_receive_refund(client, args)),
+		),
+		tool_spec(
 			"spontaneous_send",
 			"Send a spontaneous (keysend) payment to a Lightning node",
 			schema::spontaneous_send_schema,

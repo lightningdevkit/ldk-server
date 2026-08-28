@@ -492,6 +492,67 @@ pub struct Bolt12SendResponse {
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
 }
+/// Returns a BOLT12 refund for the given amount. The refund recipient can use it to request
+/// payment from this node.
+/// See more:
+/// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.initiate_refund>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12SendRefundRequest {
+	/// The amount in millisatoshis to refund.
+	#[prost(uint64, tag = "1")]
+	pub amount_msat: u64,
+	/// Refund expiry time in seconds. A value of zero is rejected.
+	#[prost(uint32, tag = "2")]
+	pub expiry_secs: u32,
+	/// If set, it represents the number of items being refunded.
+	#[prost(uint64, optional, tag = "3")]
+	pub quantity: ::core::option::Option<u64>,
+	/// If set, it will be seen by the recipient and reflected back in the invoice.
+	#[prost(string, optional, tag = "4")]
+	pub payer_note: ::core::option::Option<::prost::alloc::string::String>,
+	/// Configuration options for payment routing and pathfinding.
+	#[prost(message, optional, tag = "5")]
+	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
+}
+/// The response for the `Bolt12SendRefund` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12SendRefundResponse {
+	/// A BOLT12 refund that the recipient can use to request the refund payment.
+	#[prost(string, tag = "1")]
+	pub refund: ::prost::alloc::string::String,
+}
+/// Requests payment for a BOLT12 refund from another node.
+/// See more:
+/// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.request_refund_payment>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12ReceiveRefundRequest {
+	/// A BOLT12 refund from the node that will send the payment.
+	#[prost(string, tag = "1")]
+	pub refund: ::prost::alloc::string::String,
+}
+/// The response for the `Bolt12ReceiveRefund` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12ReceiveRefundResponse {
+	/// The payment hash for the incoming refund payment in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub payment_hash: ::prost::alloc::string::String,
+}
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
