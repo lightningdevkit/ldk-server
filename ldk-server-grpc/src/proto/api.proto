@@ -379,6 +379,51 @@ message Bolt12SendResponse {
   string payment_id = 1;
 }
 
+// Returns a BOLT12 refund for the given amount. The refund recipient can use it to request
+// payment from this node.
+// See more:
+// - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.initiate_refund
+message Bolt12SendRefundRequest {
+
+  // The amount in millisatoshis to refund.
+  uint64 amount_msat = 1;
+
+  // Refund expiry time in seconds. A value of zero is rejected.
+  uint32 expiry_secs = 2;
+
+  // If set, it represents the number of items being refunded.
+  optional uint64 quantity = 3;
+
+  // If set, it will be seen by the recipient and reflected back in the invoice.
+  optional string payer_note = 4;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 5;
+}
+
+// The response for the `Bolt12SendRefund` RPC. On failure, a gRPC error status is returned.
+message Bolt12SendRefundResponse {
+
+  // A BOLT12 refund that the recipient can use to request the refund payment.
+  string refund = 1;
+}
+
+// Requests payment for a BOLT12 refund from another node.
+// See more:
+// - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.request_refund_payment
+message Bolt12ReceiveRefundRequest {
+
+  // A BOLT12 refund from the node that will send the payment.
+  string refund = 1;
+}
+
+// The response for the `Bolt12ReceiveRefund` RPC. On failure, a gRPC error status is returned.
+message Bolt12ReceiveRefundResponse {
+
+  // The payment hash for the incoming refund payment in hex-encoded form.
+  string payment_hash = 1;
+}
+
 // Send a spontaneous payment, also known as "keysend", to a node.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send
 message SpontaneousSendRequest {
@@ -973,6 +1018,10 @@ service LightningNode {
   rpc Bolt12Receive(Bolt12ReceiveRequest) returns (Bolt12ReceiveResponse);
   // Send a payment for a BOLT12 offer.
   rpc Bolt12Send(Bolt12SendRequest) returns (Bolt12SendResponse);
+  // Return a BOLT12 refund that this node will pay.
+  rpc Bolt12SendRefund(Bolt12SendRefundRequest) returns (Bolt12SendRefundResponse);
+  // Request an incoming payment for a BOLT12 refund.
+  rpc Bolt12ReceiveRefund(Bolt12ReceiveRefundRequest) returns (Bolt12ReceiveRefundResponse);
   // Send a spontaneous payment (keysend).
   rpc SpontaneousSend(SpontaneousSendRequest) returns (SpontaneousSendResponse);
   // Create a new outbound channel.
