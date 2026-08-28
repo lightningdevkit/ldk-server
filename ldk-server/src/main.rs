@@ -57,6 +57,7 @@ use crate::util::tls::get_or_generate_tls_config;
 use crate::util::{systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
+const API_KEY_LEN: usize = 32;
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
@@ -895,13 +896,22 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 
 	if api_key_path.exists() {
 		let key_bytes = fs::read(&api_key_path)?;
+		if key_bytes.len() != API_KEY_LEN {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				format!(
+					"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
+					api_key_path.display()
+				),
+			));
+		}
 		Ok(key_bytes.to_lower_hex_string())
 	} else {
 		// Ensure the storage directory exists
 		fs::create_dir_all(storage_dir)?;
 
 		// Generate a 32-byte random API key
-		let mut key_bytes = [0u8; 32];
+		let mut key_bytes = [0u8; API_KEY_LEN];
 		getrandom::getrandom(&mut key_bytes).map_err(std::io::Error::other)?;
 
 		write_new(&api_key_path, &key_bytes, 0o400)?;
@@ -928,6 +938,23 @@ mod tests {
 	use ldk_server_grpc::events::channel_state_change_reason::Details;
 
 	use super::*;
+
+	#[test]
+	fn load_api_key_rejects_invalid_lengths() {
+		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let dir = std::env::temp_dir()
+			.join(format!("ldk-server-api-key-length-{}-{nonce}", std::process::id()));
+		fs::create_dir_all(&dir).unwrap();
+		let path = dir.join(API_KEY_FILE);
+
+		for len in [0, 1, API_KEY_LEN - 1, API_KEY_LEN + 1] {
+			fs::write(&path, vec![0x42; len]).unwrap();
+			let error = load_or_generate_api_key(&dir).unwrap_err();
+			assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+		}
+
+		fs::remove_dir_all(dir).unwrap();
+	}
 
 	#[test]
 	fn test_is_channel_open_failure_classification() {
