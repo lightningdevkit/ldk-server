@@ -562,7 +562,16 @@ impl ConfigBuilder {
 			&& (metrics_username.is_some() != metrics_password.is_some())
 		{
 			return Err(io::Error::new(io::ErrorKind::InvalidInput,
-				"Both `metrics.username` and `metrics.password` must be set if authentication is used for metrics."));
+			"Both `metrics.username` and `metrics.password` must be set if authentication is used for metrics."));
+		}
+
+		if metrics_enabled
+			&& (metrics_username.as_deref() == Some("") || metrics_password.as_deref() == Some(""))
+		{
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"Metrics authentication credentials must not be empty.",
+			));
 		}
 
 		let tor_proxy_address: Option<SocketAddress> = self
@@ -2238,6 +2247,22 @@ mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+	}
+
+	#[test]
+	fn test_metrics_enabled_fails_with_empty_auth() {
+		for (username, password) in [("", "password"), ("admin", ""), ("", "")] {
+			let config = format!(
+				"{}\n[metrics]\nenabled = true\nusername = {:?}\npassword = {:?}",
+				DEFAULT_CONFIG, username, password
+			);
+			let mut builder = ConfigBuilder::default();
+			builder.merge_toml(toml::from_str(&config).unwrap());
+
+			let err = builder.build().unwrap_err();
+			assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+			assert_eq!(err.to_string(), "Metrics authentication credentials must not be empty.");
+		}
 	}
 
 	#[test]
