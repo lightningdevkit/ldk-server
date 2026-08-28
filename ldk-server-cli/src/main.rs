@@ -15,8 +15,8 @@ use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
-	resolve_cert_path, DEFAULT_GRPC_SERVICE_ADDRESS,
+	get_default_config_path, load_config, read_tls_certificate, resolve_api_key,
+	resolve_api_key_path, resolve_base_url, resolve_cert_path, DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
@@ -661,7 +661,18 @@ async fn main() {
 			std::process::exit(1);
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+			match resolve_api_key_path(config.as_ref()).unwrap_or_else(|e| {
+				eprintln!("Failed to resolve API key: {e}");
+				std::process::exit(1);
+			}) {
+				Some(path) => eprintln!(
+					"API key not provided. Use --api-key or ensure the api_key file exists at '{}'",
+					path.display()
+				),
+				None => eprintln!(
+					"API key not provided. Use --api-key; no API key file path could be resolved from the configuration"
+				),
+			}
 			std::process::exit(1);
 		});
 
