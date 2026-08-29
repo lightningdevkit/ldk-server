@@ -28,7 +28,7 @@ use ldk_server_client::ldk_server_grpc::api::{
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
-	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind,
+	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind, PaymentFailureReason,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription,
@@ -1515,9 +1515,17 @@ async fn test_hodl_invoice_fail() {
 	// Fail the payment on B using CLI
 	run_cli(&server_b, &["bolt11-fail-for-hash", &payment_hash_hex]);
 
-	// Verify PaymentFailed on A
+	// Verify PaymentFailed on A and its failure reason.
 	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentFailed(_))).await;
-	assert!(matches!(&event_a.event, Some(Event::PaymentFailed(_))));
+	match &event_a.event {
+		Some(Event::PaymentFailed(payment_failed)) => {
+			assert_eq!(
+				payment_failed.reason,
+				Some(PaymentFailureReason::RecipientRejected as i32)
+			);
+		},
+		other => panic!("expected PaymentFailed event, got {other:?}"),
+	}
 }
 
 #[tokio::test]
