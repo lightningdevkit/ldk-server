@@ -23,7 +23,10 @@ use ldk_node::lightning_types::features::NodeFeatures;
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
-use ldk_node::{ChannelDetails, LightningBalance, PeerDetails, PendingSweepBalance};
+use ldk_node::{
+	ChannelDetails, ChannelShutdownState, LightningBalance, PeerDetails, PendingSweepBalance,
+	ReserveType,
+};
 use ldk_server_grpc::types::confirmation_status::Status::{Confirmed, Unconfirmed};
 use ldk_server_grpc::types::lightning_balance::BalanceType::{
 	ClaimableAwaitingConfirmations, ClaimableOnChannelClose, ContentiousClaimable,
@@ -36,8 +39,9 @@ use ldk_server_grpc::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
 use ldk_server_grpc::types::{
-	bolt11_invoice_description, Channel, Feature, ForwardedPayment, HtlcLocator, OutPoint, Payment,
-	Peer,
+	bolt11_invoice_description, Channel, ChannelShutdownState as ProtoChannelShutdownState,
+	Feature, ForwardedPayment, HtlcLocator, OutPoint, Payment, Peer,
+	ReserveType as ProtoReserveType,
 };
 
 use crate::api::error::LdkServerError;
@@ -49,6 +53,28 @@ pub(crate) fn peer_to_proto(peer: PeerDetails) -> Peer {
 		address: peer.address.to_string(),
 		is_persisted: peer.is_persisted,
 		is_connected: peer.is_connected,
+	}
+}
+
+pub(crate) fn channel_shutdown_state_to_proto(
+	state: &ChannelShutdownState,
+) -> ProtoChannelShutdownState {
+	match state {
+		ChannelShutdownState::NotShuttingDown => ProtoChannelShutdownState::NotShuttingDown,
+		ChannelShutdownState::ShutdownInitiated => ProtoChannelShutdownState::ShutdownInitiated,
+		ChannelShutdownState::ResolvingHTLCs => ProtoChannelShutdownState::ResolvingHtlcs,
+		ChannelShutdownState::NegotiatingClosingFee => {
+			ProtoChannelShutdownState::NegotiatingClosingFee
+		},
+		ChannelShutdownState::ShutdownComplete => ProtoChannelShutdownState::ShutdownComplete,
+	}
+}
+
+pub(crate) fn reserve_type_to_proto(reserve_type: &ReserveType) -> ProtoReserveType {
+	match reserve_type {
+		ReserveType::Adaptive => ProtoReserveType::Adaptive,
+		ReserveType::TrustedPeersNoReserve => ProtoReserveType::TrustedPeersNoReserve,
+		ReserveType::Legacy => ProtoReserveType::Legacy,
 	}
 }
 
@@ -92,6 +118,16 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 			.forwarding_info
 			.as_ref()
 			.map(|info| info.cltv_expiry_delta as u32),
+		short_channel_id: channel.short_channel_id,
+		outbound_scid_alias: channel.outbound_scid_alias,
+		inbound_scid_alias: channel.inbound_scid_alias,
+		inbound_htlc_minimum_msat: channel.inbound_htlc_minimum_msat,
+		inbound_htlc_maximum_msat: channel.inbound_htlc_maximum_msat,
+		channel_shutdown_state: channel
+			.channel_shutdown_state
+			.as_ref()
+			.map(|s| channel_shutdown_state_to_proto(s) as i32),
+		reserve_type: channel.reserve_type.as_ref().map(|r| reserve_type_to_proto(r) as i32),
 	}
 }
 
