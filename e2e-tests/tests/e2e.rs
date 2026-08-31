@@ -31,7 +31,7 @@ use ldk_server_client::ldk_server_grpc::events::{
 	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind, PaymentFailureReason,
 };
 use ldk_server_client::ldk_server_grpc::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription,
+	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelShutdownState, ReserveType,
 };
 use ldk_server_grpc::types::payment_kind;
 
@@ -799,7 +799,29 @@ async fn test_cli_list_channels() {
 	let output = run_cli(&server_a, &["list-channels"]);
 	let channels = output["channels"].as_array().unwrap();
 	assert!(!channels.is_empty());
-	assert_eq!(channels[0]["counterparty_node_id"], server_b.node_id());
+	let channel = &channels[0];
+	assert_eq!(channel["counterparty_node_id"], server_b.node_id());
+
+	// A funded, usable channel has a real short_channel_id and both SCID aliases set.
+	assert!(channel["short_channel_id"].is_u64());
+	assert!(channel["outbound_scid_alias"].is_u64());
+	assert!(channel["inbound_scid_alias"].is_u64());
+
+	// HTLC bounds: the minimum is a non-optional field, and the maximum is always known
+	// once the counterparty's reserve has been negotiated (true by the time a channel
+	// is usable).
+	assert!(channel["inbound_htlc_minimum_msat"].is_u64());
+	assert!(channel["inbound_htlc_maximum_msat"].is_u64());
+
+	// A freshly opened, still-open channel is always NotShuttingDown.
+	assert_eq!(
+		channel["channel_shutdown_state"].as_i64(),
+		Some(ChannelShutdownState::NotShuttingDown as i64)
+	);
+
+	// This test opens a default (anchor) channel with no trusted_peers_no_reserve
+	// configured, so the reserve type is deterministically Adaptive.
+	assert_eq!(channel["reserve_type"].as_i64(), Some(ReserveType::Adaptive as i64));
 }
 
 #[tokio::test]
