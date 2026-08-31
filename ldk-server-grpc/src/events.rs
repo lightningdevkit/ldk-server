@@ -14,7 +14,7 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventEnvelope {
-	#[prost(oneof = "event_envelope::Event", tags = "2, 3, 4, 6, 7, 8")]
+	#[prost(oneof = "event_envelope::Event", tags = "2, 3, 4, 6, 7, 8, 9, 10")]
 	pub event: ::core::option::Option<event_envelope::Event>,
 }
 /// Nested message and enum types in `EventEnvelope`.
@@ -36,6 +36,10 @@ pub mod event_envelope {
 		PaymentClaimable(super::PaymentClaimable),
 		#[prost(message, tag = "8")]
 		ChannelStateChanged(super::ChannelStateChanged),
+		#[prost(message, tag = "9")]
+		SpliceNegotiated(super::SpliceNegotiated),
+		#[prost(message, tag = "10")]
+		SpliceNegotiationFailed(super::SpliceNegotiationFailed),
 	}
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -139,6 +143,38 @@ pub struct ChannelStateChanged {
 	pub reason: ::core::option::Option<ChannelStateChangeReason>,
 	#[prost(enumeration = "ChannelClosureInitiator", tag = "7")]
 	pub closure_initiator: i32,
+}
+/// SpliceNegotiated indicates a channel splice has been negotiated and the funding
+/// transaction is pending confirmation on-chain.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpliceNegotiated {
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+	#[prost(string, tag = "2")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	#[prost(string, tag = "3")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The outpoint of the channel's splice funding transaction.
+	#[prost(string, tag = "4")]
+	pub new_funding_txo: ::prost::alloc::string::String,
+}
+/// SpliceNegotiationFailed indicates a channel splice negotiation round has failed.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpliceNegotiationFailed {
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+	#[prost(string, tag = "2")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	#[prost(string, tag = "3")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
 }
 /// PaymentReceived indicates a payment has been received.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

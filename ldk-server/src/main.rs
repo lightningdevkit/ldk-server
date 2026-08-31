@@ -634,11 +634,57 @@ fn main() {
 								}
 							}
 						},
-						_ => {
+						Event::SpliceNegotiated {
+							channel_id,
+							user_channel_id,
+							counterparty_node_id,
+							new_funding_txo,
+						} => {
+							info!(
+								"SPLICE_NEGOTIATED: {} from counterparty {}",
+								channel_id, counterparty_node_id
+							);
+
+							send_channel_state_event(
+								event_envelope::Event::SpliceNegotiated(events::SpliceNegotiated {
+									channel_id: channel_id.0.to_lower_hex_string(),
+									user_channel_id: user_channel_id.0.to_string(),
+									counterparty_node_id: counterparty_node_id.to_string(),
+									new_funding_txo: new_funding_txo.to_string(),
+								}),
+								&event_sender,
+							);
+
 							if let Err(e) = event_node.event_handled() {
 								error!("Failed to mark event as handled: {e}");
 							}
 						},
+						Event::SpliceNegotiationFailed {
+							channel_id,
+							user_channel_id,
+							counterparty_node_id,
+						} => {
+							info!(
+								"SPLICE_NEGOTIATION_FAILED: {} from counterparty {}",
+								channel_id, counterparty_node_id
+							);
+
+							send_channel_state_event(
+								event_envelope::Event::SpliceNegotiationFailed(
+									events::SpliceNegotiationFailed {
+										channel_id: channel_id.0.to_lower_hex_string(),
+										user_channel_id: user_channel_id.0.to_string(),
+										counterparty_node_id: counterparty_node_id.to_string(),
+									},
+								),
+								&event_sender,
+							);
+
+							if let Err(e) = event_node.event_handled() {
+								error!("Failed to mark event as handled: {e}");
+							}
+						},
+
 					}
 				},
 				res = grpc_listener.accept() => {
