@@ -212,6 +212,8 @@ See [Pagination](#pagination) below for how to page through results.
 | `PaymentClaimable`  | A hodl invoice payment arrived and is waiting to be claimed or failed |
 | `PaymentForwarded`  | A payment was routed through this node                                |
 | `ChannelStateChanged` | A channel changed state (pending, ready, open failed, closed)      |
+| `SpliceNegotiated` | A channel splice was negotiated and the funding transaction is pending confirmation |
+| `SpliceNegotiationFailed` | A channel splice negotiation round failed                       |
 
 Events are broadcast to all connected subscribers. The server uses a bounded broadcast channel
 (capacity 1024). A slow subscriber that falls behind will miss events.

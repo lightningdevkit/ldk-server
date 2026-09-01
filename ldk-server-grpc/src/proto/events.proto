@@ -11,6 +11,8 @@ message EventEnvelope {
     PaymentForwarded payment_forwarded = 6;
     PaymentClaimable payment_claimable = 7;
     ChannelStateChanged channel_state_changed = 8;
+    SpliceNegotiated splice_negotiated = 9;
+    SpliceNegotiationFailed splice_negotiation_failed = 10;
   }
 }
 
@@ -118,6 +120,23 @@ message ChannelStateChanged {
   optional string funding_txo = 5;
   optional ChannelStateChangeReason reason = 6;
   ChannelClosureInitiator closure_initiator = 7;
+}
+
+// SpliceNegotiated indicates a channel splice has been negotiated and the funding
+// transaction is pending confirmation on-chain.
+message SpliceNegotiated {
+  string channel_id = 1;
+  string user_channel_id = 2;
+  string counterparty_node_id = 3;
+  // The outpoint of the channel's splice funding transaction.
+  string new_funding_txo = 4;
+}
+
+// SpliceNegotiationFailed indicates a channel splice negotiation round has failed.
+message SpliceNegotiationFailed {
+  string channel_id = 1;
+  string user_channel_id = 2;
+  string counterparty_node_id = 3;
 }
 
 // PaymentReceived indicates a payment has been received.

@@ -1200,11 +1200,24 @@ async fn splice_in_via_cli(splice_amount: &str) {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
 	let output = run_cli(
 		&server_a,
 		&["splice-in", &user_channel_id, server_b.node_id(), splice_amount],
 	);
 	assert!(output.is_object());
+
+	let event_a =
+		wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	match &event_a.event {
+		Some(Event::SpliceNegotiated(splice_negotiated)) => {
+			assert_eq!(splice_negotiated.user_channel_id, user_channel_id);
+			assert_eq!(splice_negotiated.counterparty_node_id, server_b.node_id());
+			assert!(!splice_negotiated.new_funding_txo.is_empty());
+		},
+		other => panic!("expected SpliceNegotiated event, got {other:?}"),
+	}
 }
 
 #[tokio::test]
