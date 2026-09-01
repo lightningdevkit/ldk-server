@@ -510,6 +510,8 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 	assert!(pending_a.funding_txo.is_some());
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
+	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
+	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -676,6 +678,8 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert!(pending_a.funding_txo.is_some());
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
+	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
+	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(

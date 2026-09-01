@@ -382,7 +382,7 @@ fn main() {
 								user_channel_id,
 								counterparty_node_id,
 								funding_txo,
-								..
+								former_temporary_channel_id,
 							} => {
 								info!(
 									"CHANNEL_PENDING: {} from counterparty {}",
@@ -398,6 +398,9 @@ fn main() {
 										funding_txo: Some(funding_txo.to_string()),
 										reason: None,
 										closure_initiator: events::ChannelClosureInitiator::Unspecified.into(),
+										former_temporary_channel_id: Some(
+											former_temporary_channel_id.0.to_lower_hex_string(),
+										),
 									}),
 									&event_sender,
 								);
@@ -430,6 +433,7 @@ fn main() {
 										funding_txo: funding_txo.map(|outpoint| outpoint.to_string()),
 										reason: None,
 										closure_initiator: events::ChannelClosureInitiator::Unspecified.into(),
+										former_temporary_channel_id: None,
 									}),
 									&event_sender,
 								);
@@ -471,6 +475,7 @@ fn main() {
 										funding_txo: None,
 										reason: reason_ref.map(closure_reason_to_proto),
 										closure_initiator: closure_initiator_from_reason(reason_ref).into(),
+										former_temporary_channel_id: None,
 									}),
 									&event_sender,
 								);

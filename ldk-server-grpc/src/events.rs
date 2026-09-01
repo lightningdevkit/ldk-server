@@ -143,6 +143,11 @@ pub struct ChannelStateChanged {
 	pub reason: ::core::option::Option<ChannelStateChangeReason>,
 	#[prost(enumeration = "ChannelClosureInitiator", tag = "7")]
 	pub closure_initiator: i32,
+	/// The `temporary_channel_id` this channel used to be known by during channel establishment.
+	///
+	/// Only set when `state` is `CHANNEL_STATE_PENDING`.
+	#[prost(string, optional, tag = "8")]
+	pub former_temporary_channel_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// SpliceNegotiated indicates a channel splice has been negotiated and the funding
 /// transaction is pending confirmation on-chain.

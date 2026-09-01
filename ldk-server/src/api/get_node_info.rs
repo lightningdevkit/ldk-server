@@ -72,6 +72,8 @@ pub(crate) async fn handle_get_node_info_request(
 		node_uris,
 		network,
 		features,
+		latest_pathfinding_scores_sync_timestamp: node_status
+			.latest_pathfinding_scores_sync_timestamp,
 	};
 	Ok(response)
 }

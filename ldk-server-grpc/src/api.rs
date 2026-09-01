@@ -88,6 +88,13 @@ pub struct GetNodeInfoResponse {
 	/// Features advertised by this node, keyed by the signaled BOLT feature bit.
 	#[prost(btree_map = "uint32, message", tag = "14")]
 	pub features: ::prost::alloc::collections::BTreeMap<u32, super::types::Feature>,
+	/// The timestamp, in seconds since start of the UNIX epoch, when we last successfully merged
+	/// external pathfinding scores.
+	///
+	/// Will be `None` if background pathfinding score syncing isn't configured, or no scores have
+	/// been merged since the node was initialized.
+	#[prost(uint64, optional, tag = "15")]
+	pub latest_pathfinding_scores_sync_timestamp: ::core::option::Option<u64>,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>

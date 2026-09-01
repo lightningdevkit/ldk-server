@@ -120,6 +120,10 @@ message ChannelStateChanged {
   optional string funding_txo = 5;
   optional ChannelStateChangeReason reason = 6;
   ChannelClosureInitiator closure_initiator = 7;
+  // The `temporary_channel_id` this channel used to be known by during channel establishment.
+  //
+  // Only set when `state` is `CHANNEL_STATE_PENDING`.
+  optional string former_temporary_channel_id = 8;
 }
 
 // SpliceNegotiated indicates a channel splice has been negotiated and the funding
