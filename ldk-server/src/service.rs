@@ -10,6 +10,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
@@ -105,6 +106,8 @@ const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 // Maximum request body size: 10 MB
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 const MAX_CONCURRENT_BODY_READS: usize = 8;
+// Bound how long an admitted request can retain buffer capacity.
+const REQUEST_BODY_TIMEOUT: Duration = Duration::from_secs(30);
 static REQUEST_BODY_SEMAPHORE: Semaphore = Semaphore::const_new(MAX_CONCURRENT_BODY_READS);
 
 #[derive(Clone)]
@@ -607,7 +610,10 @@ where
 		.try_acquire()
 		.map_err(|_| GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "Too many concurrent requests"))?;
 	let limited_body = Limited::new(body, MAX_BODY_SIZE);
-	let bytes = match limited_body.collect().await {
+	let bytes = match tokio::time::timeout(REQUEST_BODY_TIMEOUT, limited_body.collect())
+		.await
+		.map_err(|_| GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "Timed out reading request body"))?
+	{
 		Ok(collected) => collected.to_bytes(),
 		Err(_) => {
 			return Err(GrpcStatus::new(
