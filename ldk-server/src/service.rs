@@ -10,6 +10,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
@@ -89,6 +90,9 @@ const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 // Maximum request body size: 10 MB
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 const MAX_CONCURRENT_BODY_READS: usize = 8;
+// A client that stalls mid-body would otherwise hold one of the few body-read slots
+// indefinitely.
+const REQUEST_BODY_TIMEOUT: Duration = Duration::from_secs(30);
 static REQUEST_BODY_SEMAPHORE: Semaphore = Semaphore::const_new(MAX_CONCURRENT_BODY_READS);
 
 #[derive(Clone)]
@@ -276,9 +280,20 @@ impl Service<Request<Incoming>> for NodeService {
 				Ok(content_length) => content_length,
 				Err(status) => return Ok(grpc_error_response(status)),
 			};
-			let body_bytes = match read_request_body(request_body, content_length).await {
-				Ok(bytes) => bytes,
-				Err(status) => return Ok(grpc_error_response(status)),
+			let body_bytes = match tokio::time::timeout(
+				REQUEST_BODY_TIMEOUT,
+				read_request_body(request_body, content_length),
+			)
+			.await
+			{
+				Ok(Ok(bytes)) => bytes,
+				Ok(Err(status)) => return Ok(grpc_error_response(status)),
+				Err(_) => {
+					return Ok(grpc_error_response(GrpcStatus::new(
+						GRPC_STATUS_UNAVAILABLE,
+						"Timed out reading request body",
+					)));
+				},
 			};
 			drop(body_permit);
 
