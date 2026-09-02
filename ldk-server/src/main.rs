@@ -49,7 +49,7 @@ use crate::io::persist::{
 	PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use crate::service::NodeService;
-use crate::util::config::{load_config, ArgsConfig, ChainSource};
+use crate::util::config::{load_config, ArgsConfig, ChainSource, LdkNodeStorageConfig};
 use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
@@ -57,6 +57,7 @@ use crate::util::tls::get_or_generate_tls_config;
 use crate::util::{systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
+const LDK_NODE_POSTGRES_LOCK_FILE: &str = "ldk_node_postgres.lock";
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
@@ -251,6 +252,13 @@ fn main() {
 
 	builder.set_runtime(runtime.handle().clone());
 
+	if let Err(e) =
+		ensure_no_unsupported_storage_migration(&network_dir, &config_file.ldk_node_storage)
+	{
+		error!("{e}");
+		std::process::exit(-1);
+	}
+
 	let node_entropy = match crate::util::entropy::load_or_generate_node_entropy(&storage_dir) {
 		Ok(entropy) => entropy,
 		Err(e) => {
@@ -259,13 +267,22 @@ fn main() {
 		},
 	};
 
-	let node = match builder.build(node_entropy) {
-		Ok(node) => Arc::new(node),
+	let uses_postgres =
+		matches!(config_file.ldk_node_storage, LdkNodeStorageConfig::Postgres { .. });
+	let node = match build_node(builder, node_entropy, config_file.ldk_node_storage) {
+		Ok(node) => node,
 		Err(e) => {
 			error!("Failed to build LDK Node: {e}");
 			std::process::exit(-1);
 		},
 	};
+	if uses_postgres {
+		if let Err(e) = persist_postgres_storage_lock(&network_dir) {
+			error!("{e}");
+			std::process::exit(-1);
+		}
+	}
+	let node = Arc::new(node);
 
 	let paginated_store: Arc<dyn PaginatedKVStore> =
 		Arc::new(match SqliteStore::new(network_dir.clone(), None, None) {
@@ -746,6 +763,69 @@ fn main() {
 	log::logger().flush();
 }
 
+fn ensure_no_unsupported_storage_migration(
+	network_dir: &Path, ldk_node_storage: &LdkNodeStorageConfig,
+) -> Result<(), String> {
+	let sqlite_path = network_dir.join(ldk_node::io::sqlite_store::SQLITE_DB_FILE_NAME);
+	let sqlite_exists = sqlite_path
+		.try_exists()
+		.map_err(|e| format!("Failed to check for existing SQLite LDK Node state: {e}"))?;
+	let postgres_lock_path = network_dir.join(LDK_NODE_POSTGRES_LOCK_FILE);
+	let postgres_lock_exists = postgres_lock_path
+		.try_exists()
+		.map_err(|e| format!("Failed to check for PostgreSQL storage lock: {e}"))?;
+
+	match ldk_node_storage {
+		LdkNodeStorageConfig::Postgres { .. } if sqlite_exists => {
+			return Err(format!(
+				"Refusing to switch LDK Node storage from SQLite to PostgreSQL because {} exists. Storage migration is not supported; remove [storage.postgres] to continue using SQLite.",
+				sqlite_path.display()
+			));
+		},
+		LdkNodeStorageConfig::Sqlite if postgres_lock_exists => {
+			return Err(format!(
+				"Refusing to switch LDK Node storage from PostgreSQL to SQLite because {} exists. Storage migration is not supported; restore [storage.postgres] to continue using PostgreSQL.",
+				postgres_lock_path.display()
+			));
+		},
+		_ => {},
+	}
+
+	Ok(())
+}
+
+fn persist_postgres_storage_lock(network_dir: &Path) -> Result<(), String> {
+	let lock_path = network_dir.join(LDK_NODE_POSTGRES_LOCK_FILE);
+	match write_new(&lock_path, &[], 0o600) {
+		Ok(()) => Ok(()),
+		Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+		Err(e) => {
+			Err(format!("Failed to persist PostgreSQL storage lock {}: {e}", lock_path.display()))
+		},
+	}
+}
+
+fn build_node(
+	builder: Builder, node_entropy: ldk_node::entropy::NodeEntropy,
+	ldk_node_storage: LdkNodeStorageConfig,
+) -> Result<Node, ldk_node::BuildError> {
+	match ldk_node_storage {
+		LdkNodeStorageConfig::Sqlite => builder.build(node_entropy),
+		LdkNodeStorageConfig::Postgres {
+			connection_string,
+			db_name,
+			kv_table_name,
+			certificate_pem,
+		} => builder.build_with_postgres_store(
+			node_entropy,
+			connection_string,
+			db_name,
+			kv_table_name,
+			certificate_pem,
+		),
+	}
+}
+
 fn send_event_and_upsert_payment(
 	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
@@ -1001,9 +1081,90 @@ fn build_payment_claimable_proto(
 
 #[cfg(test)]
 mod tests {
+	use std::fs;
+
 	use ldk_server_grpc::events::channel_state_change_reason::Details;
 
 	use super::*;
+
+	#[test]
+	fn postgres_storage_rejects_existing_sqlite_state() {
+		let network_dir = test_network_dir("postgres-rejects-sqlite");
+		let sqlite_path = network_dir.join(ldk_node::io::sqlite_store::SQLITE_DB_FILE_NAME);
+		fs::write(&sqlite_path, []).unwrap();
+		let postgres = LdkNodeStorageConfig::Postgres {
+			connection_string: "postgresql://localhost".to_string(),
+			db_name: None,
+			kv_table_name: None,
+			certificate_pem: None,
+		};
+
+		let err = ensure_no_unsupported_storage_migration(&network_dir, &postgres).unwrap_err();
+
+		assert!(err.contains("Refusing to switch LDK Node storage from SQLite to PostgreSQL"));
+		assert!(err.contains(sqlite_path.to_str().unwrap()));
+		fs::remove_dir_all(network_dir).unwrap();
+	}
+
+	#[test]
+	fn postgres_storage_allows_fresh_network_directory() {
+		let network_dir = test_network_dir("postgres-allows-fresh");
+		let postgres = LdkNodeStorageConfig::Postgres {
+			connection_string: "postgresql://localhost".to_string(),
+			db_name: None,
+			kv_table_name: None,
+			certificate_pem: None,
+		};
+
+		assert!(ensure_no_unsupported_storage_migration(&network_dir, &postgres).is_ok());
+		fs::remove_dir_all(network_dir).unwrap();
+	}
+
+	#[test]
+	fn sqlite_storage_allows_existing_sqlite_state() {
+		let network_dir = test_network_dir("sqlite-allows-sqlite");
+		let sqlite_path = network_dir.join(ldk_node::io::sqlite_store::SQLITE_DB_FILE_NAME);
+		fs::write(sqlite_path, []).unwrap();
+
+		assert!(ensure_no_unsupported_storage_migration(
+			&network_dir,
+			&LdkNodeStorageConfig::Sqlite
+		)
+		.is_ok());
+		fs::remove_dir_all(network_dir).unwrap();
+	}
+
+	#[test]
+	fn sqlite_storage_rejects_recorded_postgres_backend() {
+		let network_dir = test_network_dir("sqlite-rejects-postgres-marker");
+		fs::write(network_dir.join(LDK_NODE_POSTGRES_LOCK_FILE), []).unwrap();
+
+		let err =
+			ensure_no_unsupported_storage_migration(&network_dir, &LdkNodeStorageConfig::Sqlite)
+				.unwrap_err();
+
+		assert!(err.contains("Refusing to switch LDK Node storage from PostgreSQL to SQLite"));
+		fs::remove_dir_all(network_dir).unwrap();
+	}
+
+	#[test]
+	fn postgres_storage_lock_is_persisted_and_can_be_reopened() {
+		let network_dir = test_network_dir("postgres-lock-persists");
+
+		persist_postgres_storage_lock(&network_dir).unwrap();
+		persist_postgres_storage_lock(&network_dir).unwrap();
+
+		assert!(network_dir.join(LDK_NODE_POSTGRES_LOCK_FILE).exists());
+		fs::remove_dir_all(network_dir).unwrap();
+	}
+
+	fn test_network_dir(name: &str) -> PathBuf {
+		let dir = std::env::temp_dir()
+			.join(format!("ldk-server-storage-migration-test-{name}-{}", std::process::id()));
+		let _ = fs::remove_dir_all(&dir);
+		fs::create_dir(&dir).unwrap();
+		dir
+	}
 
 	#[test]
 	fn test_is_channel_open_failure_classification() {
