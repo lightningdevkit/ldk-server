@@ -665,7 +665,6 @@ fn main() {
 							);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
-								let _handshake_permit = handshake_permit;
 								match tokio::time::timeout(
 									TLS_HANDSHAKE_TIMEOUT,
 									acceptor.accept(stream),
@@ -673,6 +672,10 @@ fn main() {
 								.await
 								{
 									Ok(Ok(tls_stream)) => {
+										// Only the handshake holds a slot. Holding it for the whole
+										// connection would let an unauthenticated peer block new
+										// connections by keeping established ones idle.
+										drop(handshake_permit);
 										let io_stream = TokioIo::new(tls_stream);
 										let mut builder = http2::Builder::new(TokioExecutor::new());
 										builder.max_concurrent_streams(MAX_CONCURRENT_HTTP2_STREAMS);
