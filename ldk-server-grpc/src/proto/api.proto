@@ -76,6 +76,13 @@ message GetNodeInfoResponse {
 
   // Features advertised by this node, keyed by the signaled BOLT feature bit.
   map<uint32, types.Feature> features = 14;
+
+  // The timestamp, in seconds since start of the UNIX epoch, when we last successfully merged
+  // external pathfinding scores.
+  //
+  // Will be `None` if background pathfinding score syncing isn't configured, or no scores have
+  // been merged since the node was initialized.
+  optional uint64 latest_pathfinding_scores_sync_timestamp = 15;
 }
 
 // Retrieve a new on-chain funding address.
