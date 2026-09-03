@@ -23,6 +23,7 @@ const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
 const API_KEY_LEN: usize = 32;
+const CONFIG_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 const TLS_CERT_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
@@ -127,8 +128,8 @@ impl Config {
 }
 
 /// Reads and parses the `ldk-server` configuration file at `path`.
-pub fn load_config(path: &PathBuf) -> Result<Config, String> {
-	let contents = std::fs::read_to_string(path)
+pub fn load_config(path: &Path) -> Result<Config, String> {
+	let contents = read_to_string_with_limit(path, CONFIG_FILE_SIZE_LIMIT)
 		.map_err(|e| format!("Failed to read config file '{}': {}", path.display(), e))?;
 	toml::from_str(&contents)
 		.map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
@@ -213,6 +214,11 @@ fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
 	Ok(contents)
 }
 
+fn read_to_string_with_limit(path: &Path, limit: usize) -> io::Result<String> {
+	String::from_utf8(read_with_limit(path, limit)?)
+		.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
 /// Resolves the path to the server's TLS certificate (PEM).
 ///
 /// Prefers `override_path`, falls back to `tls.cert_path` in the configuration file, then to the
@@ -241,8 +247,8 @@ fn default_grpc_service_address() -> String {
 #[cfg(test)]
 mod tests {
 	use super::{
-		read_tls_certificate, resolve_base_url, Config, DEFAULT_GRPC_SERVICE_ADDRESS,
-		TLS_CERT_FILE_SIZE_LIMIT,
+		load_config, read_tls_certificate, resolve_base_url, Config, CONFIG_FILE_SIZE_LIMIT,
+		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
 
 	#[test]
@@ -346,6 +352,18 @@ mod tests {
 		std::fs::write(&path, vec![0; TLS_CERT_FILE_SIZE_LIMIT + 1]).unwrap();
 
 		let error = read_tls_certificate(&path).unwrap_err();
+		assert!(error.contains("exceeds"));
+
+		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn load_config_rejects_oversized_file() {
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-client-oversized-config-{}", std::process::id()));
+		std::fs::write(&path, vec![b'a'; CONFIG_FILE_SIZE_LIMIT + 1]).unwrap();
+
+		let error = load_config(&path).unwrap_err();
 		assert!(error.contains("exceeds"));
 
 		std::fs::remove_file(path).unwrap();
