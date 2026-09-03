@@ -14,6 +14,7 @@ mod util;
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -895,7 +896,9 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 	let api_key_path = storage_dir.join(API_KEY_FILE);
 
 	if api_key_path.exists() {
-		let key_bytes = fs::read(&api_key_path)?;
+		let file = fs::File::open(&api_key_path)?;
+		let mut key_bytes = Vec::with_capacity(API_KEY_LEN + 1);
+		file.take((API_KEY_LEN + 1) as u64).read_to_end(&mut key_bytes)?;
 		if key_bytes.len() != API_KEY_LEN {
 			return Err(std::io::Error::new(
 				std::io::ErrorKind::InvalidData,
