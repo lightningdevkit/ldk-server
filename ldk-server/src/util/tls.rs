@@ -19,10 +19,11 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::ServerConfig;
 
 use crate::util::config::TlsConfig;
-use crate::util::write_new;
+use crate::util::{read_to_string_with_limit, write_new};
 
 // Issuer and Subject common name
 const ISSUER_NAME: &str = "localhost";
+const TLS_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 
 // PEM markers
 const PEM_CERT_BEGIN: &str = "-----BEGIN CERTIFICATE-----";
@@ -397,9 +398,9 @@ fn der_context_implicit(tag_num: u8, content: &[u8]) -> Vec<u8> {
 
 /// Loads TLS configuration from provided paths.
 fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, String> {
-	let cert_pem = fs::read_to_string(cert_path)
+	let cert_pem = read_to_string_with_limit(Path::new(cert_path), TLS_FILE_SIZE_LIMIT)
 		.map_err(|e| format!("Failed to read TLS certificate file '{cert_path}': {e}"))?;
-	let key_pem = fs::read_to_string(key_path)
+	let key_pem = read_to_string_with_limit(Path::new(key_path), TLS_FILE_SIZE_LIMIT)
 		.map_err(|e| format!("Failed to read TLS key file '{key_path}': {e}"))?;
 
 	let certs = parse_pem_certs(&cert_pem)?;
@@ -493,6 +494,35 @@ mod tests {
 		assert!(res.is_ok());
 
 		// Clean up
+		let _ = fs::remove_file(&cert_path);
+		let _ = fs::remove_file(&key_path);
+	}
+
+	#[test]
+	fn test_load_rejects_oversized_tls_files() {
+		let temp_dir = std::env::temp_dir();
+		let mut suffix_bytes = [0u8; 8];
+		getrandom::getrandom(&mut suffix_bytes).unwrap();
+		let suffix = u64::from_ne_bytes(suffix_bytes);
+		let cert_path = temp_dir.join(format!("oversized_tls_cert_{suffix}.pem"));
+		let key_path = temp_dir.join(format!("oversized_tls_key_{suffix}.pem"));
+
+		generate_self_signed_cert(cert_path.to_str().unwrap(), key_path.to_str().unwrap(), &[])
+			.unwrap();
+		let valid_cert = fs::read(&cert_path).unwrap();
+
+		fs::write(&cert_path, vec![b'a'; TLS_FILE_SIZE_LIMIT + 1]).unwrap();
+		let error =
+			load_tls_config(cert_path.to_str().unwrap(), key_path.to_str().unwrap()).unwrap_err();
+		assert!(error.contains("exceeds"));
+
+		fs::write(&cert_path, valid_cert).unwrap();
+		fs::remove_file(&key_path).unwrap();
+		fs::write(&key_path, vec![b'a'; TLS_FILE_SIZE_LIMIT + 1]).unwrap();
+		let error =
+			load_tls_config(cert_path.to_str().unwrap(), key_path.to_str().unwrap()).unwrap_err();
+		assert!(error.contains("exceeds"));
+
 		let _ = fs::remove_file(&cert_path);
 		let _ = fs::remove_file(&key_path);
 	}

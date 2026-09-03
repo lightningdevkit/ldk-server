@@ -10,7 +10,8 @@
 use std::path::PathBuf;
 
 use ldk_server_client::config::{
-	get_default_config_path, load_config, resolve_api_key, resolve_base_url, resolve_cert_path,
+	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
+	resolve_cert_path,
 };
 
 pub struct ResolvedConfig {
@@ -48,9 +49,7 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 			.to_string()
 	})?;
 
-	let tls_cert_pem = std::fs::read(&tls_cert_path).map_err(|e| {
-		format!("Failed to read server certificate file '{}': {}", tls_cert_path.display(), e)
-	})?;
+	let tls_cert_pem = read_tls_certificate(&tls_cert_path)?;
 
 	Ok(ResolvedConfig { base_url, api_key, tls_cert_pem })
 }

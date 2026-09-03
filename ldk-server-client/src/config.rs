@@ -13,7 +13,7 @@
 //! locating the server's TLS certificate and API key on disk, so multiple clients (CLI, MCP
 //! bridge, etc.) can resolve connection credentials in a consistent way.
 
-use std::io::{ErrorKind, Read};
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
 use hex_conservative::DisplayHex;
@@ -23,6 +23,7 @@ const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
 const API_KEY_LEN: usize = 32;
+const TLS_CERT_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
@@ -133,6 +134,14 @@ pub fn load_config(path: &PathBuf) -> Result<Config, String> {
 		.map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
 }
 
+/// Reads the server TLS certificate at `path`.
+///
+/// Returns an error if the file exceeds 1 MiB.
+pub fn read_tls_certificate(path: &Path) -> Result<Vec<u8>, String> {
+	read_with_limit(path, TLS_CERT_FILE_SIZE_LIMIT)
+		.map_err(|e| format!("Failed to read server certificate file '{}': {e}", path.display()))
+}
+
 /// Resolves the base URL of the `ldk-server` gRPC endpoint.
 ///
 /// Prefers `override_url`, falls back to the configuration file, and finally to
@@ -191,6 +200,19 @@ fn read_api_key(path: &Path) -> Result<Option<String>, String> {
 	Ok(Some(bytes.to_lower_hex_string()))
 }
 
+fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
+	let file = std::fs::File::open(path)?;
+	let mut contents = Vec::new();
+	file.take(limit.saturating_add(1) as u64).read_to_end(&mut contents)?;
+	if contents.len() > limit {
+		return Err(io::Error::new(
+			io::ErrorKind::InvalidData,
+			format!("File '{}' exceeds the {limit} byte limit", path.display()),
+		));
+	}
+	Ok(contents)
+}
+
 /// Resolves the path to the server's TLS certificate (PEM).
 ///
 /// Prefers `override_path`, falls back to `tls.cert_path` in the configuration file, then to the
@@ -218,7 +240,10 @@ fn default_grpc_service_address() -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::{resolve_base_url, Config, DEFAULT_GRPC_SERVICE_ADDRESS};
+	use super::{
+		read_tls_certificate, resolve_base_url, Config, DEFAULT_GRPC_SERVICE_ADDRESS,
+		TLS_CERT_FILE_SIZE_LIMIT,
+	};
 
 	#[test]
 	fn config_defaults_grpc_service_address() {
@@ -312,5 +337,17 @@ mod tests {
 	#[test]
 	fn resolve_base_url_falls_back_to_default() {
 		assert_eq!(resolve_base_url(None, None), DEFAULT_GRPC_SERVICE_ADDRESS);
+	}
+
+	#[test]
+	fn read_tls_certificate_rejects_oversized_file() {
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-client-oversized-cert-{}", std::process::id()));
+		std::fs::write(&path, vec![0; TLS_CERT_FILE_SIZE_LIMIT + 1]).unwrap();
+
+		let error = read_tls_certificate(&path).unwrap_err();
+		assert!(error.contains("exceeds"));
+
+		std::fs::remove_file(path).unwrap();
 	}
 }

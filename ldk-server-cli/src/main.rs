@@ -15,8 +15,8 @@ use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
-	get_default_config_path, load_config, resolve_api_key, resolve_base_url, resolve_cert_path,
-	DEFAULT_GRPC_SERVICE_ADDRESS,
+	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
+	resolve_cert_path, DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
@@ -635,8 +635,8 @@ async fn main() {
 			std::process::exit(1);
 		});
 
-	let server_cert_pem = std::fs::read(&tls_cert_path).unwrap_or_else(|e| {
-		eprintln!("Failed to read server certificate file '{}': {}", tls_cert_path.display(), e);
+	let server_cert_pem = read_tls_certificate(&tls_cert_path).unwrap_or_else(|e| {
+		eprintln!("{e}");
 		std::process::exit(1);
 	});
 
