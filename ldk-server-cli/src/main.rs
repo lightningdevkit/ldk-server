@@ -617,10 +617,15 @@ async fn main() {
 		},
 	};
 
-	let api_key = resolve_api_key(cli.api_key, config.as_ref()).unwrap_or_else(|| {
-		eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
-		std::process::exit(1);
-	});
+	let api_key = resolve_api_key(cli.api_key, config.as_ref())
+		.unwrap_or_else(|e| {
+			eprintln!("Failed to resolve API key: {e}");
+			std::process::exit(1);
+		})
+		.unwrap_or_else(|| {
+			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+			std::process::exit(1);
+		});
 
 	let base_url = resolve_base_url(cli.base_url, config.as_ref());
 

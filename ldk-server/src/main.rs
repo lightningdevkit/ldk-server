@@ -895,8 +895,13 @@ fn upsert_payment_details(
 fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 	let api_key_path = storage_dir.join(API_KEY_FILE);
 
-	if api_key_path.exists() {
-		let file = fs::File::open(&api_key_path)?;
+	let file = match fs::File::open(&api_key_path) {
+		Ok(file) => Some(file),
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+		Err(e) => return Err(e),
+	};
+
+	if let Some(file) = file {
 		let mut key_bytes = Vec::with_capacity(API_KEY_LEN + 1);
 		file.take((API_KEY_LEN + 1) as u64).read_to_end(&mut key_bytes)?;
 		if key_bytes.len() != API_KEY_LEN {

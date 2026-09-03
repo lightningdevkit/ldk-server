@@ -39,7 +39,7 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 
 	let base_url = resolve_base_url(env_base_url, config.as_ref());
 
-	let api_key = resolve_api_key(env_api_key, config.as_ref()).ok_or_else(
+	let api_key = resolve_api_key(env_api_key, config.as_ref())?.ok_or_else(
 		|| "API key not provided. Set LDK_API_KEY or ensure the api_key file exists at ~/.ldk-server/[network]/api_key".to_string()
 	)?;
 
@@ -203,7 +203,7 @@ mod tests {
 
 		let cert_path = custom_storage.join("tls.crt");
 		std::fs::write(&cert_path, b"storage-cert").unwrap();
-		std::fs::write(custom_storage.join("regtest").join("api_key"), [0xAB, 0xCD]).unwrap();
+		std::fs::write(custom_storage.join("regtest").join("api_key"), [0xAB; 32]).unwrap();
 
 		std::fs::write(
 			&config_path,
@@ -226,7 +226,7 @@ mod tests {
 		let resolved = resolve_config(Some(config_path.display().to_string())).unwrap();
 
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
-		assert_eq!(resolved.api_key, "abcd");
+		assert_eq!(resolved.api_key, "ab".repeat(32));
 		assert_eq!(resolved.tls_cert_pem, b"storage-cert");
 
 		std::fs::remove_dir_all(temp_dir).unwrap();

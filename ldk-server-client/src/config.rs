@@ -13,7 +13,8 @@
 //! locating the server's TLS certificate and API key on disk, so multiple clients (CLI, MCP
 //! bridge, etc.) can resolve connection credentials in a consistent way.
 
-use std::path::PathBuf;
+use std::io::{ErrorKind, Read};
+use std::path::{Path, PathBuf};
 
 use hex_conservative::DisplayHex;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
+const API_KEY_LEN: usize = 32;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
@@ -146,18 +148,47 @@ pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -
 /// Prefers `override_key`, falls back to reading the API key file from the configured storage
 /// directory, and finally from the OS-specific default data directory. The raw bytes read from
 /// disk are lower-hex encoded before being returned.
-pub fn resolve_api_key(override_key: Option<String>, config: Option<&Config>) -> Option<String> {
-	override_key.or_else(|| {
-		let network =
-			config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
-		storage_dir(config)
-			.map(|dir| api_key_path_for_storage_dir(dir, &network))
-			.and_then(|path| std::fs::read(&path).ok())
-			.or_else(|| {
-				get_default_api_key_path(&network).and_then(|path| std::fs::read(&path).ok())
-			})
-			.map(|bytes| bytes.to_lower_hex_string())
-	})
+///
+/// Returns an error if a candidate API key file exists but cannot be read or does not contain
+/// exactly 32 bytes.
+pub fn resolve_api_key(
+	override_key: Option<String>, config: Option<&Config>,
+) -> Result<Option<String>, String> {
+	if override_key.is_some() {
+		return Ok(override_key);
+	}
+
+	let network = config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
+	if let Some(dir) = storage_dir(config) {
+		let path = api_key_path_for_storage_dir(dir, &network);
+		if let Some(api_key) = read_api_key(&path)? {
+			return Ok(Some(api_key));
+		}
+	}
+
+	match get_default_api_key_path(&network) {
+		Some(path) => read_api_key(&path),
+		None => Ok(None),
+	}
+}
+
+fn read_api_key(path: &Path) -> Result<Option<String>, String> {
+	let file = match std::fs::File::open(path) {
+		Ok(file) => file,
+		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(e) => return Err(format!("Failed to read API key file '{}': {e}", path.display())),
+	};
+	let mut bytes = Vec::with_capacity(API_KEY_LEN + 1);
+	file.take((API_KEY_LEN + 1) as u64)
+		.read_to_end(&mut bytes)
+		.map_err(|e| format!("Failed to read API key file '{}': {e}", path.display()))?;
+	if bytes.len() != API_KEY_LEN {
+		return Err(format!(
+			"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
+			path.display()
+		));
+	}
+	Ok(Some(bytes.to_lower_hex_string()))
 }
 
 /// Resolves the path to the server's TLS certificate (PEM).
