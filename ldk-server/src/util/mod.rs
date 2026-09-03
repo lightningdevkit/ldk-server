@@ -15,10 +15,15 @@ pub(crate) mod proto_adapter;
 pub(crate) mod systemd;
 pub(crate) mod tls;
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+
+pub(crate) fn create_dir_all_private(path: &Path) -> io::Result<()> {
+	let mut builder = DirBuilder::new();
+	builder.recursive(true).mode(0o700).create(path)
+}
 
 pub(crate) fn write_new(path: &Path, contents: &[u8], mode: u32) -> io::Result<()> {
 	let mut file = OpenOptions::new().create_new(true).write(true).mode(mode).open(path)?;

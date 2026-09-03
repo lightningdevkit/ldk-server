@@ -16,6 +16,8 @@ use std::time::SystemTime;
 
 use log::{error, Level, LevelFilter, Log, Metadata, Record};
 
+use crate::util::create_dir_all_private;
+
 struct LoggerState {
 	file: LineWriter<File>,
 	bytes_written: usize,
@@ -68,7 +70,7 @@ impl ServerLogger {
 		let state = if let Some(path) = &log_file_path {
 			// Create parent directories if they don't exist
 			if let Some(parent) = path.parent() {
-				fs::create_dir_all(parent)?;
+				create_dir_all_private(parent)?;
 			}
 
 			let file = open_log_file(path)?;

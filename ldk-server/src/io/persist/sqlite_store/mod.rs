@@ -7,15 +7,18 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::fs::OpenOptions;
+use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::{fs, io};
 
 use ldk_node::lightning::types::string::PrintableString;
 use rusqlite::{named_params, Connection};
 
 use crate::io::persist::paginated_kv_store::{ListResponse, PaginatedKVStore};
 use crate::io::utils::check_namespace_key_validity;
+use crate::util::create_dir_all_private;
 
 /// The default database file name.
 pub const DEFAULT_SQLITE_DB_FILE_NAME: &str = "ldk_server_data.sqlite";
@@ -48,7 +51,7 @@ impl SqliteStore {
 		let paginated_kv_table_name =
 			paginated_kv_table_name.unwrap_or(DEFAULT_PAGINATED_KV_TABLE_NAME.to_string());
 
-		fs::create_dir_all(data_dir.clone()).map_err(|e| {
+		create_dir_all_private(&data_dir).map_err(|e| {
 			let msg = format!(
 				"Failed to create database destination directory {}: {}",
 				data_dir.display(),
@@ -58,6 +61,15 @@ impl SqliteStore {
 		})?;
 		let mut db_file_path = data_dir;
 		db_file_path.push(db_file_name);
+		match OpenOptions::new().create_new(true).write(true).mode(0o600).open(&db_file_path) {
+			Ok(_) => {},
+			Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {},
+			Err(e) => {
+				let msg =
+					format!("Failed to create database file {}: {}", db_file_path.display(), e);
+				return Err(io::Error::other(msg));
+			},
+		}
 
 		let connection = Connection::open(db_file_path.clone()).map_err(|e| {
 			let msg =

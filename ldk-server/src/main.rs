@@ -54,7 +54,7 @@ use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
 use crate::util::tls::get_or_generate_tls_config;
-use crate::util::{systemd, write_new};
+use crate::util::{create_dir_all_private, systemd, write_new};
 
 const API_KEY_FILE: &str = "api_key";
 const API_KEY_LEN: usize = 32;
@@ -908,7 +908,7 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 		Ok(key_bytes.to_lower_hex_string())
 	} else {
 		// Ensure the storage directory exists
-		fs::create_dir_all(storage_dir)?;
+		create_dir_all_private(storage_dir)?;
 
 		// Generate a 32-byte random API key
 		let mut key_bytes = [0u8; API_KEY_LEN];

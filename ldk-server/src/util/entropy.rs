@@ -15,7 +15,7 @@ use ldk_node::bip39::Mnemonic;
 use ldk_node::entropy::{generate_entropy_mnemonic, NodeEntropy};
 use log::info;
 
-use crate::util::write_new;
+use crate::util::{create_dir_all_private, write_new};
 
 const DEFAULT_MNEMONIC_FILE: &str = "keys_mnemonic";
 
@@ -32,7 +32,7 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 		})?
 	} else {
 		if let Some(parent) = mnemonic_path.parent() {
-			fs::create_dir_all(parent)?;
+			create_dir_all_private(parent)?;
 		}
 		let mnemonic = generate_entropy_mnemonic(None);
 		write_new(&mnemonic_path, format!("{}\n", mnemonic).as_bytes(), 0o600)?;
