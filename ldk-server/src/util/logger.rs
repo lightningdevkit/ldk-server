@@ -9,11 +9,14 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, LineWriter, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use log::{error, Level, LevelFilter, Log, Metadata, Record};
+
+use crate::util::create_dir_all_private;
 
 struct LoggerState {
 	file: LineWriter<File>,
@@ -67,7 +70,7 @@ impl ServerLogger {
 		let state = if let Some(path) = &log_file_path {
 			// Create parent directories if they don't exist
 			if let Some(parent) = path.parent() {
-				fs::create_dir_all(parent)?;
+				create_dir_all_private(parent)?;
 			}
 
 			let file = open_log_file(path)?;
@@ -259,7 +262,7 @@ fn format_level(level: Level) -> &'static str {
 }
 
 fn open_log_file(log_file_path: &Path) -> Result<File, io::Error> {
-	OpenOptions::new().create(true).append(true).open(log_file_path)
+	OpenOptions::new().create(true).append(true).mode(0o600).open(log_file_path)
 }
 
 fn cleanup_old_logs(log_file_path: &Path, max_files: usize) -> io::Result<()> {
@@ -317,5 +320,28 @@ impl Log for LoggerWrapper {
 
 	fn flush(&self) {
 		self.0.flush()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::os::unix::fs::PermissionsExt;
+	use std::time::{SystemTime, UNIX_EPOCH};
+
+	use super::*;
+
+	#[test]
+	fn open_log_file_creates_private_file() {
+		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let dir = std::env::temp_dir()
+			.join(format!("ldk-server-log-mode-{}-{nonce}", std::process::id()));
+		fs::create_dir_all(&dir).unwrap();
+		let path = dir.join("ldk-server.log");
+
+		drop(open_log_file(&path).unwrap());
+
+		let mode = fs::metadata(&path).unwrap().permissions().mode();
+		assert_eq!(mode & 0o077, 0);
+		fs::remove_dir_all(dir).unwrap();
 	}
 }

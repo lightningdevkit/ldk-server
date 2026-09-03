@@ -7,40 +7,42 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::io;
 use std::path::Path;
 use std::str::FromStr;
-use std::{fs, io};
 
 use ldk_node::bip39::Mnemonic;
 use ldk_node::entropy::{generate_entropy_mnemonic, NodeEntropy};
 use log::info;
 
-use crate::util::write_new;
+use crate::util::{create_dir_all_private, read_to_string_with_limit, write_new};
 
 const DEFAULT_MNEMONIC_FILE: &str = "keys_mnemonic";
+const MNEMONIC_FILE_SIZE_LIMIT: usize = 1024;
 
 pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<NodeEntropy> {
 	let mnemonic_path = storage_dir.join(DEFAULT_MNEMONIC_FILE);
 
-	let mnemonic = if mnemonic_path.exists() {
-		let raw = fs::read_to_string(&mnemonic_path)?;
-		Mnemonic::from_str(raw.trim()).map_err(|e| {
+	let mnemonic = match read_to_string_with_limit(&mnemonic_path, MNEMONIC_FILE_SIZE_LIMIT) {
+		Ok(raw) => Mnemonic::from_str(raw.trim()).map_err(|e| {
 			io::Error::new(
 				io::ErrorKind::InvalidData,
 				format!("Invalid BIP39 mnemonic in {}: {}", mnemonic_path.display(), e),
 			)
-		})?
-	} else {
-		if let Some(parent) = mnemonic_path.parent() {
-			fs::create_dir_all(parent)?;
-		}
-		let mnemonic = generate_entropy_mnemonic(None);
-		write_new(&mnemonic_path, format!("{}\n", mnemonic).as_bytes(), 0o600)?;
-		info!(
-			"Generated new BIP39 mnemonic at {}. Back up this file securely — it is required to recover on-chain funds.",
-			mnemonic_path.display()
-		);
-		mnemonic
+		})?,
+		Err(e) if e.kind() == io::ErrorKind::NotFound => {
+			if let Some(parent) = mnemonic_path.parent() {
+				create_dir_all_private(parent)?;
+			}
+			let mnemonic = generate_entropy_mnemonic(None);
+			write_new(&mnemonic_path, format!("{}\n", mnemonic).as_bytes(), 0o600)?;
+			info!(
+				"Generated new BIP39 mnemonic at {}. Back up this file securely — it is required to recover on-chain funds.",
+				mnemonic_path.display()
+			);
+			mnemonic
+		},
+		Err(e) => return Err(e),
 	};
 
 	Ok(NodeEntropy::from_bip39_mnemonic(mnemonic, None))
@@ -48,6 +50,7 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 
 #[cfg(test)]
 mod tests {
+	use std::fs;
 	use std::os::unix::fs::{MetadataExt, PermissionsExt};
 	use std::path::PathBuf;
 
@@ -122,6 +125,16 @@ mod tests {
 			"these words are definitely not a valid bip39 phrase at all nope",
 		)
 		.unwrap();
+
+		let err = load_or_generate_node_entropy(&dir).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+	}
+
+	#[test]
+	fn rejects_oversized_mnemonic_file() {
+		let dir = tempdir("oversized");
+		fs::write(dir.join(DEFAULT_MNEMONIC_FILE), vec![b'a'; MNEMONIC_FILE_SIZE_LIMIT + 1])
+			.unwrap();
 
 		let err = load_or_generate_node_entropy(&dir).unwrap_err();
 		assert_eq!(err.kind(), io::ErrorKind::InvalidData);

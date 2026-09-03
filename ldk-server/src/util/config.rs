@@ -7,11 +7,11 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
-use std::{fs, io};
 
 use clap::Parser;
 use ldk_node::bitcoin::secp256k1::PublicKey;
@@ -24,6 +24,9 @@ use ldk_node::probing::{ProbingConfig, ProbingConfigBuilder};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
+use crate::util::read_to_string_with_limit;
+
+const CONFIG_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
 const DEFAULT_PATHFINDING_SCORES_SOURCE_URL: &str =
 	"https://rapidsync.lightningdevkit.org/scoring/scorer.bin";
@@ -1235,7 +1238,7 @@ pub fn load_config(args: &ArgsConfig) -> io::Result<Config> {
 	};
 
 	if let Some(path) = config_file {
-		let content = fs::read_to_string(&path).map_err(|e| {
+		let content = read_to_string_with_limit(&path, CONFIG_FILE_SIZE_LIMIT).map_err(|e| {
 			io::Error::new(e.kind(), format!("Failed to read config file '{:?}': {}", path, e))
 		})?;
 		let toml_config: TomlConfig = toml::from_str(&content).map_err(|e| {
@@ -1288,7 +1291,7 @@ fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
 
 #[cfg(test)]
 mod tests {
-	use std::str::FromStr;
+	use std::{fs, str::FromStr};
 
 	use clap::Parser;
 	use ldk_node::bitcoin::secp256k1::PublicKey;
@@ -1717,6 +1720,20 @@ mod tests {
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		let error = load_config(&args_config).unwrap_err();
 		assert_eq!(error.to_string(), "Must set a single chain source, multiple were configured");
+	}
+
+	#[test]
+	fn test_rejects_oversized_config_file() {
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-oversized-config-{}", std::process::id()));
+		fs::write(&path, vec![b'a'; CONFIG_FILE_SIZE_LIMIT + 1]).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file = Some(path.to_string_lossy().to_string());
+
+		let error = load_config(&args_config).unwrap_err();
+		assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+
+		fs::remove_file(path).unwrap();
 	}
 
 	#[test]

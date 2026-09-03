@@ -13,7 +13,8 @@
 //! locating the server's TLS certificate and API key on disk, so multiple clients (CLI, MCP
 //! bridge, etc.) can resolve connection credentials in a consistent way.
 
-use std::path::PathBuf;
+use std::io::{self, ErrorKind, Read};
+use std::path::{Path, PathBuf};
 
 use hex_conservative::DisplayHex;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,9 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
 const API_KEY_FILE: &str = "api_key";
+const API_KEY_LEN: usize = 32;
+const CONFIG_FILE_SIZE_LIMIT: usize = 1024 * 1024;
+const TLS_CERT_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
@@ -124,11 +128,19 @@ impl Config {
 }
 
 /// Reads and parses the `ldk-server` configuration file at `path`.
-pub fn load_config(path: &PathBuf) -> Result<Config, String> {
-	let contents = std::fs::read_to_string(path)
+pub fn load_config(path: &Path) -> Result<Config, String> {
+	let contents = read_to_string_with_limit(path, CONFIG_FILE_SIZE_LIMIT)
 		.map_err(|e| format!("Failed to read config file '{}': {}", path.display(), e))?;
 	toml::from_str(&contents)
 		.map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
+}
+
+/// Reads the server TLS certificate at `path`.
+///
+/// Returns an error if the file exceeds 1 MiB.
+pub fn read_tls_certificate(path: &Path) -> Result<Vec<u8>, String> {
+	read_with_limit(path, TLS_CERT_FILE_SIZE_LIMIT)
+		.map_err(|e| format!("Failed to read server certificate file '{}': {e}", path.display()))
 }
 
 /// Resolves the base URL of the `ldk-server` gRPC endpoint.
@@ -146,18 +158,65 @@ pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -
 /// Prefers `override_key`, falls back to reading the API key file from the configured storage
 /// directory, and finally from the OS-specific default data directory. The raw bytes read from
 /// disk are lower-hex encoded before being returned.
-pub fn resolve_api_key(override_key: Option<String>, config: Option<&Config>) -> Option<String> {
-	override_key.or_else(|| {
-		let network =
-			config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
-		storage_dir(config)
-			.map(|dir| api_key_path_for_storage_dir(dir, &network))
-			.and_then(|path| std::fs::read(&path).ok())
-			.or_else(|| {
-				get_default_api_key_path(&network).and_then(|path| std::fs::read(&path).ok())
-			})
-			.map(|bytes| bytes.to_lower_hex_string())
-	})
+///
+/// Returns an error if a candidate API key file exists but cannot be read or does not contain
+/// exactly 32 bytes.
+pub fn resolve_api_key(
+	override_key: Option<String>, config: Option<&Config>,
+) -> Result<Option<String>, String> {
+	if override_key.is_some() {
+		return Ok(override_key);
+	}
+
+	let network = config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
+	if let Some(dir) = storage_dir(config) {
+		let path = api_key_path_for_storage_dir(dir, &network);
+		if let Some(api_key) = read_api_key(&path)? {
+			return Ok(Some(api_key));
+		}
+	}
+
+	match get_default_api_key_path(&network) {
+		Some(path) => read_api_key(&path),
+		None => Ok(None),
+	}
+}
+
+fn read_api_key(path: &Path) -> Result<Option<String>, String> {
+	let file = match std::fs::File::open(path) {
+		Ok(file) => file,
+		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(e) => return Err(format!("Failed to read API key file '{}': {e}", path.display())),
+	};
+	let mut bytes = Vec::with_capacity(API_KEY_LEN + 1);
+	file.take((API_KEY_LEN + 1) as u64)
+		.read_to_end(&mut bytes)
+		.map_err(|e| format!("Failed to read API key file '{}': {e}", path.display()))?;
+	if bytes.len() != API_KEY_LEN {
+		return Err(format!(
+			"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
+			path.display()
+		));
+	}
+	Ok(Some(bytes.to_lower_hex_string()))
+}
+
+fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
+	let file = std::fs::File::open(path)?;
+	let mut contents = Vec::new();
+	file.take(limit.saturating_add(1) as u64).read_to_end(&mut contents)?;
+	if contents.len() > limit {
+		return Err(io::Error::new(
+			io::ErrorKind::InvalidData,
+			format!("File '{}' exceeds the {limit} byte limit", path.display()),
+		));
+	}
+	Ok(contents)
+}
+
+fn read_to_string_with_limit(path: &Path, limit: usize) -> io::Result<String> {
+	String::from_utf8(read_with_limit(path, limit)?)
+		.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 /// Resolves the path to the server's TLS certificate (PEM).
@@ -187,7 +246,10 @@ fn default_grpc_service_address() -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::{resolve_base_url, Config, DEFAULT_GRPC_SERVICE_ADDRESS};
+	use super::{
+		load_config, read_tls_certificate, resolve_base_url, Config, CONFIG_FILE_SIZE_LIMIT,
+		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+	};
 
 	#[test]
 	fn config_defaults_grpc_service_address() {
@@ -281,5 +343,29 @@ mod tests {
 	#[test]
 	fn resolve_base_url_falls_back_to_default() {
 		assert_eq!(resolve_base_url(None, None), DEFAULT_GRPC_SERVICE_ADDRESS);
+	}
+
+	#[test]
+	fn read_tls_certificate_rejects_oversized_file() {
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-client-oversized-cert-{}", std::process::id()));
+		std::fs::write(&path, vec![0; TLS_CERT_FILE_SIZE_LIMIT + 1]).unwrap();
+
+		let error = read_tls_certificate(&path).unwrap_err();
+		assert!(error.contains("exceeds"));
+
+		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn load_config_rejects_oversized_file() {
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-client-oversized-config-{}", std::process::id()));
+		std::fs::write(&path, vec![b'a'; CONFIG_FILE_SIZE_LIMIT + 1]).unwrap();
+
+		let error = load_config(&path).unwrap_err();
+		assert!(error.contains("exceeds"));
+
+		std::fs::remove_file(path).unwrap();
 	}
 }
