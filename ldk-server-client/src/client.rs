@@ -542,6 +542,7 @@ impl LdkServerClient {
 			body,
 			buf: Vec::new(),
 			trailers_checked: false,
+			terminated: false,
 			_marker: std::marker::PhantomData,
 		})
 	}
@@ -630,6 +631,7 @@ pub struct GrpcStream<M: Message + Default> {
 	body: hyper::Body,
 	buf: Vec<u8>,
 	trailers_checked: bool,
+	terminated: bool,
 	_marker: std::marker::PhantomData<M>,
 }
 
@@ -641,46 +643,53 @@ impl<M: Message + Default> GrpcStream<M> {
 	///
 	/// Returns `None` if the stream has ended.
 	pub async fn next_message(&mut self) -> Option<Result<M, LdkServerError>> {
+		if self.terminated {
+			return None;
+		}
+
 		loop {
 			// Try to decode a complete gRPC frame from the buffer
 			if self.buf.len() >= GRPC_FRAME_HEADER_LEN {
 				if self.buf[0] != 0 {
-					return Some(Err(LdkServerError::new(
+					return self.terminate_with_error(LdkServerError::new(
 						InternalError,
 						"gRPC stream compression is not supported",
-					)));
+					));
 				}
 				let msg_len =
 					u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]])
 						as usize;
 				if msg_len > MAX_GRPC_STREAM_MESSAGE_LEN {
-					return Some(Err(LdkServerError::new(
+					return self.terminate_with_error(LdkServerError::new(
 						InternalError,
 						format!(
 							"gRPC stream message exceeds maximum size of {} bytes",
 							MAX_GRPC_STREAM_MESSAGE_LEN
 						),
-					)));
+					));
 				}
 				let frame_len = match GRPC_FRAME_HEADER_LEN.checked_add(msg_len) {
 					Some(frame_len) => frame_len,
 					None => {
-						return Some(Err(LdkServerError::new(
+						return self.terminate_with_error(LdkServerError::new(
 							InternalError,
 							"gRPC stream frame length overflow",
-						)));
+						));
 					},
 				};
 				if self.buf.len() >= frame_len {
 					let proto_bytes = &self.buf[GRPC_FRAME_HEADER_LEN..frame_len];
-					let result = M::decode(proto_bytes).map_err(|e| {
-						LdkServerError::new(
-							InternalError,
-							format!("Failed to decode gRPC stream message: {}", e),
-						)
-					});
+					let message = match M::decode(proto_bytes) {
+						Ok(message) => message,
+						Err(e) => {
+							return self.terminate_with_error(LdkServerError::new(
+								InternalError,
+								format!("Failed to decode gRPC stream message: {}", e),
+							));
+						},
+					};
 					self.buf.drain(..frame_len);
-					return Some(result);
+					return Some(Ok(message));
 				}
 			}
 
@@ -688,10 +697,10 @@ impl<M: Message + Default> GrpcStream<M> {
 			match self.body.data().await {
 				Some(Ok(chunk)) => self.buf.extend_from_slice(&chunk),
 				Some(Err(e)) => {
-					return Some(Err(LdkServerError::new(
+					return self.terminate_with_error(LdkServerError::new(
 						InternalError,
 						format!("Failed to read gRPC stream: {}", e),
-					)));
+					));
 				},
 				None => {
 					if self.trailers_checked {
@@ -704,6 +713,12 @@ impl<M: Message + Default> GrpcStream<M> {
 		}
 	}
 
+	fn terminate_with_error(&mut self, error: LdkServerError) -> Option<Result<M, LdkServerError>> {
+		self.terminated = true;
+		self.buf.clear();
+		Some(Err(error))
+	}
+
 	async fn finish_stream(&mut self) -> Option<Result<M, LdkServerError>> {
 		match self.body.trailers().await {
 			Ok(Some(trailers)) => {
@@ -713,10 +728,10 @@ impl<M: Message + Default> GrpcStream<M> {
 			},
 			Ok(None) => {},
 			Err(e) => {
-				return Some(Err(LdkServerError::new(
+				return self.terminate_with_error(LdkServerError::new(
 					InternalError,
 					format!("Failed to read gRPC stream trailers: {}", e),
-				)));
+				));
 			},
 		}
 
@@ -822,6 +837,7 @@ mod tests {
 			body,
 			buf: Vec::new(),
 			trailers_checked: false,
+			terminated: false,
 			_marker: std::marker::PhantomData,
 		};
 
@@ -841,6 +857,7 @@ mod tests {
 			body,
 			buf: Vec::new(),
 			trailers_checked: false,
+			terminated: false,
 			_marker: std::marker::PhantomData,
 		};
 
@@ -853,6 +870,7 @@ mod tests {
 				MAX_GRPC_STREAM_MESSAGE_LEN
 			)
 		);
+		assert!(stream.next_message().await.is_none());
 	}
 
 	#[tokio::test]
@@ -865,12 +883,34 @@ mod tests {
 			body,
 			buf: Vec::new(),
 			trailers_checked: false,
+			terminated: false,
 			_marker: std::marker::PhantomData,
 		};
 
 		let result = stream.next_message().await.unwrap().unwrap_err();
 		assert_eq!(result.error_code, InternalError);
 		assert_eq!(result.message, "gRPC stream compression is not supported");
+		assert!(stream.next_message().await.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_terminates_after_decode_error() {
+		let (mut sender, body) = Body::channel();
+		sender.send_data(vec![0u8, 0, 0, 0, 1, 0xff].into()).await.unwrap();
+		drop(sender);
+
+		let mut stream: EventStream = GrpcStream {
+			body,
+			buf: Vec::new(),
+			trailers_checked: false,
+			terminated: false,
+			_marker: std::marker::PhantomData,
+		};
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert!(result.message.starts_with("Failed to decode gRPC stream message:"));
+		assert!(stream.next_message().await.is_none());
 	}
 
 	#[test]
