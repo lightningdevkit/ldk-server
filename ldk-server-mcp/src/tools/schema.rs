@@ -137,6 +137,35 @@ fn page_token_schema() -> Value {
 	})
 }
 
+pub fn create_api_key_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"name": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$"},
+			"permissions": {"type": "array", "minItems": 1, "items": {
+				"type": "string", "enum": ldk_server_client::ldk_server_grpc::permissions::ALL_PERMISSIONS
+			}, "description": "Capabilities to grant. Use admin by itself for unrestricted access."}
+		},
+		"required": ["name", "permissions"]
+	})
+}
+
+pub fn list_api_keys_schema() -> Value {
+	json!({"type": "object", "properties": {}, "required": []})
+}
+
+pub fn revoke_api_key_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {"id": {"type": "string", "pattern": "^[0-9a-fA-F]{32}$"}},
+		"required": ["id"]
+	})
+}
+
+pub fn get_permissions_schema() -> Value {
+	json!({"type": "object", "properties": {}, "required": []})
+}
+
 pub fn get_node_info_schema() -> Value {
 	json!({ "type": "object", "properties": {}, "required": [] })
 }

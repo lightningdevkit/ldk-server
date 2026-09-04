@@ -19,7 +19,7 @@ The server reads configuration in this precedence order (highest wins):
 
 1. **Environment variables**: `LDK_BASE_URL`, `LDK_API_KEY`, `LDK_TLS_CERT_PATH`
 2. **CLI argument**: `--config <path>` pointing to a TOML config file
-3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_key`
+3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_keys/admin.toml`
 
 The TOML config format is the same as used by [
 `ldk-server-cli`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-cli):
