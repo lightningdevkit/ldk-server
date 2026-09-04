@@ -60,7 +60,7 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 - Network graph data (re-synced from gossip or RGS)
 - Fee rate cache (re-fetched from the chain backend)
-- The API key (can be regenerated, but clients will need the new one)
+- API keys (can be regenerated, but clients will need new keys)
 - The TLS certificate (can be regenerated, but clients will need the new one)
 
 > **Warning:** Do not restore a backup onto two running nodes simultaneously. Running the
@@ -69,13 +69,14 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 ## Security
 
-### API Key
+### API Keys
 
-- Auto-generated as 32 random bytes on first startup
-- Stored at `<network_dir>/api_key` with `0400` permissions (read-only for owner)
-- The hex-encoded form of this key is used for HMAC authentication
-- Treat it as a secret: anyone with the API key and network access to the gRPC port can
-  control the node
+- An unrestricted admin key is generated on first startup
+- Keys are stored as TOML files in `<network_dir>/api_keys/`
+- Revoking a key blocks new requests; existing event streams continue until the client disconnects
+  or the server stops
+- Keys can have scoped capabilities; use the minimum permissions required by each client
+- Treat each key as a secret: anyone with a key and network access can use its capabilities
 
 ### TLS
 

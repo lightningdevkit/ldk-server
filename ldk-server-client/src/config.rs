@@ -16,15 +16,16 @@
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
-use hex_conservative::DisplayHex;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
-const API_KEY_FILE: &str = "api_key";
 const API_KEY_LEN: usize = 32;
 const CONFIG_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 const TLS_CERT_FILE_SIZE_LIMIT: usize = 1024 * 1024;
+const API_KEYS_DIR: &str = "api_keys";
+const ADMIN_API_KEY_FILE: &str = "admin.toml";
+const API_KEY_FILE_SIZE_LIMIT: usize = 4096;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
@@ -57,14 +58,15 @@ pub fn get_default_cert_path() -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(DEFAULT_CERT_FILE))
 }
 
-/// Default path of the network-scoped API key file inside the default data directory.
-pub fn get_default_api_key_path(network: &str) -> Option<PathBuf> {
-	get_default_data_dir().map(|path| path.join(network).join(API_KEY_FILE))
+/// Default path of the network-scoped admin API key file.
+pub fn get_default_admin_api_key_path(network: &str) -> Option<PathBuf> {
+	get_default_data_dir()
+		.map(|path| path.join(network).join(API_KEYS_DIR).join(ADMIN_API_KEY_FILE))
 }
 
-/// Path of the network-scoped API key file inside the given storage directory.
-pub fn api_key_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
-	PathBuf::from(storage_dir).join(network).join(API_KEY_FILE)
+/// Path of the network-scoped admin API key file inside the given storage directory.
+pub fn admin_api_key_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
+	PathBuf::from(storage_dir).join(network).join(API_KEYS_DIR).join(ADMIN_API_KEY_FILE)
 }
 
 /// Path of the server's TLS certificate inside the given storage directory.
@@ -155,12 +157,11 @@ pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -
 
 /// Resolves the API key used to authenticate against the `ldk-server` gRPC endpoint.
 ///
-/// Prefers `override_key`, falls back to reading the API key file from the configured storage
-/// directory, and finally from the OS-specific default data directory. The raw bytes read from
-/// disk are lower-hex encoded before being returned.
+/// Prefers `override_key`, falls back to reading the admin TOML file from the configured storage
+/// directory, and finally from the OS-specific default data directory.
 ///
-/// Returns an error if a candidate API key file exists but cannot be read or does not contain
-/// exactly 32 bytes.
+/// Returns an error if a candidate key file exists but cannot be read, exceeds its size limit,
+/// or does not contain a valid key.
 pub fn resolve_api_key(
 	override_key: Option<String>, config: Option<&Config>,
 ) -> Result<Option<String>, String> {
@@ -170,35 +171,15 @@ pub fn resolve_api_key(
 
 	let network = config.and_then(|c| c.network().ok()).unwrap_or_else(|| "bitcoin".to_string());
 	if let Some(dir) = storage_dir(config) {
-		let path = api_key_path_for_storage_dir(dir, &network);
-		if let Some(api_key) = read_api_key(&path)? {
-			return Ok(Some(api_key));
+		if let Some(key) = read_admin_api_key(&admin_api_key_path_for_storage_dir(dir, &network))? {
+			return Ok(Some(key));
 		}
 	}
 
-	match get_default_api_key_path(&network) {
-		Some(path) => read_api_key(&path),
+	match get_default_admin_api_key_path(&network) {
+		Some(path) => read_admin_api_key(&path),
 		None => Ok(None),
 	}
-}
-
-fn read_api_key(path: &Path) -> Result<Option<String>, String> {
-	let file = match std::fs::File::open(path) {
-		Ok(file) => file,
-		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-		Err(e) => return Err(format!("Failed to read API key file '{}': {e}", path.display())),
-	};
-	let mut bytes = Vec::with_capacity(API_KEY_LEN + 1);
-	file.take((API_KEY_LEN + 1) as u64)
-		.read_to_end(&mut bytes)
-		.map_err(|e| format!("Failed to read API key file '{}': {e}", path.display()))?;
-	if bytes.len() != API_KEY_LEN {
-		return Err(format!(
-			"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
-			path.display()
-		));
-	}
-	Ok(Some(bytes.to_lower_hex_string()))
 }
 
 fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
@@ -217,6 +198,29 @@ fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
 fn read_to_string_with_limit(path: &Path, limit: usize) -> io::Result<String> {
 	String::from_utf8(read_with_limit(path, limit)?)
 		.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+#[derive(Deserialize)]
+struct StoredAdminApiKey {
+	key: String,
+}
+
+fn read_admin_api_key(path: &Path) -> Result<Option<String>, String> {
+	let contents = match read_to_string_with_limit(path, API_KEY_FILE_SIZE_LIMIT) {
+		Ok(contents) => contents,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(error) => {
+			return Err(format!("Failed to read API key file '{}': {error}", path.display()))
+		},
+	};
+	let stored: StoredAdminApiKey = toml::from_str(&contents)
+		.map_err(|_| format!("Invalid API key file '{}'", path.display()))?;
+	if stored.key.len() != API_KEY_LEN * 2
+		|| !stored.key.bytes().all(|byte| byte.is_ascii_hexdigit())
+	{
+		return Err(format!("Invalid API key in '{}'", path.display()));
+	}
+	Ok(Some(stored.key))
 }
 
 /// Resolves the path to the server's TLS certificate (PEM).
@@ -247,9 +251,12 @@ fn default_grpc_service_address() -> String {
 #[cfg(test)]
 mod tests {
 	use super::{
-		load_config, read_tls_certificate, resolve_base_url, Config, CONFIG_FILE_SIZE_LIMIT,
-		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+		load_config, read_tls_certificate, resolve_api_key, resolve_base_url, Config,
+		CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
+	use std::fs;
+	use std::sync::atomic::{AtomicU32, Ordering};
+	static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 	#[test]
 	fn config_defaults_grpc_service_address() {
@@ -367,5 +374,58 @@ mod tests {
 		assert!(error.contains("exceeds"));
 
 		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn resolve_api_key_reads_scoped_admin_file() {
+		let count = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+		let directory = std::env::temp_dir()
+			.join(format!("ldk-server-client-config-test-{}-{count}", std::process::id()));
+		let admin_directory = directory.join("regtest").join("api_keys");
+		fs::create_dir_all(&admin_directory).unwrap();
+		let secret = "42".repeat(32);
+		fs::write(
+			admin_directory.join("admin.toml"),
+			format!(
+				"id = \"{}\"\nname = \"admin\"\nkey = \"{secret}\"\npermissions = [\"admin\"]\n",
+				"24".repeat(16)
+			),
+		)
+		.unwrap();
+		let config: Config = toml::from_str(&format!(
+			r#"
+				[node]
+				network = "regtest"
+
+				[storage.disk]
+				dir_path = "{}"
+			"#,
+			directory.display()
+		))
+		.unwrap();
+
+		assert_eq!(resolve_api_key(None, Some(&config)).unwrap(), Some(secret));
+		let admin_path = admin_directory.join("admin.toml");
+		for contents in [
+			// Not valid TOML syntax.
+			"not valid toml".to_string(),
+			// The key must contain exactly 64 hexadecimal characters.
+			"key = \"short\"".to_string(),
+			// The length is correct, but z is not a hexadecimal character.
+			format!("key = \"{}\"", "z".repeat(64)),
+			// Valid TOML and key, but the file exceeds the size limit.
+			format!(
+				"key = \"{}\"\n#{}",
+				"42".repeat(32),
+				"x".repeat(super::API_KEY_FILE_SIZE_LIMIT)
+			),
+		] {
+			fs::write(&admin_path, contents).unwrap();
+			assert!(resolve_api_key(None, Some(&config)).is_err());
+		}
+		fs::remove_file(&admin_path).unwrap();
+		assert_eq!(super::read_admin_api_key(&admin_path).unwrap(), None);
+
+		fs::remove_dir_all(directory).unwrap();
 	}
 }

@@ -47,6 +47,9 @@ pub enum LdkServerErrorCode {
 	/// Please refer to [`ldk_server_grpc::error::ErrorCode::AuthError`].
 	AuthError,
 
+	/// The credentials are valid, but lack the permission required by this RPC.
+	AuthorizationError,
+
 	/// Please refer to [`ldk_server_grpc::error::ErrorCode::LightningError`].
 	LightningError,
 
@@ -63,6 +66,7 @@ impl fmt::Display for LdkServerErrorCode {
 		match self {
 			LdkServerErrorCode::InvalidRequestError => write!(f, "InvalidRequestError"),
 			LdkServerErrorCode::AuthError => write!(f, "AuthError"),
+			LdkServerErrorCode::AuthorizationError => write!(f, "AuthorizationError"),
 			LdkServerErrorCode::LightningError => write!(f, "LightningError"),
 			LdkServerErrorCode::InternalServerError => write!(f, "InternalServerError"),
 			LdkServerErrorCode::InternalError => write!(f, "InternalError"),

@@ -70,6 +70,30 @@ impl ToolRegistry {
 pub fn build_tool_registry() -> ToolRegistry {
 	let tools = vec![
 		tool_spec(
+			"get_permissions",
+			"Get the current API key metadata and permissions",
+			schema::get_permissions_schema,
+			|client, args| Box::pin(handlers::handle_get_permissions(client, args)),
+		),
+		tool_spec(
+			"revoke_api_key",
+			"Revoke an API key for new requests",
+			schema::revoke_api_key_schema,
+			|client, args| Box::pin(handlers::handle_revoke_api_key(client, args)),
+		),
+		tool_spec(
+			"list_api_keys",
+			"List API key metadata without secrets",
+			schema::list_api_keys_schema,
+			|client, args| Box::pin(handlers::handle_list_api_keys(client, args)),
+		),
+		tool_spec(
+			"create_api_key",
+			"Create an API key with scoped permissions and return its secret once",
+			schema::create_api_key_schema,
+			|client, args| Box::pin(handlers::handle_create_api_key(client, args)),
+		),
+		tool_spec(
 			"get_node_info",
 			"Retrieve node info including node_id, sync status, and best block",
 			schema::get_node_info_schema,

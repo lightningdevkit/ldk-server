@@ -22,10 +22,12 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
+use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
 use ldk_server_client::ldk_server_grpc::api::{
 	open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveRequest,
-	Bolt12ReceiveRequest, GetBalancesRequest, OnchainReceiveRequest, OpenChannelRequest,
+	Bolt12ReceiveRequest, GetBalancesRequest, GetNodeInfoRequest, GetPermissionsRequest,
+	OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -79,6 +81,111 @@ async fn test_cli_get_balances() {
 	assert_eq!(output["total_onchain_balance_sats"], 0);
 	assert_eq!(output["spendable_onchain_balance_sats"], 0);
 	assert_eq!(output["total_lightning_balance_sats"], 0);
+}
+
+#[tokio::test]
+async fn test_scoped_api_key_lifecycle() {
+	use ldk_server_client::error::LdkServerErrorCode::{
+		AuthError, AuthorizationError, InvalidRequestError,
+	};
+
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let created = run_cli(&server, &["create-api-key", "readonly-client", "--preset", "readonly"]);
+	let key_id = created["api_key"]["id"].as_str().unwrap();
+	let secret = created["secret"].as_str().unwrap();
+	let certificate = std::fs::read(&server.tls_cert_path).unwrap();
+	let client = LdkServerClient::new(
+		format!("127.0.0.1:{}", server.grpc_port),
+		secret.to_string(),
+		&certificate,
+	)
+	.unwrap();
+
+	client.get_node_info(GetNodeInfoRequest {}).await.unwrap();
+	let permissions = client.get_permissions(GetPermissionsRequest {}).await.unwrap();
+	assert_eq!(permissions.api_key.unwrap().name, "readonly-client");
+	assert_eq!(
+		client.onchain_receive(OnchainReceiveRequest {}).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+	assert_eq!(
+		client.list_api_keys(Default::default()).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+
+	let keys = run_cli(&server, &["list-api-keys"]);
+	assert!(keys["api_keys"].as_array().unwrap().iter().any(|key| key["id"] == key_id));
+	// Invalid request fields distinguish reaching the splice handler from an auth rejection.
+	for (name, permission, expected) in [
+		("manager", "channels:manage", AuthorizationError),
+		("splicer", "channels:splice", InvalidRequestError),
+	] {
+		let created = run_cli(&server, &["create-api-key", name, "--permissions", permission]);
+		let scoped_client = LdkServerClient::new(
+			format!("127.0.0.1:{}", server.grpc_port),
+			created["secret"].as_str().unwrap().to_string(),
+			&certificate,
+		)
+		.unwrap();
+		assert_eq!(
+			scoped_client.splice_in(Default::default()).await.unwrap_err().error_code,
+			expected
+		);
+		assert_eq!(
+			scoped_client.splice_out(Default::default()).await.unwrap_err().error_code,
+			expected
+		);
+	}
+
+	run_cli(&server, &["revoke-api-key", key_id]);
+	assert_eq!(
+		client.subscribe_events().await.err().expect("Revoked key must not subscribe").error_code,
+		AuthError
+	);
+	assert_eq!(
+		client.get_node_info(GetNodeInfoRequest {}).await.unwrap_err().error_code,
+		AuthError
+	);
+}
+
+#[tokio::test]
+async fn test_revoking_a_key_keeps_existing_event_streams_open() {
+	use ldk_server_client::error::LdkServerErrorCode::AuthError;
+
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	let channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+	let created = run_cli(&server_a, &["create-api-key", "reader", "--permissions", "events:read"]);
+	let certificate = std::fs::read(&server_a.tls_cert_path).unwrap();
+	let client = LdkServerClient::new(
+		format!("127.0.0.1:{}", server_a.grpc_port),
+		created["secret"].as_str().unwrap().to_string(),
+		&certificate,
+	)
+	.unwrap();
+	let mut events = client.subscribe_events().await.unwrap();
+
+	run_cli(&server_a, &["revoke-api-key", created["api_key"]["id"].as_str().unwrap()]);
+	assert_eq!(
+		client.subscribe_events().await.err().expect("Revoked key must not subscribe").error_code,
+		AuthError
+	);
+
+	// An event created after revocation must still reach the existing subscription.
+	run_cli(&server_a, &["close-channel", &channel_id, server_b.node_id()]);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_event(&mut events, |event| {
+		matches!(
+			event,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == channel_id
+					&& channel_event.state == ChannelState::Closed as i32
+		)
+	})
+	.await;
 }
 
 #[tokio::test]

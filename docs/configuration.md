@@ -207,7 +207,8 @@ Two resolution methods are supported via the `mode` field:
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
-    api_key                # API key
+    api_keys/              # Scoped API key TOML files
+      admin.toml           # Initial unrestricted API key
     ldk-server.log         # Log file
     ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
     ldk_server_data.sqlite # Forwarded-payment history

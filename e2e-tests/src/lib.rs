@@ -14,7 +14,6 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use corepc_node::Node;
-use hex_conservative::DisplayHex;
 use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
@@ -343,17 +342,20 @@ impl LdkServerHandle {
 			}
 		});
 
-		// Wait for the api_key and tls.crt files to appear in the network subdir
+		// Wait for the admin API key and TLS certificate files to appear.
 		let network_dir = storage_dir.join("regtest");
-		let api_key_path = network_dir.join("api_key");
+		let api_key_path = network_dir.join("api_keys").join("admin.toml");
 		let tls_cert_path = storage_dir.join("tls.crt");
 
 		wait_for_file(&api_key_path, Duration::from_secs(30)).await;
 		wait_for_file(&tls_cert_path, Duration::from_secs(30)).await;
 
-		// Read the API key (raw bytes -> hex)
-		let api_key_bytes = std::fs::read(&api_key_path).unwrap();
-		let api_key = api_key_bytes.to_lower_hex_string();
+		let api_key_file = std::fs::read_to_string(&api_key_path).unwrap();
+		let api_key = api_key_file
+			.lines()
+			.find_map(|line| line.strip_prefix("key = \"").and_then(|key| key.strip_suffix('"')))
+			.expect("admin API key file must contain a key")
+			.to_string();
 
 		// Read TLS cert
 		let tls_cert_pem = std::fs::read(&tls_cert_path).unwrap();
@@ -547,10 +549,14 @@ pub struct McpHandle {
 
 impl McpHandle {
 	pub fn start(server: &LdkServerHandle) -> Self {
+		Self::start_with_api_key(server, &server.api_key)
+	}
+
+	pub fn start_with_api_key(server: &LdkServerHandle, api_key: &str) -> Self {
 		let mcp_path = mcp_binary_path();
 		let mut child = Command::new(&mcp_path)
 			.env("LDK_BASE_URL", server.base_url())
-			.env("LDK_API_KEY", &server.api_key)
+			.env("LDK_API_KEY", api_key)
 			.env("LDK_TLS_CERT_PATH", server.tls_cert_path.to_str().unwrap())
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())

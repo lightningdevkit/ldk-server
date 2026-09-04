@@ -10,7 +10,7 @@ subscriptions).
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::GetNodeInfoRequest;
 
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
 let api_key = "your_hex_api_key".to_string();
@@ -29,9 +29,9 @@ println!("Node ID: {}", info.node_id);
 ## Authentication
 
 The client handles HMAC-SHA256 authentication automatically. Pass the hex-encoded API key
-(found at `<storage_dir>/<network>/api_key`) and the server's TLS certificate (found at
-`<storage_dir>/tls.crt`). Each request signature covers both the timestamp and the raw gRPC
-request body bytes.
+(found in `<storage_dir>/<network>/api_keys/admin.toml` for the initial admin key) and the
+server's TLS certificate (found at `<storage_dir>/tls.crt`). Each request signature covers the
+key ID, RPC method, timestamp, and raw gRPC request body bytes.
 
 ## Event Streaming
 
@@ -39,7 +39,7 @@ Subscribe to real-time payment and channel events:
 
 ```rust,no_run
 # use ldk_server_client::client::LdkServerClient;
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 # let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
 # let client = LdkServerClient::new("localhost:3536".to_string(), "key".to_string(), &cert_pem).unwrap();
@@ -58,7 +58,7 @@ Pattern-match channel state changes:
 ```rust,no_run
 # use ldk_server_client::client::LdkServerClient;
 # use ldk_server_client::ldk_server_grpc::events::{event_envelope, ChannelState};
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 # let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
 # let client = LdkServerClient::new("localhost:3536".to_string(), "key".to_string(), &cert_pem).unwrap();
@@ -101,6 +101,7 @@ All methods return `Result<T, LdkServerError>`. Error codes map to gRPC status c
 | `LightningError`      | FAILED_PRECONDITION (9) | Lightning operation error |
 | `InternalServerError` | INTERNAL (13)           | Server bug                |
 | `AuthError`           | UNAUTHENTICATED (16)    | Invalid credentials       |
+| `AuthorizationError`  | PERMISSION_DENIED (7)   | Missing permission        |
 
 ## Documentation
 

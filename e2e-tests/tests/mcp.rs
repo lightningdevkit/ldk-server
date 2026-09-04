@@ -24,6 +24,44 @@ fn tool_result_json(response: &Value) -> Value {
 }
 
 #[tokio::test]
+async fn test_mcp_api_key_lifecycle_and_error_categories() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let mut admin = McpHandle::start(&server);
+	let created = admin.call(1, "tools/call", json!({"name": "create_api_key", "arguments": {"name": "mcp-reader", "permissions": ["node:read"]}}));
+	let created = tool_result_json(&created);
+	let id = created["api_key"]["id"].as_str().unwrap();
+	let secret = created["secret"].as_str().unwrap();
+	assert_eq!(secret.len(), 64);
+	let listed = admin.call(2, "tools/call", json!({"name": "list_api_keys", "arguments": {}}));
+	let listed = tool_result_json(&listed);
+	assert!(listed["api_keys"].as_array().unwrap().iter().any(|key| key["id"] == id));
+	assert!(!listed.to_string().contains(secret));
+	let mut reader = McpHandle::start_with_api_key(&server, secret);
+	let permissions =
+		reader.call(1, "tools/call", json!({"name": "get_permissions", "arguments": {}}));
+	let permissions = tool_result_json(&permissions);
+	assert_eq!(permissions["api_key"]["id"], id);
+	assert_eq!(permissions["api_key"]["permissions"], json!(["node:read"]));
+	let denied = reader.call(2, "tools/call", json!({"name": "list_api_keys", "arguments": {}}));
+	assert_eq!(denied["result"]["isError"], true);
+	assert!(denied["result"]["content"][0]["text"]
+		.as_str()
+		.unwrap()
+		.starts_with("Permission denied:"));
+	let revoked =
+		admin.call(3, "tools/call", json!({"name": "revoke_api_key", "arguments": {"id": id}}));
+	assert_eq!(tool_result_json(&revoked), json!({}));
+	let rejected =
+		reader.call(3, "tools/call", json!({"name": "get_permissions", "arguments": {}}));
+	assert_eq!(rejected["result"]["isError"], true);
+	assert!(rejected["result"]["content"][0]["text"]
+		.as_str()
+		.unwrap()
+		.starts_with("Authentication error:"));
+}
+
+#[tokio::test]
 async fn test_mcp_initialize_and_list_tools() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;

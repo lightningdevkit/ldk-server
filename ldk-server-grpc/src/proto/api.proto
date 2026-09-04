@@ -1032,6 +1032,54 @@ message DecodeOfferResponse {
 // Node automatically fails the HTLC backward at its claim_deadline.
 message SubscribeEventsRequest {}
 
+// Public metadata for an API key. The secret is never included.
+message ApiKey {
+  // The stable, hex-encoded identifier used to look up the key.
+  string id = 1;
+
+  // The human-readable name assigned when the key was created.
+  string name = 2;
+
+  // The capabilities granted to the key.
+  repeated string permissions = 3;
+}
+
+// Create an API key with the specified capabilities.
+message CreateApiKeyRequest {
+  // A unique human-readable name.
+  string name = 1;
+
+  // The capabilities to grant. Use "admin" by itself for unrestricted access.
+  repeated string permissions = 2;
+}
+
+// The created key and its secret. The secret is returned only once.
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string secret = 2;
+}
+
+// List API keys without returning their secrets.
+message ListApiKeysRequest {}
+
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+}
+
+// Revoke an API key by ID.
+message RevokeApiKeyRequest {
+  string id = 1;
+}
+
+message RevokeApiKeyResponse {}
+
+// Return metadata and permissions for the calling API key.
+message GetPermissionsRequest {}
+
+message GetPermissionsResponse {
+  ApiKey api_key = 1;
+}
+
 service LightningNode {
   // Retrieve the latest node info.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
@@ -1118,4 +1166,12 @@ service LightningNode {
   rpc GraphGetNode(GraphGetNodeRequest) returns (GraphGetNodeResponse);
   // Subscribe to a stream of server events.
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream events.EventEnvelope);
+  // Create an API key. Requires api_keys:manage or admin permission.
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  // List API keys. Requires api_keys:manage or admin permission.
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  // Revoke an API key. Requires api_keys:manage or admin permission.
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  // Return permissions for the calling key.
+  rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
 }

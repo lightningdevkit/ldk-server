@@ -10,7 +10,7 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
@@ -20,7 +20,8 @@ use ldk_server_client::config::{
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
+	LightningError,
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
@@ -33,20 +34,24 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
 	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
-	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
-	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
-	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ConnectPeerRequest, ConnectPeerResponse, CreateApiKeyRequest, CreateApiKeyResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GetPermissionsRequest, GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse,
+	GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListApiKeysRequest, ListApiKeysResponse,
+	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest,
+	ListPeersRequest, ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse,
+	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
+	RevokeApiKeyRequest, RevokeApiKeyResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+};
+use ldk_server_client::ldk_server_grpc::permissions::{
+	ADMIN_PERMISSION, INVOICE_PERMISSIONS, READONLY_PERMISSIONS,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
@@ -92,7 +97,7 @@ struct Cli {
 	)]
 	base_url: Option<String>,
 
-	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_key"))]
+	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_keys/admin.toml"))]
 	api_key: Option<String>,
 
 	#[arg(short, long, help = format!("Path to the server's TLS certificate file (PEM format). Defaults to {DEFAULT_DIR}/tls.crt"))]
@@ -637,6 +642,31 @@ enum Commands {
 		#[arg(help = "The hex-encoded node ID to look up")]
 		node_id: String,
 	},
+	#[command(about = "Create an API key with scoped permissions")]
+	CreateApiKey {
+		#[arg(help = "A unique human-readable name for the API key")]
+		name: String,
+		#[arg(
+			short,
+			long,
+			num_args = 1..,
+			conflicts_with = "preset",
+			required_unless_present = "preset",
+			help = "Capabilities to grant, such as node:read or invoices:create"
+		)]
+		permissions: Vec<String>,
+		#[arg(long, value_enum, conflicts_with = "permissions", help = "Use a permission preset")]
+		preset: Option<ApiKeyPreset>,
+	},
+	#[command(about = "List API keys without their secrets")]
+	ListApiKeys,
+	#[command(about = "Revoke an API key")]
+	RevokeApiKey {
+		#[arg(help = "The hex-encoded API key ID")]
+		id: String,
+	},
+	#[command(about = "Show permissions for the current API key")]
+	GetPermissions,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -645,6 +675,25 @@ enum Commands {
 		)]
 		shell: Shell,
 	},
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ApiKeyPreset {
+	Readonly,
+	Invoice,
+	Admin,
+}
+
+impl ApiKeyPreset {
+	fn permissions(self) -> Vec<String> {
+		match self {
+			Self::Readonly => {
+				READONLY_PERMISSIONS.iter().map(|value| (*value).to_string()).collect()
+			},
+			Self::Invoice => INVOICE_PERMISSIONS.iter().map(|value| (*value).to_string()).collect(),
+			Self::Admin => vec![ADMIN_PERMISSION.to_string()],
+		}
+	}
 }
 
 #[tokio::main]
@@ -679,7 +728,7 @@ async fn main() {
 			std::process::exit(1);
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+			eprintln!("API key not provided. Use --api-key or ensure the admin key exists at {DEFAULT_DIR}/[network]/api_keys/admin.toml");
 			std::process::exit(1);
 		});
 
@@ -1301,6 +1350,27 @@ async fn main() {
 				client.graph_get_node(GraphGetNodeRequest { node_id }).await,
 			);
 		},
+		Commands::CreateApiKey { name, permissions, preset } => {
+			let permissions = preset.map(ApiKeyPreset::permissions).unwrap_or(permissions);
+			handle_response_result::<_, CreateApiKeyResponse>(
+				client.create_api_key(CreateApiKeyRequest { name, permissions }).await,
+			);
+		},
+		Commands::ListApiKeys => {
+			handle_response_result::<_, ListApiKeysResponse>(
+				client.list_api_keys(ListApiKeysRequest {}).await,
+			);
+		},
+		Commands::RevokeApiKey { id } => {
+			handle_response_result::<_, RevokeApiKeyResponse>(
+				client.revoke_api_key(RevokeApiKeyRequest { id }).await,
+			);
+		},
+		Commands::GetPermissions => {
+			handle_response_result::<_, GetPermissionsResponse>(
+				client.get_permissions(GetPermissionsRequest {}).await,
+			);
+		},
 		Commands::Completions { .. } => unreachable!("Handled above"),
 	}
 }
@@ -1461,6 +1531,7 @@ fn handle_error(e: LdkServerError) -> ! {
 	let error_type = match e.error_code {
 		InvalidRequestError => "Invalid Request",
 		AuthError => "Authentication Error",
+		AuthorizationError => "Permission Denied",
 		LightningError => "Lightning Error",
 		InternalServerError => "Internal Server Error",
 		InternalError => "Internal Error",

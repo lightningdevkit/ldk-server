@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bitcoin_hashes::hmac::{Hmac, HmacEngine};
 use bitcoin_hashes::{sha256, Hash, HashEngine};
+use hex_conservative::DisplayHex;
 use hyper::body::HttpBody as _;
 use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -25,18 +26,20 @@ use ldk_server_grpc::api::{
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
 	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
-	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
-	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	ConnectPeerRequest, ConnectPeerResponse, CreateApiKeyRequest, CreateApiKeyResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
+	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
+	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListApiKeysRequest, ListApiKeysResponse,
+	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest,
+	ListForwardedPaymentsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, RevokeApiKeyRequest,
+	RevokeApiKeyResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
 	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
 	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
@@ -48,20 +51,20 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
-	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	CREATE_API_KEY_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
+	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX,
+	LIST_API_KEYS_PATH, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH,
+	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
+	REVOKE_API_KEY_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
 	decode_grpc_body, encode_grpc_frame, percent_decode, GRPC_STATUS_FAILED_PRECONDITION,
 	GRPC_STATUS_INTERNAL, GRPC_STATUS_INVALID_ARGUMENT, GRPC_STATUS_OK,
-	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
+	GRPC_STATUS_PERMISSION_DENIED, GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
 };
 use prost::Message;
 use reqwest::header::HeaderMap;
@@ -71,7 +74,8 @@ use rustls_pemfile::certs;
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
+	LightningError,
 };
 
 type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
@@ -97,6 +101,7 @@ pub struct LdkServerClient {
 	client: Client,
 	streaming_client: StreamingClient,
 	api_key: String,
+	key_id: String,
 }
 
 impl LdkServerClient {
@@ -107,6 +112,8 @@ impl LdkServerClient {
 	/// `server_cert_pem` is the server's TLS certificate in PEM format. This can be
 	/// found at `<server_storage_dir>/tls.crt` after the server starts.
 	pub fn new(base_url: String, api_key: String, server_cert_pem: &[u8]) -> Result<Self, String> {
+		let key_hash = sha256::Hash::hash(api_key.as_bytes());
+		let key_id = key_hash[..16].to_lower_hex_string();
 		let cert = Certificate::from_pem(server_cert_pem)
 			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
 		let streaming_client = build_streaming_client(server_cert_pem)?;
@@ -116,24 +123,25 @@ impl LdkServerClient {
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, streaming_client, api_key })
+		Ok(Self { base_url, client, streaming_client, api_key, key_id })
 	}
 
 	/// Computes the HMAC-SHA256 authentication header value.
-	/// Format: "HMAC <timestamp>:<hmac_hex>"
-	/// The signature covers the timestamp and raw gRPC request body bytes.
-	fn compute_auth_header(&self, body: &[u8]) -> String {
+	/// Format: "HMAC <key_id>:<timestamp>:<hmac_hex>"
+	/// The signature covers the key ID, RPC method, timestamp, and raw gRPC request body bytes.
+	fn compute_auth_header(&self, method: &str, body: &[u8]) -> String {
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("System time should be after Unix epoch")
 			.as_secs();
 
 		let mut hmac_engine: HmacEngine<sha256::Hash> = HmacEngine::new(self.api_key.as_bytes());
-		hmac_engine.input(&timestamp.to_be_bytes());
-		hmac_engine.input(body);
+		ldk_server_grpc::auth::write_auth_preimage(&self.key_id, method, timestamp, body, |part| {
+			hmac_engine.input(part)
+		});
 		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
 
-		format!("HMAC {}:{}", timestamp, hmac_result)
+		format!("HMAC {}:{}:{}", self.key_id, timestamp, hmac_result)
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
@@ -461,6 +469,34 @@ impl LdkServerClient {
 		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
 	}
 
+	/// Create an API key with the specified permissions.
+	pub async fn create_api_key(
+		&self, request: CreateApiKeyRequest,
+	) -> Result<CreateApiKeyResponse, LdkServerError> {
+		self.grpc_unary(&request, CREATE_API_KEY_PATH).await
+	}
+
+	/// List API keys without returning their secrets.
+	pub async fn list_api_keys(
+		&self, request: ListApiKeysRequest,
+	) -> Result<ListApiKeysResponse, LdkServerError> {
+		self.grpc_unary(&request, LIST_API_KEYS_PATH).await
+	}
+
+	/// Revoke an API key by ID.
+	pub async fn revoke_api_key(
+		&self, request: RevokeApiKeyRequest,
+	) -> Result<RevokeApiKeyResponse, LdkServerError> {
+		self.grpc_unary(&request, REVOKE_API_KEY_PATH).await
+	}
+
+	/// Return metadata and permissions for the calling API key.
+	pub async fn get_permissions(
+		&self, request: GetPermissionsRequest,
+	) -> Result<GetPermissionsResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_PERMISSIONS_PATH).await
+	}
+
 	/// Subscribe to a stream of server events via server-streaming gRPC.
 	///
 	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
@@ -476,7 +512,7 @@ impl LdkServerClient {
 		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header(&grpc_body);
+		let auth_header = self.compute_auth_header(method, &grpc_body);
 
 		let response = self
 			.client
@@ -518,7 +554,7 @@ impl LdkServerClient {
 		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header(&grpc_body);
+		let auth_header = self.compute_auth_header(method, &grpc_body);
 
 		let response = self
 			.streaming_client
@@ -606,6 +642,7 @@ fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
 				format!("gRPC stream became unavailable: {message}")
 			},
 		),
+		GRPC_STATUS_PERMISSION_DENIED => LdkServerError::new(AuthorizationError, message),
 		GRPC_STATUS_UNAUTHENTICATED => LdkServerError::new(AuthError, message),
 		_ => LdkServerError::new(
 			InternalError,
@@ -887,6 +924,7 @@ mod tests {
 		let cases = [
 			(GRPC_STATUS_INVALID_ARGUMENT, InvalidRequestError, "msg"),
 			(GRPC_STATUS_UNAUTHENTICATED, AuthError, "msg"),
+			(GRPC_STATUS_PERMISSION_DENIED, AuthorizationError, "msg"),
 			(GRPC_STATUS_FAILED_PRECONDITION, LightningError, "msg"),
 			(GRPC_STATUS_INTERNAL, InternalServerError, "msg"),
 		];

@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 41;
+const NUM_TOOLS: usize = 45;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
@@ -28,6 +28,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt12_send_refund",
 	"close_channel",
 	"connect_peer",
+	"create_api_key",
 	"decode_invoice",
 	"decode_offer",
 	"disconnect_peer",
@@ -36,10 +37,12 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"get_balances",
 	"get_node_info",
 	"get_payment_details",
+	"get_permissions",
 	"graph_get_channel",
 	"graph_get_node",
 	"graph_list_channels",
 	"graph_list_nodes",
+	"list_api_keys",
 	"list_channels",
 	"list_forwarded_payments",
 	"list_payments",
@@ -47,6 +50,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"onchain_receive",
 	"onchain_send",
 	"open_channel",
+	"revoke_api_key",
 	"sign_message",
 	"splice_in",
 	"splice_out",
@@ -181,6 +185,26 @@ fn test_tools_list() {
 		EXPECTED_TOOLS.iter().map(|name| name.to_string()).collect::<Vec<_>>();
 	expected_tool_names.sort();
 	assert_eq!(tool_names, expected_tool_names, "Tool names drifted from the expected API surface");
+	let mut unary_rpc_tools: Vec<_> = include_str!("../../ldk-server-grpc/src/proto/api.proto")
+		.lines()
+		.filter_map(|line| {
+			let mut words = line.split_whitespace();
+			if words.next() != Some("rpc") || line.contains("returns (stream ") {
+				return None;
+			}
+			let method = words.next().unwrap().split('(').next().unwrap();
+			let mut name = String::new();
+			for (index, ch) in method.chars().enumerate() {
+				if index > 0 && ch.is_ascii_uppercase() {
+					name.push('_');
+				}
+				name.push(ch.to_ascii_lowercase());
+			}
+			Some(name)
+		})
+		.collect();
+	unary_rpc_tools.sort();
+	assert_eq!(tool_names, unary_rpc_tools, "Every unary RPC must have an MCP tool");
 
 	for tool in tools {
 		assert!(tool["name"].is_string(), "Tool missing name");
