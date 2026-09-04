@@ -46,6 +46,90 @@ message Onchain {
 
   // The confirmation status of this payment.
   ConfirmationStatus status = 2;
+
+  // The classification of this transaction, as reported by LDK when it was broadcast.
+  //
+  // Unset for plain on-chain sends, and for payments recorded before this classification was
+  // tracked.
+  optional TransactionType tx_type = 3;
+}
+
+// A channel referenced by a TransactionType variant.
+message TransactionChannel {
+  // The `node_id` of the channel counterparty.
+  string counterparty_node_id = 1;
+
+  // The ID of the channel.
+  string channel_id = 2;
+}
+
+// The classification of an on-chain transaction, mirroring LDK Node's
+// `ldk_node::payment::TransactionType`.
+message TransactionType {
+  oneof kind {
+    Funding funding = 1;
+    CooperativeClose cooperative_close = 2;
+    UnilateralClose unilateral_close = 3;
+    AnchorBump anchor_bump = 4;
+    Claim claim = 5;
+    Sweep sweep = 6;
+    InteractiveFunding interactive_funding = 7;
+  }
+}
+
+// A funding transaction establishing one or more new channels.
+message Funding {
+  // The channels being funded.
+  repeated TransactionChannel channels = 1;
+}
+
+// A transaction cooperatively closing a channel.
+message CooperativeClose {
+  // The `node_id` of the channel counterparty.
+  string counterparty_node_id = 1;
+
+  // The ID of the channel being closed.
+  string channel_id = 2;
+}
+
+// A transaction force-closing a channel.
+message UnilateralClose {
+  // The `node_id` of the channel counterparty.
+  string counterparty_node_id = 1;
+
+  // The ID of the channel being force-closed.
+  string channel_id = 2;
+}
+
+// An anchor transaction CPFP fee-bumping a closing transaction.
+message AnchorBump {
+  // The `node_id` of the channel counterparty.
+  string counterparty_node_id = 1;
+
+  // The ID of the channel whose closing transaction is being fee-bumped.
+  string channel_id = 2;
+}
+
+// A transaction resolving an output spendable by both us and our counterparty.
+message Claim {
+  // The `node_id` of the channel counterparty.
+  string counterparty_node_id = 1;
+
+  // The ID of the channel from which outputs are being claimed.
+  string channel_id = 2;
+}
+
+// A transaction sweeping spendable outputs to the on-chain wallet.
+message Sweep {
+  // The channels from which outputs are being swept, if known.
+  repeated TransactionChannel channels = 1;
+}
+
+// An interactively-negotiated funding transaction: a splice, or (once supported) a V2
+// dual-funded channel open.
+message InteractiveFunding {
+  // The channels participating in the negotiation.
+  repeated TransactionChannel channels = 1;
 }
 
 message ConfirmationStatus {
