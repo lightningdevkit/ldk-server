@@ -155,9 +155,10 @@ pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -
 
 /// Resolves the API key used to authenticate against the `ldk-server` gRPC endpoint.
 ///
-/// Prefers `override_key`, falls back to reading the API key file from the configured storage
-/// directory, and finally from the OS-specific default data directory. The raw bytes read from
-/// disk are lower-hex encoded before being returned.
+/// Prefers `override_key`. Otherwise, reads the API key file from the configured storage
+/// directory when one is set, or from the OS-specific default data directory when one is not.
+/// A failed read from a configured storage directory does not fall back to the default data
+/// directory. The raw bytes read from disk are lower-hex encoded before being returned.
 ///
 /// Returns an error if a candidate API key file exists but cannot be read or does not contain
 /// exactly 32 bytes.
@@ -168,19 +169,24 @@ pub fn resolve_api_key(
 		return Ok(override_key);
 	}
 
+	match resolve_api_key_path(config) {
+		Some(path) => read_api_key(&path),
+		None => Ok(None),
+	}
+}
+
+/// Resolves the API key file path selected by [`resolve_api_key`] when no override is given.
+///
+/// Uses the configured storage directory when one is set. Uses the OS-specific default data
+/// directory only when no storage directory is configured.
+pub fn resolve_api_key_path(config: Option<&Config>) -> Option<PathBuf> {
 	let network = match config {
-		Some(config) => match config.network() {
-			Ok(network) => network,
-			Err(_) => return Ok(None),
-		},
+		Some(config) => config.network().ok()?,
 		None => "bitcoin".to_string(),
 	};
 	match storage_dir(config) {
-		Some(dir) => read_api_key(&api_key_path_for_storage_dir(dir, &network)),
-		None => match get_default_api_key_path(&network) {
-			Some(path) => read_api_key(&path),
-			None => Ok(None),
-		},
+		Some(dir) => Some(api_key_path_for_storage_dir(dir, &network)),
+		None => get_default_api_key_path(&network),
 	}
 }
 
@@ -254,7 +260,7 @@ mod tests {
 
 	use super::{
 		get_default_api_key_path, load_config, read_tls_certificate, resolve_api_key,
-		resolve_base_url, Config, API_KEY_FILE, CONFIG_FILE_SIZE_LIMIT,
+		resolve_api_key_path, resolve_base_url, Config, API_KEY_FILE, CONFIG_FILE_SIZE_LIMIT,
 		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
 
@@ -426,6 +432,10 @@ mod tests {
 		))
 		.unwrap();
 
+		assert_eq!(
+			resolve_api_key_path(Some(&config)),
+			Some(configured_storage.join("regtest").join(API_KEY_FILE))
+		);
 		let resolved = resolve_api_key(None, Some(&config));
 
 		restore_env_var(&default_dir_env_var, old_default_dir);
