@@ -137,7 +137,9 @@ See [Operations - TLS](operations.md#tls) for a recommended CA-signed flow.
 You must configure **exactly one** of the following sections:
 
 - **`[bitcoind]`** - Bitcoin Core RPC. **Recommended.** Most reliable and private option.
-  Required for production deployments.
+  Required for production deployments. Pruned nodes are supported; see
+  [Running with Pruned Bitcoin Core](pruned-bitcoind.md) for mainnet retention and recovery
+  constraints.
 - **`[electrum]`** - Electrum server. Lighter weight, but relies on a trusted third-party
   server for chain data.
 - **`[esplora]`** - Esplora HTTP API. Convenient for quick testing with a public block
