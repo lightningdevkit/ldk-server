@@ -10,17 +10,18 @@
 use std::sync::Arc;
 
 use hex::FromHex;
-use ldk_node::bitcoin::hashes::{sha256, Hash};
-use ldk_node::lightning_types::payment::{PaymentHash, PaymentPreimage};
-use ldk_server_grpc::api::{Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse};
+use ldk_node::lightning_types::payment::PaymentPreimage;
+use ldk_server_grpc::api::{Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
 
-pub(crate) async fn handle_bolt11_claim_for_hash_request(
-	context: Arc<Context>, request: Bolt11ClaimForHashRequest,
-) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
+pub(crate) async fn handle_bolt11_claim_for_id_request(
+	context: Arc<Context>, request: Bolt11ClaimForIdRequest,
+) -> Result<Bolt11ClaimForIdResponse, LdkServerError> {
+	let payment_id = crate::api::parse_payment_id(&request.payment_id)?;
+
 	let preimage_bytes = <[u8; 32]>::from_hex(&request.preimage).map_err(|_| {
 		LdkServerError::new(
 			InvalidRequestError,
@@ -29,21 +30,8 @@ pub(crate) async fn handle_bolt11_claim_for_hash_request(
 	})?;
 	let preimage = PaymentPreimage(preimage_bytes);
 
-	let payment_hash = if let Some(hash_hex) = &request.payment_hash {
-		let hash_bytes = <[u8; 32]>::from_hex(hash_hex).map_err(|_| {
-			LdkServerError::new(
-				InvalidRequestError,
-				"Invalid payment_hash, must be a 32-byte hex string.".to_string(),
-			)
-		})?;
-		PaymentHash(hash_bytes)
-	} else {
-		PaymentHash(sha256::Hash::hash(&preimage.0).to_byte_array())
-	};
-
 	let claimable_amount_msat = request.claimable_amount_msat.unwrap_or(u64::MAX);
+	context.node.bolt11_payment().claim_for_id(payment_id, claimable_amount_msat, preimage)?;
 
-	context.node.bolt11_payment().claim_for_hash(payment_hash, claimable_amount_msat, preimage)?;
-
-	Ok(Bolt11ClaimForHashResponse {})
+	Ok(Bolt11ClaimForIdResponse {})
 }

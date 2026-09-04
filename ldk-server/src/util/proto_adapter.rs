@@ -19,7 +19,7 @@ use ldk_node::lightning::routing::gossip::{
 	ChannelInfo, ChannelUpdateInfo, NodeAnnouncementInfo, NodeInfo, RoutingFees,
 };
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
-use ldk_node::lightning_types::features::NodeFeatures;
+use ldk_node::lightning_types::features::{ChannelTypeFeatures, NodeFeatures};
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 };
@@ -79,6 +79,14 @@ pub(crate) fn reserve_type_to_proto(reserve_type: &ReserveType) -> ProtoReserveT
 }
 
 pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
+	let channel_type = channel
+		.channel_type
+		.map(|features| {
+			features_to_proto(features.le_flags(), |bytes| {
+				ChannelTypeFeatures::from_le_bytes(bytes).to_string()
+			})
+		})
+		.unwrap_or_default();
 	let counterparty = channel.counterparty;
 
 	Channel {
@@ -128,6 +136,7 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 			.as_ref()
 			.map(|s| channel_shutdown_state_to_proto(s) as i32),
 		reserve_type: channel.reserve_type.as_ref().map(|r| reserve_type_to_proto(r) as i32),
+		channel_type,
 	}
 }
 
@@ -171,7 +180,7 @@ pub(crate) fn payment_to_proto(payment: PaymentDetails) -> Payment {
 	} = payment;
 
 	Payment {
-		id: id.to_string(),
+		payment_id: id.to_string(),
 		kind: Some(payment_kind_to_proto(kind)),
 		amount_msat,
 		fee_paid_msat,
@@ -198,7 +207,7 @@ pub(crate) fn payment_kind_to_proto(
 				status: Some(confirmation_status_to_proto(status)),
 			})),
 		},
-		PaymentKind::Bolt11 { hash, preimage, secret, counterparty_skimmed_fee_msat } => {
+		PaymentKind::Bolt11 { hash, preimage, secret, counterparty_skimmed_fee_msat, .. } => {
 			ldk_server_grpc::types::PaymentKind {
 				kind: Some(Bolt11(ldk_server_grpc::types::Bolt11 {
 					hash: hash.to_string(),
@@ -208,19 +217,19 @@ pub(crate) fn payment_kind_to_proto(
 				})),
 			}
 		},
-		PaymentKind::Bolt12Offer { hash, preimage, secret, offer_id, payer_note, quantity } => {
-			ldk_server_grpc::types::PaymentKind {
-				kind: Some(Bolt12Offer(ldk_server_grpc::types::Bolt12Offer {
-					hash: hash.map(|h| h.to_string()),
-					preimage: preimage.map(|p| p.to_string()),
-					secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
-					offer_id: offer_id.0.to_lower_hex_string(),
-					payer_note: payer_note.map(|s| s.to_string()),
-					quantity,
-				})),
-			}
+		PaymentKind::Bolt12Offer {
+			hash, preimage, secret, offer_id, payer_note, quantity, ..
+		} => ldk_server_grpc::types::PaymentKind {
+			kind: Some(Bolt12Offer(ldk_server_grpc::types::Bolt12Offer {
+				hash: hash.map(|h| h.to_string()),
+				preimage: preimage.map(|p| p.to_string()),
+				secret: secret.map(|s| Bytes::copy_from_slice(&s.0)),
+				offer_id: offer_id.0.to_lower_hex_string(),
+				payer_note: payer_note.map(|s| s.to_string()),
+				quantity,
+			})),
 		},
-		PaymentKind::Bolt12Refund { hash, preimage, secret, payer_note, quantity } => {
+		PaymentKind::Bolt12Refund { hash, preimage, secret, payer_note, quantity, .. } => {
 			ldk_server_grpc::types::PaymentKind {
 				kind: Some(Bolt12Refund(ldk_server_grpc::types::Bolt12Refund {
 					hash: hash.map(|h| h.to_string()),
@@ -231,7 +240,7 @@ pub(crate) fn payment_kind_to_proto(
 				})),
 			}
 		},
-		PaymentKind::Spontaneous { hash, preimage } => ldk_server_grpc::types::PaymentKind {
+		PaymentKind::Spontaneous { hash, preimage, .. } => ldk_server_grpc::types::PaymentKind {
 			kind: Some(Spontaneous(ldk_server_grpc::types::Spontaneous {
 				hash: hash.to_string(),
 				preimage: preimage.map(|p| p.to_string()),

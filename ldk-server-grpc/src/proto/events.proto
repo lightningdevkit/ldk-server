@@ -145,39 +145,54 @@ message SpliceNegotiationFailed {
 
 // PaymentReceived indicates a payment has been received.
 message PaymentReceived {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
   // Custom TLV records attached to the incoming payment, if any.
-  repeated types.CustomTlvRecord custom_records = 2;
+  repeated types.CustomTlvRecord custom_records = 3;
 }
 
 // PaymentSuccessful indicates a sent payment was successful.
 message PaymentSuccessful {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
+  // The hex-encoded payment preimage. Needed to build a BOLT 12 payer proof.
+  optional string payment_preimage = 3;
+  // The hex-encoded paid BOLT 12 invoice, when the payment was for a standard BOLT 12 invoice.
+  // Unset for non-BOLT12 payments and for static invoices used in async payments.
+  optional string bolt12_invoice = 4;
 }
 
 // PaymentFailed indicates a sent payment has failed.
 message PaymentFailed {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the payment in event.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
   // The reason the payment failed, if known.
   //
   // This is only available on the emitted event; `GetPaymentDetails` cannot
   // recover it as LDK Node does not currently persist the failure reason in
   // `PaymentDetails`.
-  optional PaymentFailureReason reason = 2;
+  optional PaymentFailureReason reason = 3;
 }
 
 // PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
 // This event is only emitted for payments created via `Bolt11ReceiveForHash`.
+// Handle every event by its payment ID before `claim_deadline`.
+// The same invoice can produce more than one event. Fail unexpected duplicate or late payments.
 message PaymentClaimable {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
   // The payment details for the claimable payment.
-  types.Payment payment = 1;
+  types.Payment payment = 2;
   // Custom TLV records attached to the claimable payment, if any.
-  repeated types.CustomTlvRecord custom_records = 2;
+  repeated types.CustomTlvRecord custom_records = 3;
   // The block height by which this payment must be claimed before it is failed back.
-  optional uint32 claim_deadline = 3;
+  optional uint32 claim_deadline = 4;
 }
 
 // PaymentForwarded indicates a payment was forwarded through the node.

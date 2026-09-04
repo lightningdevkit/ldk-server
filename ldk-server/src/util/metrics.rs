@@ -16,13 +16,8 @@
 //! 1.  **Periodic Polling**: The `update_all_pollable_metrics` function is called at a regular
 //!     interval (`poll_metrics_interval`) configurable via the config file but defaults to 60secs if unset, to perform a full recount of metrics like peer count,
 //!     payments count, and channels metrics.
-//! 2.  **Event-Driven Updates**: For metrics that can change frequently and where a full recount
-//!     would be inefficient (e.g., total_successful_payments_count, balances), a hybrid approach is used.
-//!     - `initialize_payment_metrics` is called once at startup to get the accurate persisted state.
-//!     - `update_payments_count` is called incrementally whenever a relevant event (like
-//!       `PaymentSuccessful` or `PaymentFailed`) occurs.
-//!    - `update_all_balances` is called when we receive a `PaymentSuccessful` event to update all balance metrics.
-//!    - `update_channels_count` is called when we receive a `ChannelReady` or `ChannelClosed` event to update the channels metrics.
+//! 2.  **Event-Driven Updates**: Balance and total channel metrics are refreshed when related
+//!     events occur. Payment counts have one writer and are updated only by the periodic poll.
 //!
 //! The `gather_metrics` function collects all current metric values and formats them into the
 //! plain-text format that Prometheus scrapers expect. This output is exposed via an
@@ -31,7 +26,36 @@
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use ldk_node::payment::PaymentStatus;
-use ldk_node::Node;
+use ldk_node::{Node, NodeError};
+use log::error;
+
+#[derive(Default)]
+struct PaymentCounts {
+	total: i64,
+	successful: i64,
+	pending: i64,
+	failed: i64,
+}
+
+fn payment_status_counts(node: &Node) -> Result<PaymentCounts, NodeError> {
+	let mut counts = PaymentCounts::default();
+	let mut page_token = None;
+	loop {
+		let page = node.list_payments(page_token)?;
+		for payment in page.payments {
+			counts.total += 1;
+			match payment.status {
+				PaymentStatus::Succeeded => counts.successful += 1,
+				PaymentStatus::Pending => counts.pending += 1,
+				PaymentStatus::Failed => counts.failed += 1,
+			}
+		}
+		match page.next_page_token {
+			Some(token) => page_token = Some(token),
+			None => return Ok(counts),
+		}
+	}
+}
 
 /// Holds all the metrics that are tracked for LDK Server.
 ///
@@ -75,12 +99,11 @@ impl Metrics {
 		self.total_peers_count.store(total_peers_count, Ordering::Relaxed);
 	}
 
-	pub fn update_payments_count(&self, is_successful: bool) {
-		if is_successful {
-			self.total_successful_payments_count.fetch_add(1, Ordering::Relaxed);
-		} else {
-			self.total_failed_payments_count.fetch_add(1, Ordering::Relaxed);
-		}
+	fn store_payment_counts(&self, counts: PaymentCounts) {
+		self.total_payments_count.store(counts.total, Ordering::Relaxed);
+		self.total_successful_payments_count.store(counts.successful, Ordering::Relaxed);
+		self.total_pending_payments_count.store(counts.pending, Ordering::Relaxed);
+		self.total_failed_payments_count.store(counts.failed, Ordering::Relaxed);
 	}
 
 	pub fn update_channels_count(&self, is_closed: bool) {
@@ -91,25 +114,26 @@ impl Metrics {
 		}
 	}
 
-	pub fn initialize_payment_metrics(&self, node: &Node) {
-		let mut successful_payments_count = 0;
-		let mut failed_payments_count = 0;
-		let mut pending_payments_count = 0;
-
-		for payment_details in node.list_payments() {
-			match payment_details.status {
-				PaymentStatus::Succeeded => successful_payments_count += 1,
-				PaymentStatus::Failed => failed_payments_count += 1,
-				PaymentStatus::Pending => pending_payments_count += 1,
-			}
+	pub fn initialize_metrics(&self, node: &Node) {
+		match payment_status_counts(node) {
+			Ok(counts) => self.store_payment_counts(counts),
+			Err(e) => error!("Failed to initialize payment metrics: {e}"),
 		}
-		self.total_successful_payments_count.store(successful_payments_count, Ordering::Relaxed);
-		self.total_failed_payments_count.store(failed_payments_count, Ordering::Relaxed);
-		self.total_pending_payments_count.store(pending_payments_count, Ordering::Relaxed);
 
-		let channels_count = node.list_channels().len() as i64;
-		self.total_channels_count.store(channels_count, Ordering::Relaxed);
+		let all_channels = node.list_channels();
+		self.total_channels_count.store(all_channels.len() as i64, Ordering::Relaxed);
 
+		let public_channels_count =
+			all_channels.iter().filter(|channel_details| channel_details.is_announced).count()
+				as i64;
+		self.total_public_channels_count.store(public_channels_count, Ordering::Relaxed);
+
+		let private_channels_count =
+			all_channels.iter().filter(|channel_details| !channel_details.is_announced).count()
+				as i64;
+		self.total_private_channels_count.store(private_channels_count, Ordering::Relaxed);
+
+		self.update_peer_count(node);
 		self.update_all_balances(node);
 	}
 
@@ -129,17 +153,12 @@ impl Metrics {
 	}
 
 	pub fn update_all_pollable_metrics(&self, node: &Node) {
-		let all_payments = node.list_payments();
 		let all_channels = node.list_channels();
 
-		let payments_count = all_payments.len() as i64;
-		self.total_payments_count.store(payments_count, Ordering::Relaxed);
-
-		let pending_payments_count = all_payments
-			.iter()
-			.filter(|payment_details| payment_details.status == PaymentStatus::Pending)
-			.count() as i64;
-		self.total_pending_payments_count.store(pending_payments_count, Ordering::Relaxed);
+		match payment_status_counts(node) {
+			Ok(counts) => self.store_payment_counts(counts),
+			Err(e) => error!("Failed to update payment metrics: {e}"),
+		}
 
 		let public_channels_count =
 			all_channels.iter().filter(|channel_details| channel_details.is_announced).count()
@@ -296,20 +315,6 @@ mod tests {
 		assert!(result.contains("ldk_server_spendable_onchain_balance_sats 0"));
 		assert!(result.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
 		assert!(result.contains("ldk_server_total_lightning_balance_sats 0"));
-	}
-
-	#[test]
-	fn test_update_payments_count() {
-		let metrics = Metrics::new();
-
-		metrics.total_successful_payments_count.store(10, Ordering::Relaxed);
-		metrics.total_failed_payments_count.store(5, Ordering::Relaxed);
-
-		metrics.update_payments_count(true);
-		metrics.update_payments_count(false);
-
-		assert_eq!(metrics.total_successful_payments_count.load(Ordering::Relaxed), 11);
-		assert_eq!(metrics.total_failed_payments_count.load(Ordering::Relaxed), 6);
 	}
 
 	#[test]

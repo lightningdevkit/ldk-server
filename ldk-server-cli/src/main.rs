@@ -24,32 +24,33 @@ use ldk_server_client::error::LdkServerErrorCode::{
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
+	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRefundRequest,
-	Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest, Bolt12ReceiveResponse,
-	Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest, Bolt12SendResponse,
-	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
+	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
+	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
+	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
+	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
+	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
+	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
+	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
+	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
+	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
-	PageToken, RouteParametersConfig,
+	PayerProofOptions, RouteParametersConfig,
 };
 use ldk_server_client::{
 	DEFAULT_EXPIRY_SECS, DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF, DEFAULT_MAX_PATH_COUNT,
@@ -163,7 +164,9 @@ enum Commands {
 		expiry_secs: Option<u32>,
 	},
 	#[command(about = "Claim a held payment by providing the preimage")]
-	Bolt11ClaimForHash {
+	Bolt11ClaimForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 		#[arg(help = "The hex-encoded 32-byte payment preimage")]
 		preimage: String,
 		#[arg(
@@ -172,17 +175,11 @@ enum Commands {
 			help = "The claimable amount, e.g. 50sat or 50000msat, only used for verifying we are claiming the expected amount"
 		)]
 		claimable_amount: Option<Amount>,
-		#[arg(
-			short,
-			long,
-			help = "The hex-encoded 32-byte payment hash, used to verify the preimage matches"
-		)]
-		payment_hash: Option<String>,
 	},
 	#[command(about = "Fail/reject a held payment")]
-	Bolt11FailForHash {
-		#[arg(help = "The hex-encoded 32-byte payment hash")]
-		payment_hash: String,
+	Bolt11FailForId {
+		#[arg(help = "The hex-encoded 32-byte payment ID from PaymentClaimable")]
+		payment_id: String,
 	},
 	#[command(about = "Create a fixed-amount BOLT11 invoice to receive via an LSPS2 JIT channel")]
 	Bolt11ReceiveViaJitChannel {
@@ -357,6 +354,27 @@ enum Commands {
 		#[arg(help = "A BOLT12 refund from the node that will send the payment")]
 		refund: String,
 	},
+	#[command(about = "Create a BOLT 12 payer proof for a payment this node made")]
+	Bolt12CreatePayerProof {
+		#[arg(help = "The hex-encoded payment id from PaymentSuccessful")]
+		payment_id: String,
+		#[arg(help = "The hex-encoded 32-byte payment preimage from PaymentSuccessful")]
+		payment_preimage: String,
+		#[arg(help = "The hex-encoded BOLT 12 invoice from PaymentSuccessful")]
+		invoice: String,
+		#[arg(long, help = "Optional note to attach to the payer proof")]
+		note: Option<String>,
+		#[arg(long, help = "Disclose the offer description in the proof")]
+		include_offer_description: bool,
+		#[arg(long, help = "Disclose the offer issuer in the proof")]
+		include_offer_issuer: bool,
+		#[arg(long, help = "Disclose the invoice amount in the proof")]
+		include_invoice_amount: bool,
+		#[arg(long, help = "Disclose the invoice creation timestamp in the proof")]
+		include_invoice_created_at: bool,
+		#[arg(long, help = "Additional TLV types to disclose")]
+		extra_tlv_types: Vec<u64>,
+	},
 	#[command(about = "Send a spontaneous payment (keysend) to a node")]
 	SpontaneousSend {
 		#[arg(help = "The hex-encoded public key of the node to send the payment to")]
@@ -522,7 +540,7 @@ enum Commands {
 		)]
 		number_of_payments: Option<u64>,
 		#[arg(long)]
-		#[arg(help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(help = "Opaque page token returned by a previous request")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Get details of a specific payment by its payment ID")]
@@ -538,7 +556,7 @@ enum Commands {
 			help = "Fetch at least this many forwarded payments by iterating through multiple pages. Returns combined results with the last page token. If not provided, returns only a single page."
 		)]
 		number_of_payments: Option<u64>,
-		#[arg(long, help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(long, help = "Opaque page token returned by a previous request")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Update the forwarding fees and CLTV expiry delta for an existing channel")]
@@ -763,20 +781,20 @@ async fn main() {
 				client.bolt11_receive_for_hash(request).await,
 			);
 		},
-		Commands::Bolt11ClaimForHash { preimage, claimable_amount, payment_hash } => {
-			handle_response_result::<_, Bolt11ClaimForHashResponse>(
+		Commands::Bolt11ClaimForId { payment_id, preimage, claimable_amount } => {
+			handle_response_result::<_, Bolt11ClaimForIdResponse>(
 				client
-					.bolt11_claim_for_hash(Bolt11ClaimForHashRequest {
-						payment_hash,
+					.bolt11_claim_for_id(Bolt11ClaimForIdRequest {
+						payment_id,
 						claimable_amount_msat: claimable_amount.map(|a| a.to_msat()),
 						preimage,
 					})
 					.await,
 			);
 		},
-		Commands::Bolt11FailForHash { payment_hash } => {
-			handle_response_result::<_, Bolt11FailForHashResponse>(
-				client.bolt11_fail_for_hash(Bolt11FailForHashRequest { payment_hash }).await,
+		Commands::Bolt11FailForId { payment_id } => {
+			handle_response_result::<_, Bolt11FailForIdResponse>(
+				client.bolt11_fail_for_id(Bolt11FailForIdRequest { payment_id }).await,
 			);
 		},
 		Commands::Bolt11ReceiveViaJitChannel {
@@ -950,6 +968,36 @@ async fn main() {
 		Commands::Bolt12ReceiveRefund { refund } => {
 			handle_response_result::<_, Bolt12ReceiveRefundResponse>(
 				client.bolt12_receive_refund(Bolt12ReceiveRefundRequest { refund }).await,
+			);
+		},
+		Commands::Bolt12CreatePayerProof {
+			payment_id,
+			payment_preimage,
+			invoice,
+			note,
+			include_offer_description,
+			include_offer_issuer,
+			include_invoice_amount,
+			include_invoice_created_at,
+			extra_tlv_types,
+		} => {
+			let options = PayerProofOptions {
+				note,
+				include_offer_description,
+				include_offer_issuer,
+				include_invoice_amount,
+				include_invoice_created_at,
+				extra_tlv_types,
+			};
+			handle_response_result::<_, Bolt12CreatePayerProofResponse>(
+				client
+					.bolt12_create_payer_proof(Bolt12CreatePayerProofRequest {
+						payment_id,
+						payment_preimage,
+						invoice,
+						options: Some(options),
+					})
+					.await,
 			);
 		},
 		Commands::SpontaneousSend {
@@ -1126,9 +1174,6 @@ async fn main() {
 			);
 		},
 		Commands::ListPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
 			handle_response_result::<_, CliListPaymentsResponse>(
 				fetch_paginated(
 					number_of_payments,
@@ -1145,9 +1190,6 @@ async fn main() {
 			);
 		},
 		Commands::ListForwardedPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
 			handle_response_result::<_, CliListForwardedPaymentsResponse>(
 				fetch_paginated(
 					number_of_payments,
@@ -1286,9 +1328,8 @@ fn build_open_channel_config(
 }
 
 async fn fetch_paginated<T, R, Fut>(
-	target_count: Option<u64>, initial_page_token: Option<PageToken>,
-	fetch_page: impl Fn(Option<PageToken>) -> Fut,
-	extract: impl Fn(R) -> (Vec<T>, Option<PageToken>),
+	target_count: Option<u64>, initial_page_token: Option<String>,
+	fetch_page: impl Fn(Option<String>) -> Fut, extract: impl Fn(R) -> (Vec<T>, Option<String>),
 ) -> Result<CliPaginatedResponse<T>, LdkServerError>
 where
 	Fut: std::future::Future<Output = Result<R, LdkServerError>>,
@@ -1398,20 +1439,6 @@ fn parse_bolt11_invoice_description(
 	}
 }
 
-fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
-	let parts: Vec<&str> = token_str.split(':').collect();
-	if parts.len() != 2 {
-		return Err(LdkServerError::new(
-			InvalidRequestError,
-			"Page token must be in format 'token:index'".to_string(),
-		));
-	}
-	let index = parts[1].parse::<i64>().map_err(|_| {
-		LdkServerError::new(InvalidRequestError, "Invalid page token index".to_string())
-	})?;
-	Ok(PageToken { token: parts[0].to_string(), index })
-}
-
 fn parse_custom_tlv(s: &str) -> Result<(u64, Vec<u8>), String> {
 	let (type_str, hex_str) =
 		s.split_once(':').ok_or_else(|| format!("expected <type_num>:<hex_value>, got '{s}'"))?;
@@ -1445,6 +1472,31 @@ fn handle_error(e: LdkServerError) -> ! {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn fetch_paginated_collects_multiple_pages() {
+		let response = fetch_paginated(
+			Some(3),
+			None,
+			|page_token| async move {
+				match page_token {
+					None => {
+						Ok::<_, LdkServerError>((vec![1, 2], Some("store:v2:cursor:7".to_string())))
+					},
+					Some(token) => {
+						assert_eq!(token, "store:v2:cursor:7");
+						Ok((vec![3], None))
+					},
+				}
+			},
+			|response| response,
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(response.list, vec![1, 2, 3]);
+		assert!(response.next_page_token.is_none());
+	}
 
 	#[test]
 	fn parse_custom_tlv_accepts_valid_record() {

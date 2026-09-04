@@ -40,6 +40,7 @@ fn generate_protos() {
 			"api.GetNodeInfoResponse.features",
 			"api.DecodeInvoiceResponse.features",
 			"api.DecodeOfferResponse.features",
+			"types.Channel.channel_type",
 			"types.GraphNodeAnnouncement.features",
 		])
 		.type_attribute(

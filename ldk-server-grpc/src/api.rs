@@ -205,8 +205,8 @@ pub struct Bolt11ReceiveResponse {
 }
 /// Return a BOLT11 payable invoice for a given payment hash.
 /// The inbound payment will NOT be automatically claimed upon arrival.
-/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForHash`
-/// or manually failed by calling `Bolt11FailForHash`.
+/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+/// or manually failed by calling `Bolt11FailForId`.
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash>
@@ -227,6 +227,7 @@ pub struct Bolt11ReceiveForHashRequest {
 	#[prost(uint32, tag = "3")]
 	pub expiry_secs: u32,
 	/// The hex-encoded 32-byte payment hash to use for the invoice.
+	/// Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
 	#[prost(string, tag = "4")]
 	pub payment_hash: ::prost::alloc::string::String,
 }
@@ -243,19 +244,18 @@ pub struct Bolt11ReceiveForHashResponse {
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
 }
-/// Manually claim a payment for a given payment hash with the corresponding preimage.
+/// Manually claim a payment for a given payment ID with the corresponding preimage.
 /// This should be used to claim payments created via `Bolt11ReceiveForHash`.
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash>
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11ClaimForHashRequest {
-	/// The hex-encoded 32-byte payment hash.
-	/// If provided, it will be used to verify that the preimage matches.
-	#[prost(string, optional, tag = "1")]
-	pub payment_hash: ::core::option::Option<::prost::alloc::string::String>,
+pub struct Bolt11ClaimForIdRequest {
+	/// The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
 	/// The amount in millisatoshi that is claimable.
 	/// If not provided, skips amount verification.
 	#[prost(uint64, optional, tag = "2")]
@@ -264,33 +264,33 @@ pub struct Bolt11ClaimForHashRequest {
 	#[prost(string, tag = "3")]
 	pub preimage: ::prost::alloc::string::String,
 }
-/// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
+/// The response for the `Bolt11ClaimForId` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11ClaimForHashResponse {}
-/// Manually fail a payment for a given payment hash.
+pub struct Bolt11ClaimForIdResponse {}
+/// Manually fail a payment for a given payment ID.
 /// This should be used to reject payments created via `Bolt11ReceiveForHash`.
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash>
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11FailForHashRequest {
-	/// The hex-encoded 32-byte payment hash.
+pub struct Bolt11FailForIdRequest {
+	/// The hex-encoded 32-byte payment ID from `PaymentClaimable`.
 	#[prost(string, tag = "1")]
-	pub payment_hash: ::prost::alloc::string::String,
+	pub payment_id: ::prost::alloc::string::String,
 }
-/// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
+/// The response for the `Bolt11FailForId` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11FailForHashResponse {}
+pub struct Bolt11FailForIdResponse {}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 /// LSPS2 just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>
@@ -559,6 +559,40 @@ pub struct Bolt12ReceiveRefundResponse {
 	/// The payment hash for the incoming refund payment in hex-encoded form.
 	#[prost(string, tag = "1")]
 	pub payment_hash: ::prost::alloc::string::String,
+}
+/// Create a BOLT 12 payer proof for a payment this node made.
+/// Inputs come from `PaymentSuccessful`: `payment_id`, `payment_preimage`, and `bolt12_invoice`.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.create_payer_proof>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12CreatePayerProofRequest {
+	/// The local identifier used to track the payment, in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
+	/// The hex-encoded 32-byte payment preimage from `PaymentSuccessful`.
+	#[prost(string, tag = "2")]
+	pub payment_preimage: ::prost::alloc::string::String,
+	/// The hex-encoded BOLT 12 invoice from `PaymentSuccessful.bolt12_invoice`.
+	/// Static invoices used for async payments cannot be proven.
+	#[prost(string, tag = "3")]
+	pub invoice: ::prost::alloc::string::String,
+	/// Controls which optional invoice fields the proof discloses.
+	#[prost(message, optional, tag = "4")]
+	pub options: ::core::option::Option<super::types::PayerProofOptions>,
+}
+/// The response for the `Bolt12CreatePayerProof` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12CreatePayerProofResponse {
+	/// The bech32-encoded payer proof.
+	#[prost(string, tag = "1")]
+	pub payer_proof: ::prost::alloc::string::String,
 }
 /// Send a spontaneous payment, also known as "keysend", to a node.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send>
@@ -859,14 +893,14 @@ pub struct GetPaymentDetailsResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPaymentsRequest {
-	/// `page_token` is a pagination token.
+	/// `page_token` is an opaque pagination token string.
 	///
 	/// To query for the first page, `page_token` must not be specified.
 	///
 	/// For subsequent pages, use the value that was returned as `next_page_token` in the previous
 	/// page's response.
-	#[prost(message, optional, tag = "1")]
-	pub page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -878,7 +912,8 @@ pub struct ListPaymentsResponse {
 	/// List of payments.
 	#[prost(message, repeated, tag = "1")]
 	pub payments: ::prost::alloc::vec::Vec<super::types::Payment>,
-	/// `next_page_token` is a pagination token, used to retrieve the next page of results.
+	/// `next_page_token` is an opaque pagination token string used to retrieve the next page of
+	/// results.
 	/// Use this value to query for next-page of paginated operation, by specifying
 	/// this value as the `page_token` in the next request.
 	///
@@ -891,8 +926,8 @@ pub struct ListPaymentsResponse {
 	///
 	/// **Caution**: Clients must not assume a specific number of records to be present in a page for
 	/// paginated response.
-	#[prost(message, optional, tag = "2")]
-	pub next_page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Retrieves list of all forwarded payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
@@ -902,14 +937,14 @@ pub struct ListPaymentsResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListForwardedPaymentsRequest {
-	/// `page_token` is a pagination token.
+	/// `page_token` is an opaque pagination token string.
 	///
 	/// To query for the first page, `page_token` must not be specified.
 	///
 	/// For subsequent pages, use the value that was returned as `next_page_token` in the previous
 	/// page's response.
-	#[prost(message, optional, tag = "1")]
-	pub page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -921,7 +956,8 @@ pub struct ListForwardedPaymentsResponse {
 	/// List of forwarded payments.
 	#[prost(message, repeated, tag = "1")]
 	pub forwarded_payments: ::prost::alloc::vec::Vec<super::types::ForwardedPayment>,
-	/// `next_page_token` is a pagination token, used to retrieve the next page of results.
+	/// `next_page_token` is an opaque pagination token string used to retrieve the next page of
+	/// results.
 	/// Use this value to query for next-page of paginated operation, by specifying
 	/// this value as the `page_token` in the next request.
 	///
@@ -934,8 +970,8 @@ pub struct ListForwardedPaymentsResponse {
 	///
 	/// **Caution**: Clients must not assume a specific number of records to be present in a page for
 	/// paginated response.
-	#[prost(message, optional, tag = "2")]
-	pub next_page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Sign a message with the node's secret key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>

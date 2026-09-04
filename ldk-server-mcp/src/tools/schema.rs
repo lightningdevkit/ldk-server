@@ -132,13 +132,8 @@ fn channel_config_schema() -> Value {
 
 fn page_token_schema() -> Value {
 	json!({
-		"type": "object",
-		"description": "Pagination token from a previous response",
-		"properties": {
-			"token": { "type": "string" },
-			"index": { "type": "integer" }
-		},
-		"required": ["token", "index"]
+		"type": "string",
+		"description": "Opaque pagination token from a previous response"
 	})
 }
 
@@ -218,13 +213,13 @@ pub fn bolt11_receive_for_hash_schema() -> Value {
 	})
 }
 
-pub fn bolt11_claim_for_hash_schema() -> Value {
+pub fn bolt11_claim_for_id_schema() -> Value {
 	json!({
 		"type": "object",
 		"properties": {
-			"payment_hash": {
+			"payment_id": {
 				"type": "string",
-				"description": "The hex-encoded 32-byte payment hash. If provided, verifies that the preimage matches"
+				"description": "The hex-encoded 32-byte payment ID from PaymentClaimable"
 			},
 			"claimable_amount_msat": {
 				"type": "integer",
@@ -235,20 +230,20 @@ pub fn bolt11_claim_for_hash_schema() -> Value {
 				"description": "The hex-encoded 32-byte payment preimage"
 			}
 		},
-		"required": ["preimage"]
+		"required": ["payment_id", "preimage"]
 	})
 }
 
-pub fn bolt11_fail_for_hash_schema() -> Value {
+pub fn bolt11_fail_for_id_schema() -> Value {
 	json!({
 		"type": "object",
 		"properties": {
-			"payment_hash": {
+			"payment_id": {
 				"type": "string",
-				"description": "The hex-encoded 32-byte payment hash"
+				"description": "The hex-encoded 32-byte payment ID from PaymentClaimable"
 			}
 		},
-		"required": ["payment_hash"]
+		"required": ["payment_id"]
 	})
 }
 
@@ -415,6 +410,58 @@ pub fn bolt12_receive_refund_schema() -> Value {
 			}
 		},
 		"required": ["refund"]
+	})
+}
+
+pub fn bolt12_create_payer_proof_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"payment_id": {
+				"type": "string",
+				"description": "The hex-encoded payment id from PaymentSuccessful"
+			},
+			"payment_preimage": {
+				"type": "string",
+				"description": "The hex-encoded 32-byte payment preimage from PaymentSuccessful"
+			},
+			"invoice": {
+				"type": "string",
+				"description": "The hex-encoded BOLT 12 invoice from PaymentSuccessful"
+			},
+			"options": {
+				"type": "object",
+				"description": "Controls which optional invoice fields the proof discloses",
+				"properties": {
+					"note": {
+						"type": "string",
+						"description": "Optional note to attach to the payer proof"
+					},
+					"include_offer_description": {
+						"type": "boolean",
+						"description": "Disclose the offer description"
+					},
+					"include_offer_issuer": {
+						"type": "boolean",
+						"description": "Disclose the offer issuer"
+					},
+					"include_invoice_amount": {
+						"type": "boolean",
+						"description": "Disclose the invoice amount"
+					},
+					"include_invoice_created_at": {
+						"type": "boolean",
+						"description": "Disclose the invoice creation timestamp"
+					},
+					"extra_tlv_types": {
+						"type": "array",
+						"items": { "type": "integer" },
+						"description": "Additional TLV types to disclose"
+					}
+				}
+			}
+		},
+		"required": ["payment_id", "payment_preimage", "invoice"]
 	})
 }
 

@@ -161,8 +161,8 @@ message Bolt11ReceiveResponse {
 
 // Return a BOLT11 payable invoice for a given payment hash.
 // The inbound payment will NOT be automatically claimed upon arrival.
-// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForHash`
-// or manually failed by calling `Bolt11FailForHash`.
+// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+// or manually failed by calling `Bolt11FailForId`.
 // See more:
 // - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash
 // - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash
@@ -179,6 +179,7 @@ message Bolt11ReceiveForHashRequest {
   uint32 expiry_secs = 3;
 
   // The hex-encoded 32-byte payment hash to use for the invoice.
+  // Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
   string payment_hash = 4;
 }
 
@@ -191,14 +192,13 @@ message Bolt11ReceiveForHashResponse {
   string invoice = 1;
 }
 
-// Manually claim a payment for a given payment hash with the corresponding preimage.
+// Manually claim a payment for a given payment ID with the corresponding preimage.
 // This should be used to claim payments created via `Bolt11ReceiveForHash`.
-// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash
-message Bolt11ClaimForHashRequest {
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id
+message Bolt11ClaimForIdRequest {
 
-  // The hex-encoded 32-byte payment hash.
-  // If provided, it will be used to verify that the preimage matches.
-  optional string payment_hash = 1;
+  // The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+  string payment_id = 1;
 
   // The amount in millisatoshi that is claimable.
   // If not provided, skips amount verification.
@@ -208,20 +208,20 @@ message Bolt11ClaimForHashRequest {
   string preimage = 3;
 }
 
-// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
-message Bolt11ClaimForHashResponse {}
+// The response for the `Bolt11ClaimForId` RPC. On failure, a gRPC error status is returned.
+message Bolt11ClaimForIdResponse {}
 
-// Manually fail a payment for a given payment hash.
+// Manually fail a payment for a given payment ID.
 // This should be used to reject payments created via `Bolt11ReceiveForHash`.
-// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash
-message Bolt11FailForHashRequest {
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id
+message Bolt11FailForIdRequest {
 
-  // The hex-encoded 32-byte payment hash.
-  string payment_hash = 1;
+  // The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+  string payment_id = 1;
 }
 
-// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
-message Bolt11FailForHashResponse {}
+// The response for the `Bolt11FailForId` RPC. On failure, a gRPC error status is returned.
+message Bolt11FailForIdResponse {}
 
 // Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 // LSPS2 just-in-time channel.
@@ -431,6 +431,30 @@ message Bolt12ReceiveRefundResponse {
   string payment_hash = 1;
 }
 
+// Create a BOLT 12 payer proof for a payment this node made.
+// Inputs come from `PaymentSuccessful`: `payment_id`, `payment_preimage`, and `bolt12_invoice`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.create_payer_proof
+message Bolt12CreatePayerProofRequest {
+  // The local identifier used to track the payment, in hex-encoded form.
+  string payment_id = 1;
+
+  // The hex-encoded 32-byte payment preimage from `PaymentSuccessful`.
+  string payment_preimage = 2;
+
+  // The hex-encoded BOLT 12 invoice from `PaymentSuccessful.bolt12_invoice`.
+  // Static invoices used for async payments cannot be proven.
+  string invoice = 3;
+
+  // Controls which optional invoice fields the proof discloses.
+  optional types.PayerProofOptions options = 4;
+}
+
+// The response for the `Bolt12CreatePayerProof` RPC. On failure, a gRPC error status is returned.
+message Bolt12CreatePayerProofResponse {
+  // The bech32-encoded payer proof.
+  string payer_proof = 1;
+}
+
 // Send a spontaneous payment, also known as "keysend", to a node.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.SpontaneousPayment.html#method.send
 message SpontaneousSendRequest {
@@ -623,13 +647,13 @@ message GetPaymentDetailsResponse {
 // Retrieves list of all payments.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.list_payments
 message ListPaymentsRequest {
-  // `page_token` is a pagination token.
+  // `page_token` is an opaque pagination token string.
   //
   // To query for the first page, `page_token` must not be specified.
   //
   // For subsequent pages, use the value that was returned as `next_page_token` in the previous
   // page's response.
-  optional types.PageToken page_token = 1;
+  optional string page_token = 1;
 }
 
 // The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
@@ -637,7 +661,8 @@ message ListPaymentsResponse {
   // List of payments.
   repeated types.Payment payments = 1;
 
-  // `next_page_token` is a pagination token, used to retrieve the next page of results.
+  // `next_page_token` is an opaque pagination token string used to retrieve the next page of
+  // results.
   // Use this value to query for next-page of paginated operation, by specifying
   // this value as the `page_token` in the next request.
   //
@@ -650,19 +675,19 @@ message ListPaymentsResponse {
   //
   // **Caution**: Clients must not assume a specific number of records to be present in a page for
   // paginated response.
-  optional types.PageToken next_page_token = 2;
+  optional string next_page_token = 2;
 }
 
 // Retrieves list of all forwarded payments.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded
 message ListForwardedPaymentsRequest {
-  // `page_token` is a pagination token.
+  // `page_token` is an opaque pagination token string.
   //
   // To query for the first page, `page_token` must not be specified.
   //
   // For subsequent pages, use the value that was returned as `next_page_token` in the previous
   // page's response.
-  optional types.PageToken page_token = 1;
+  optional string page_token = 1;
 }
 
 // The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
@@ -670,7 +695,8 @@ message ListForwardedPaymentsResponse {
   // List of forwarded payments.
   repeated types.ForwardedPayment forwarded_payments = 1;
 
-  // `next_page_token` is a pagination token, used to retrieve the next page of results.
+  // `next_page_token` is an opaque pagination token string used to retrieve the next page of
+  // results.
   // Use this value to query for next-page of paginated operation, by specifying
   // this value as the `page_token` in the next request.
   //
@@ -683,7 +709,7 @@ message ListForwardedPaymentsResponse {
   //
   // **Caution**: Clients must not assume a specific number of records to be present in a page for
   // paginated response.
-  optional types.PageToken next_page_token = 2;
+  optional string next_page_token = 2;
 }
 
 // Sign a message with the node's secret key.
@@ -1008,10 +1034,10 @@ service LightningNode {
   rpc Bolt11Receive(Bolt11ReceiveRequest) returns (Bolt11ReceiveResponse);
   // Return a BOLT11 payable invoice for a given payment hash.
   rpc Bolt11ReceiveForHash(Bolt11ReceiveForHashRequest) returns (Bolt11ReceiveForHashResponse);
-  // Manually claim a payment for a given payment hash.
-  rpc Bolt11ClaimForHash(Bolt11ClaimForHashRequest) returns (Bolt11ClaimForHashResponse);
-  // Manually fail a payment for a given payment hash.
-  rpc Bolt11FailForHash(Bolt11FailForHashRequest) returns (Bolt11FailForHashResponse);
+  // Manually claim a payment for a given payment ID.
+  rpc Bolt11ClaimForId(Bolt11ClaimForIdRequest) returns (Bolt11ClaimForIdResponse);
+  // Manually fail a payment for a given payment ID.
+  rpc Bolt11FailForId(Bolt11FailForIdRequest) returns (Bolt11FailForIdResponse);
   // Return a BOLT11 invoice for receiving via a JIT channel.
   rpc Bolt11ReceiveViaJitChannel(Bolt11ReceiveViaJitChannelRequest) returns (Bolt11ReceiveViaJitChannelResponse);
   // Return a variable-amount BOLT11 invoice for receiving via a JIT channel.
@@ -1029,6 +1055,8 @@ service LightningNode {
   rpc Bolt12SendRefund(Bolt12SendRefundRequest) returns (Bolt12SendRefundResponse);
   // Request an incoming payment for a BOLT12 refund.
   rpc Bolt12ReceiveRefund(Bolt12ReceiveRefundRequest) returns (Bolt12ReceiveRefundResponse);
+  // Create a BOLT 12 payer proof for a payment this node made.
+  rpc Bolt12CreatePayerProof(Bolt12CreatePayerProofRequest) returns (Bolt12CreatePayerProofResponse);
   // Send a spontaneous payment (keysend).
   rpc SpontaneousSend(SpontaneousSendRequest) returns (SpontaneousSendResponse);
   // Create a new outbound channel.

@@ -72,6 +72,7 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidSocketAddress
 			| NodeError::InvalidPublicKey
 			| NodeError::InvalidSecretKey
+			| NodeError::InvalidMnemonic
 			| NodeError::InvalidOfferId
 			| NodeError::InvalidNodeId
 			| NodeError::InvalidPaymentId
@@ -89,8 +90,11 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidNodeAlias
 			| NodeError::InvalidDateTime
 			| NodeError::InvalidFeeRate
+			| NodeError::InvalidPageToken
 			| NodeError::UriParameterParsingFailed
 			| NodeError::InvalidBlindedPaths
+			| NodeError::InvalidPayerProof
+			| NodeError::PayerProofCreationFailed
 			| NodeError::AsyncPaymentServicesDisabled => {
 				(error.to_string(), LdkServerErrorCode::InvalidRequestError)
 			},
@@ -133,5 +137,17 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::TxSyncTimeout => (error.to_string(), LdkServerErrorCode::InternalServerError),
 		};
 		LdkServerError::new(error_code, message)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn payer_proof_creation_failure_is_invalid_request() {
+		let error = LdkServerError::from(NodeError::PayerProofCreationFailed);
+
+		assert_eq!(error.error_code, LdkServerErrorCode::InvalidRequestError);
 	}
 }
