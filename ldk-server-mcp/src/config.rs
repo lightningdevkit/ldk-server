@@ -28,6 +28,14 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 		env_base_url.is_some() && env_api_key.is_some() && env_tls_cert_path.is_some();
 
 	let explicit_config_path = config_path.map(PathBuf::from);
+	if let Some(path) = &explicit_config_path {
+		if !path.is_file() {
+			return Err(format!(
+				"Config file '{}' does not exist or is not a file",
+				path.display()
+			));
+		}
+	}
 	let config_path = explicit_config_path.clone().or_else(get_default_config_path);
 	let config = match config_path {
 		Some(ref path)
@@ -136,6 +144,7 @@ mod tests {
 		let temp_dir = std::env::temp_dir()
 			.join(format!("ldk-server-mcp-config-fallback-{}", std::process::id()));
 		std::fs::create_dir_all(&temp_dir).unwrap();
+		let (default_dir_env_var, old_default_dir) = set_default_data_dir(&temp_dir);
 
 		let cert_path = temp_dir.join("tls.crt");
 		std::fs::write(&cert_path, b"test-cert").unwrap();
@@ -144,14 +153,29 @@ mod tests {
 		std::env::set_var("LDK_API_KEY", "deadbeef");
 		std::env::set_var("LDK_TLS_CERT_PATH", &cert_path);
 		std::env::remove_var("LDK_BASE_URL");
-		let resolved =
-			resolve_config(Some(temp_dir.join("nonexistent.toml").display().to_string())).unwrap();
+		let resolved = resolve_config(None).unwrap();
 		std::env::remove_var("LDK_API_KEY");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
+		restore_env_var(&default_dir_env_var, old_default_dir);
 
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
+	}
+
+	#[test]
+	fn resolve_config_rejects_missing_explicit_config() {
+		let _lock = ENV_LOCK.lock().unwrap();
+		let temp_dir = std::env::temp_dir()
+			.join(format!("ldk-server-mcp-missing-config-{}", std::process::id()));
+		std::fs::create_dir_all(&temp_dir).unwrap();
+		let missing_path = temp_dir.join("missing.toml");
+
+		let result = resolve_config(Some(missing_path.display().to_string()));
+
+		std::fs::remove_dir_all(temp_dir).unwrap();
+		let error = result.err().unwrap();
+		assert!(error.contains(&missing_path.display().to_string()));
 	}
 
 	#[test]
