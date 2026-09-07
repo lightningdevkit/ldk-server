@@ -89,6 +89,150 @@ pub struct Onchain {
 	/// The confirmation status of this payment.
 	#[prost(message, optional, tag = "2")]
 	pub status: ::core::option::Option<ConfirmationStatus>,
+	/// The classification of this transaction, as reported by LDK when it was broadcast.
+	///
+	/// Unset for plain on-chain sends, and for payments recorded before this classification was
+	/// tracked.
+	#[prost(message, optional, tag = "3")]
+	pub tx_type: ::core::option::Option<TransactionType>,
+}
+/// A channel referenced by a TransactionType variant.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionChannel {
+	/// The `node_id` of the channel counterparty.
+	#[prost(string, tag = "1")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The ID of the channel.
+	#[prost(string, tag = "2")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+/// The classification of an on-chain transaction, mirroring LDK Node's
+/// `ldk_node::payment::TransactionType`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionType {
+	#[prost(oneof = "transaction_type::Kind", tags = "1, 2, 3, 4, 5, 6, 7")]
+	pub kind: ::core::option::Option<transaction_type::Kind>,
+}
+/// Nested message and enum types in `TransactionType`.
+pub mod transaction_type {
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+	#[allow(clippy::derive_partial_eq_without_eq)]
+	#[derive(Clone, PartialEq, ::prost::Oneof)]
+	pub enum Kind {
+		#[prost(message, tag = "1")]
+		Funding(super::Funding),
+		#[prost(message, tag = "2")]
+		CooperativeClose(super::CooperativeClose),
+		#[prost(message, tag = "3")]
+		UnilateralClose(super::UnilateralClose),
+		#[prost(message, tag = "4")]
+		AnchorBump(super::AnchorBump),
+		#[prost(message, tag = "5")]
+		Claim(super::Claim),
+		#[prost(message, tag = "6")]
+		Sweep(super::Sweep),
+		#[prost(message, tag = "7")]
+		InteractiveFunding(super::InteractiveFunding),
+	}
+}
+/// A funding transaction establishing one or more new channels.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Funding {
+	/// The channels being funded.
+	#[prost(message, repeated, tag = "1")]
+	pub channels: ::prost::alloc::vec::Vec<TransactionChannel>,
+}
+/// A transaction cooperatively closing a channel.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CooperativeClose {
+	/// The `node_id` of the channel counterparty.
+	#[prost(string, tag = "1")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The ID of the channel being closed.
+	#[prost(string, tag = "2")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+/// A transaction force-closing a channel.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UnilateralClose {
+	/// The `node_id` of the channel counterparty.
+	#[prost(string, tag = "1")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The ID of the channel being force-closed.
+	#[prost(string, tag = "2")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+/// An anchor transaction CPFP fee-bumping a closing transaction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AnchorBump {
+	/// The `node_id` of the channel counterparty.
+	#[prost(string, tag = "1")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The ID of the channel whose closing transaction is being fee-bumped.
+	#[prost(string, tag = "2")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+/// A transaction resolving an output spendable by both us and our counterparty.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Claim {
+	/// The `node_id` of the channel counterparty.
+	#[prost(string, tag = "1")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The ID of the channel from which outputs are being claimed.
+	#[prost(string, tag = "2")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+/// A transaction sweeping spendable outputs to the on-chain wallet.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Sweep {
+	/// The channels from which outputs are being swept, if known.
+	#[prost(message, repeated, tag = "1")]
+	pub channels: ::prost::alloc::vec::Vec<TransactionChannel>,
+}
+/// An interactively-negotiated funding transaction: a splice, or (once supported) a V2
+/// dual-funded channel open.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InteractiveFunding {
+	/// The channels participating in the negotiation.
+	#[prost(message, repeated, tag = "1")]
+	pub channels: ::prost::alloc::vec::Vec<TransactionChannel>,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

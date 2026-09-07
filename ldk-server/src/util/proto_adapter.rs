@@ -21,7 +21,8 @@ use ldk_node::lightning::routing::gossip::{
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
 use ldk_node::lightning_types::features::NodeFeatures;
 use ldk_node::payment::{
-	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
+	Channel as LdkTransactionChannel, ConfirmationStatus, PaymentDetails, PaymentDirection,
+	PaymentKind, PaymentStatus, TransactionType as LdkTransactionType,
 };
 use ldk_node::{
 	ChannelDetails, ChannelShutdownState, LightningBalance, PeerDetails, PendingSweepBalance,
@@ -38,10 +39,17 @@ use ldk_server_grpc::types::payment_kind::Kind::{
 use ldk_server_grpc::types::pending_sweep_balance::BalanceType::{
 	AwaitingThresholdConfirmations, BroadcastAwaitingConfirmation, PendingBroadcast,
 };
+use ldk_server_grpc::types::transaction_type::Kind::{
+	AnchorBump as TxAnchorBump, Claim as TxClaim, CooperativeClose as TxCooperativeClose,
+	Funding as TxFunding, InteractiveFunding as TxInteractiveFunding, Sweep as TxSweep,
+	UnilateralClose as TxUnilateralClose,
+};
 use ldk_server_grpc::types::{
-	bolt11_invoice_description, Channel, ChannelShutdownState as ProtoChannelShutdownState,
-	Feature, ForwardedPayment, HtlcLocator, OutPoint, Payment, Peer,
-	ReserveType as ProtoReserveType,
+	bolt11_invoice_description, AnchorBump, Channel,
+	ChannelShutdownState as ProtoChannelShutdownState, Claim, CooperativeClose, Feature,
+	ForwardedPayment, Funding, HtlcLocator, InteractiveFunding, OutPoint, Payment, Peer,
+	ReserveType as ProtoReserveType, Sweep, TransactionChannel,
+	TransactionType as ProtoTransactionType, UnilateralClose,
 };
 
 use crate::api::error::LdkServerError;
@@ -188,14 +196,65 @@ pub(crate) fn payment_to_proto(payment: PaymentDetails) -> Payment {
 	}
 }
 
+fn transaction_channel_to_proto(channel: LdkTransactionChannel) -> TransactionChannel {
+	TransactionChannel {
+		counterparty_node_id: channel.counterparty_node_id.to_string(),
+		channel_id: channel.channel_id.0.to_lower_hex_string(),
+	}
+}
+
+fn transaction_channels_to_proto(channels: Vec<LdkTransactionChannel>) -> Vec<TransactionChannel> {
+	channels.into_iter().map(transaction_channel_to_proto).collect()
+}
+
+pub(crate) fn transaction_type_to_proto(tx_type: LdkTransactionType) -> ProtoTransactionType {
+	let kind = match tx_type {
+		LdkTransactionType::Funding { channels } => {
+			TxFunding(Funding { channels: transaction_channels_to_proto(channels) })
+		},
+		LdkTransactionType::CooperativeClose { counterparty_node_id, channel_id } => {
+			TxCooperativeClose(CooperativeClose {
+				counterparty_node_id: counterparty_node_id.to_string(),
+				channel_id: channel_id.0.to_lower_hex_string(),
+			})
+		},
+		LdkTransactionType::UnilateralClose { counterparty_node_id, channel_id } => {
+			TxUnilateralClose(UnilateralClose {
+				counterparty_node_id: counterparty_node_id.to_string(),
+				channel_id: channel_id.0.to_lower_hex_string(),
+			})
+		},
+		LdkTransactionType::AnchorBump { counterparty_node_id, channel_id } => {
+			TxAnchorBump(AnchorBump {
+				counterparty_node_id: counterparty_node_id.to_string(),
+				channel_id: channel_id.0.to_lower_hex_string(),
+			})
+		},
+		LdkTransactionType::Claim { counterparty_node_id, channel_id } => TxClaim(Claim {
+			counterparty_node_id: counterparty_node_id.to_string(),
+			channel_id: channel_id.0.to_lower_hex_string(),
+		}),
+		LdkTransactionType::Sweep { channels } => {
+			TxSweep(Sweep { channels: transaction_channels_to_proto(channels) })
+		},
+		LdkTransactionType::InteractiveFunding { channels } => {
+			TxInteractiveFunding(InteractiveFunding {
+				channels: transaction_channels_to_proto(channels),
+			})
+		},
+	};
+	ProtoTransactionType { kind: Some(kind) }
+}
+
 pub(crate) fn payment_kind_to_proto(
 	payment_kind: PaymentKind,
 ) -> ldk_server_grpc::types::PaymentKind {
 	match payment_kind {
-		PaymentKind::Onchain { txid, status, .. } => ldk_server_grpc::types::PaymentKind {
+		PaymentKind::Onchain { txid, status, tx_type } => ldk_server_grpc::types::PaymentKind {
 			kind: Some(Onchain(ldk_server_grpc::types::Onchain {
 				txid: txid.to_string(),
 				status: Some(confirmation_status_to_proto(status)),
+				tx_type: tx_type.map(transaction_type_to_proto),
 			})),
 		},
 		PaymentKind::Bolt11 { hash, preimage, secret, counterparty_skimmed_fee_msat } => {
@@ -605,5 +664,118 @@ pub(crate) fn network_to_proto(network: Network) -> ldk_server_grpc::types::Netw
 		Network::Testnet4 => ProtoNetwork::Testnet4,
 		Network::Signet => ProtoNetwork::Signet,
 		Network::Regtest => ProtoNetwork::Regtest,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use ldk_node::bitcoin::secp256k1::PublicKey;
+	use ldk_node::lightning::ln::types::ChannelId;
+
+	use super::*;
+
+	fn test_pubkey() -> PublicKey {
+		PublicKey::from_slice(&[2; 33]).unwrap()
+	}
+
+	fn test_channel_id(byte: u8) -> ChannelId {
+		ChannelId([byte; 32])
+	}
+
+	#[test]
+	fn test_transaction_type_channel_variants() {
+		let pubkey = test_pubkey();
+		let channel_id = test_channel_id(1);
+
+		let cases = [
+			(
+				LdkTransactionType::CooperativeClose { counterparty_node_id: pubkey, channel_id },
+				"cooperative_close",
+			),
+			(
+				LdkTransactionType::UnilateralClose { counterparty_node_id: pubkey, channel_id },
+				"unilateral_close",
+			),
+			(
+				LdkTransactionType::AnchorBump { counterparty_node_id: pubkey, channel_id },
+				"anchor_bump",
+			),
+			(LdkTransactionType::Claim { counterparty_node_id: pubkey, channel_id }, "claim"),
+		];
+
+		for (input, expected_kind) in cases {
+			let proto = transaction_type_to_proto(input);
+			let (counterparty_node_id, channel_id) = match proto.kind {
+				Some(TxCooperativeClose(c)) => {
+					assert_eq!(expected_kind, "cooperative_close");
+					(c.counterparty_node_id, c.channel_id)
+				},
+				Some(TxUnilateralClose(c)) => {
+					assert_eq!(expected_kind, "unilateral_close");
+					(c.counterparty_node_id, c.channel_id)
+				},
+				Some(TxAnchorBump(c)) => {
+					assert_eq!(expected_kind, "anchor_bump");
+					(c.counterparty_node_id, c.channel_id)
+				},
+				Some(TxClaim(c)) => {
+					assert_eq!(expected_kind, "claim");
+					(c.counterparty_node_id, c.channel_id)
+				},
+				_ => panic!("unexpected variant for {expected_kind}"),
+			};
+			assert_eq!(counterparty_node_id, pubkey.to_string());
+			assert_eq!(channel_id, test_channel_id(1).0.to_lower_hex_string());
+		}
+	}
+
+	#[test]
+	fn test_transaction_type_channels_list_variants() {
+		let channels = vec![
+			LdkTransactionChannel {
+				counterparty_node_id: test_pubkey(),
+				channel_id: test_channel_id(1),
+			},
+			LdkTransactionChannel {
+				counterparty_node_id: test_pubkey(),
+				channel_id: test_channel_id(2),
+			},
+		];
+
+		let funding =
+			transaction_type_to_proto(LdkTransactionType::Funding { channels: channels.clone() });
+		match funding.kind {
+			Some(TxFunding(f)) => {
+				assert_eq!(f.channels.len(), 2);
+				assert_eq!(f.channels[0].channel_id, test_channel_id(1).0.to_lower_hex_string());
+				assert_eq!(f.channels[1].channel_id, test_channel_id(2).0.to_lower_hex_string());
+			},
+			_ => panic!("expected Funding, got a different variant"),
+		}
+
+		let sweep =
+			transaction_type_to_proto(LdkTransactionType::Sweep { channels: channels.clone() });
+		match sweep.kind {
+			Some(TxSweep(s)) => assert_eq!(s.channels.len(), 2),
+			_ => panic!("expected Sweep, got a different variant"),
+		}
+
+		let interactive_funding =
+			transaction_type_to_proto(LdkTransactionType::InteractiveFunding { channels });
+		match interactive_funding.kind {
+			Some(TxInteractiveFunding(i)) => {
+				assert_eq!(i.channels.len(), 2)
+			},
+			_ => panic!("expected InteractiveFunding, got a different variant"),
+		}
+	}
+
+	#[test]
+	fn test_transaction_type_empty_channels_list() {
+		let funding = transaction_type_to_proto(LdkTransactionType::Funding { channels: vec![] });
+		match funding.kind {
+			Some(TxFunding(f)) => assert!(f.channels.is_empty()),
+			_ => panic!("expected Funding, got a different variant"),
+		}
 	}
 }
