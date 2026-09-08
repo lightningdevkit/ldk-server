@@ -294,10 +294,11 @@ mod tests {
 				rpc_user = "bitcoind-testuser"
 				rpc_password = "bitcoind-testpassword"
 
-				[liquidity.lsps2_client]
+				[[liquidity.lsps_client]]
 				node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
 				address = "127.0.0.1:39735"
 				token = "lsps2-token"
+				trust_peer_0conf = true
 
 				[liquidity.lsps2_service]
 				advertise_service = false

@@ -118,8 +118,8 @@ These RPCs support a manual claim/fail workflow for held payments. See
 
 ### BOLT11 JIT Channels (LSPS2)
 
-Requires an `[liquidity.lsps2_client]` configuration. The LSP opens a channel just-in-time
-when the invoice is paid.
+Requires at least one `[[liquidity.lsps_client]]` entry for an LSPS2-capable LSP. The LSP opens
+a channel just-in-time when the invoice is paid.
 
 | RPC                                        | Description                                               |
 |--------------------------------------------|-----------------------------------------------------------|
