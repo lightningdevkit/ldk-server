@@ -716,7 +716,7 @@ fn main() {
 				},
 				res = grpc_listener.accept() => {
 					match res {
-						Ok((stream, _)) => {
+						Ok((stream, peer_addr)) => {
 							let handshake_permit =
 								match Arc::clone(&tls_handshake_semaphore).try_acquire_owned() {
 									Ok(permit) => permit,
@@ -732,6 +732,7 @@ fn main() {
 								metrics_auth_header.clone(),
 								event_sender.clone(),
 								shutdown_rx.clone(),
+								peer_addr.ip(),
 							);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
