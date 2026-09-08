@@ -955,7 +955,7 @@ fn upsert_payment_details(
 	match paginated_store.write(
 		PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 		PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-		&payment.id,
+		&payment.payment_id,
 		time,
 		&payment.encode_to_vec(),
 	) {

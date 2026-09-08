@@ -5,7 +5,7 @@ package types;
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PaymentDetails.html
 message Payment {
   // An identifier used to uniquely identify a payment in hex-encoded form.
-  string id = 1;
+  string payment_id = 1;
 
   // The kind of the payment.
   PaymentKind kind = 2;

@@ -237,7 +237,7 @@ Hodl invoices allow you to inspect and conditionally accept incoming payments:
    replayed.
 2. **Create the invoice:** Generate a new payment hash. Call `Bolt11ReceiveForHash` with this hash.
    Never reuse a payment hash. Reuse is unsafe and can cause loss of funds.
-3. **Handle each payment:** Save `payment.id` from each `PaymentClaimable` event. A payer can pay
+3. **Handle each payment:** Save `payment.payment_id` from each `PaymentClaimable` event. A payer can pay
    the same invoice more than once. Each payment has a separate event and payment ID.
 4. **Decide before `claim_deadline`:**
     - **Accept an expected payment:** Call `Bolt11ClaimForId` with its payment ID and preimage.

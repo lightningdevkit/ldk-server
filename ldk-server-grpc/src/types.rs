@@ -17,7 +17,7 @@
 pub struct Payment {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
 	#[prost(string, tag = "1")]
-	pub id: ::prost::alloc::string::String,
+	pub payment_id: ::prost::alloc::string::String,
 	/// The kind of the payment.
 	#[prost(message, optional, tag = "2")]
 	pub kind: ::core::option::Option<PaymentKind>,

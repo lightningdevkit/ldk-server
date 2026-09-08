@@ -179,7 +179,7 @@ pub(crate) fn payment_to_proto(payment: PaymentDetails) -> Payment {
 	} = payment;
 
 	Payment {
-		id: id.to_string(),
+		payment_id: id.to_string(),
 		kind: Some(payment_kind_to_proto(kind)),
 		amount_msat,
 		fee_paid_msat,

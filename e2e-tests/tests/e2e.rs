@@ -884,13 +884,13 @@ async fn test_cli_bolt11_send() {
 	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
 		panic!("expected PaymentSuccessful");
 	};
-	assert_eq!(successful.payment.as_ref().unwrap().id, send_payment_id);
+	assert_eq!(successful.payment.as_ref().unwrap().payment_id, send_payment_id);
 
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
 	let Some(Event::PaymentReceived(received)) = &event_b.event else {
 		panic!("expected PaymentReceived");
 	};
-	assert!(!received.payment.as_ref().unwrap().id.is_empty());
+	assert!(!received.payment.as_ref().unwrap().payment_id.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1075,13 +1075,13 @@ async fn test_cli_spontaneous_send() {
 	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
 		panic!("expected PaymentSuccessful");
 	};
-	assert_eq!(successful.payment.as_ref().unwrap().id, send_payment_id);
+	assert_eq!(successful.payment.as_ref().unwrap().payment_id, send_payment_id);
 
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
 	let Some(Event::PaymentReceived(received)) = &event_b.event else {
 		panic!("expected PaymentReceived");
 	};
-	assert!(!received.payment.as_ref().unwrap().id.is_empty());
+	assert!(!received.payment.as_ref().unwrap().payment_id.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1114,7 +1114,7 @@ async fn test_cli_spontaneous_send_with_custom_tlvs() {
 	let Some(Event::PaymentReceived(pr)) = event_b.event else {
 		panic!("expected PaymentReceived");
 	};
-	assert!(!pr.payment.as_ref().unwrap().id.is_empty());
+	assert!(!pr.payment.as_ref().unwrap().payment_id.is_empty());
 	assert_eq!(pr.custom_records.len(), 2);
 	let by_type: HashMap<u64, Vec<u8>> =
 		pr.custom_records.into_iter().map(|r| (r.type_num, r.value.to_vec())).collect();
@@ -1150,7 +1150,7 @@ async fn test_cli_get_payment_details() {
 
 	let output = run_cli(&server_a, &["get-payment-details", payment_id]);
 	assert!(output.get("payment").is_some());
-	assert_eq!(output["payment"]["id"], payment_id);
+	assert_eq!(output["payment"]["payment_id"], payment_id);
 }
 
 #[tokio::test]
@@ -1516,7 +1516,7 @@ async fn test_hodl_invoice_claim() {
 			panic!("expected PaymentClaimable");
 		};
 		assert!(claimable_event.claim_deadline.is_some());
-		assert!(!claimable_event.payment.as_ref().unwrap().id.is_empty());
+		assert!(!claimable_event.payment.as_ref().unwrap().payment_id.is_empty());
 
 		if let Some(invalid_claim) = invalid_claim {
 			let invalid_preimage = [99u8; 32].to_lower_hex_string();
@@ -1527,7 +1527,7 @@ async fn test_hodl_invoice_claim() {
 			let error = server_b
 				.client()
 				.bolt11_claim_for_id(Bolt11ClaimForIdRequest {
-					payment_id: claimable_event.payment.as_ref().unwrap().id.clone(),
+					payment_id: claimable_event.payment.as_ref().unwrap().payment_id.clone(),
 					claimable_amount_msat: attempted_amount,
 					preimage: attempted_preimage.clone(),
 				})
@@ -1538,7 +1538,7 @@ async fn test_hodl_invoice_claim() {
 
 		// Claim the payment on B
 		let mut args: Vec<&str> =
-			vec!["bolt11-claim-for-id", &claimable_event.payment.as_ref().unwrap().id, &preimage_hex];
+			vec!["bolt11-claim-for-id", &claimable_event.payment.as_ref().unwrap().payment_id, &preimage_hex];
 		if let Some(amt) = amount {
 			args.extend(["-c", amt]);
 		}
@@ -1550,7 +1550,7 @@ async fn test_hodl_invoice_claim() {
 		let Some(Event::PaymentSuccessful(event)) = &successful.event else {
 			panic!("expected PaymentSuccessful");
 		};
-		assert!(!event.payment.as_ref().unwrap().id.is_empty());
+		assert!(!event.payment.as_ref().unwrap().payment_id.is_empty());
 	}
 }
 
@@ -1593,9 +1593,9 @@ async fn test_hodl_invoice_fail() {
 	let Some(Event::PaymentClaimable(claimable)) = &event_b.event else {
 		panic!("expected PaymentClaimable");
 	};
-	assert!(!claimable.payment.as_ref().unwrap().id.is_empty());
+	assert!(!claimable.payment.as_ref().unwrap().payment_id.is_empty());
 	let unknown_payment_id = "00".repeat(32);
-	assert_ne!(claimable.payment.as_ref().unwrap().id, unknown_payment_id);
+	assert_ne!(claimable.payment.as_ref().unwrap().payment_id, unknown_payment_id);
 	let error = server_b
 		.client()
 		.bolt11_fail_for_id(Bolt11FailForIdRequest { payment_id: unknown_payment_id })
@@ -1604,14 +1604,14 @@ async fn test_hodl_invoice_fail() {
 	assert_eq!(error.error_code, InvalidRequestError);
 
 	// Fail the payment on B using CLI
-	run_cli(&server_b, &["bolt11-fail-for-id", &claimable.payment.as_ref().unwrap().id]);
+	run_cli(&server_b, &["bolt11-fail-for-id", &claimable.payment.as_ref().unwrap().payment_id]);
 
 	// Verify PaymentFailed on A and its failure reason.
 	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentFailed(_))).await;
 	let Some(Event::PaymentFailed(failed)) = &event_a.event else {
 		panic!("expected PaymentFailed");
 	};
-	assert!(!failed.payment.as_ref().unwrap().id.is_empty());
+	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
 	assert_eq!(
 		failed.reason,
 		Some(PaymentFailureReason::RecipientRejected as i32)
@@ -1776,7 +1776,7 @@ async fn test_cli_spontaneous_send_with_preimage() {
 		panic!("expected PaymentReceived");
 	};
 	let payment = pr.payment.unwrap();
-	assert!(!payment.id.is_empty());
+	assert!(!payment.payment_id.is_empty());
 
 	let Some(payment_kind::Kind::Spontaneous(spont)) = payment.kind.unwrap().kind else {
 		panic!("expected spontaneous kind");
