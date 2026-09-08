@@ -160,6 +160,9 @@ fn main() {
 	ldk_node_config.hrn_config = config_file.hrn_config;
 	ldk_node_config.anchor_channels_config.enable_zero_fee_commitments =
 		config_file.enable_zero_fee_commitments;
+	// The server exposes receive-for-hash APIs, so unknown inbound BOLT11 HTLCs
+	// must emit PaymentClaimable instead of being failed back.
+	ldk_node_config.manually_handle_unknown_bolt11_payments = true;
 
 	let mut builder = Builder::from_config(ldk_node_config);
 	builder.set_log_facade_logger();
@@ -498,10 +501,9 @@ fn main() {
 							..
 						} => {
 							info!(
-								"PAYMENT_RECEIVED: with id {:?}, hash {}, amount_msat {}",
+								"PAYMENT_RECEIVED: with id {}, hash {}, amount_msat {}",
 								payment_id, payment_hash, amount_msat
 							);
-							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 
 							let proto_custom_records: Vec<_> = custom_records
 								.iter()
@@ -526,8 +528,6 @@ fn main() {
 							}
 						},
 						Event::PaymentSuccessful {payment_id, ..} => {
-							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
-
 							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
 									payment: Some(payment_ref.clone()),
@@ -542,9 +542,7 @@ fn main() {
 							}
 						},
 						Event::PaymentFailed {payment_id, reason, ..} => {
-							let payment_id = payment_id.expect("PaymentId expected for ldk-server >=0.1");
 							let proto_reason = reason.as_ref().map(payment_failure_reason_to_proto);
-
 							send_event_and_upsert_payment(&payment_id,
 								move |payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment: Some(payment_ref.clone()),
@@ -563,7 +561,11 @@ fn main() {
 								&payment_id,
 								|payment_ref| {
 									event_envelope::Event::PaymentClaimable(
-										build_payment_claimable_proto(payment_ref, &custom_records, claim_deadline),
+										build_payment_claimable_proto(
+											payment_ref,
+											&custom_records,
+											claim_deadline,
+										),
 									)
 								},
 								&event_node,
@@ -581,7 +583,7 @@ fn main() {
 						} => {
 							info!(
 								"PAYMENT_FORWARDED: outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound HTLCs: {}, outbound HTLCs: {}",
-								outbound_amount_forwarded_msat.unwrap_or(0),
+								outbound_amount_forwarded_msat,
 								total_fee_earned_msat.unwrap_or(0),
 								prev_htlcs.len(),
 								next_htlcs.len(),
@@ -610,7 +612,7 @@ fn main() {
 								total_fee_earned_msat,
 								skimmed_fee_msat,
 								claim_from_onchain_tx,
-								outbound_amount_forwarded_msat
+								Some(outbound_amount_forwarded_msat),
 							);
 
 							let mut forwarded_payment_id = [0u8; 32];
@@ -753,17 +755,19 @@ fn send_event_and_upsert_payment(
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
 	paginated_store: Arc<dyn PaginatedKVStore>,
 ) {
-	if let Some(payment_details) = event_node.payment(payment_id) {
-		let payment = payment_to_proto(payment_details);
+	match event_node.payment(payment_id) {
+		Ok(Some(payment_details)) => {
+			let payment = payment_to_proto(payment_details);
 
-		let event = payment_to_event(&payment);
-		if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
-			debug!("No event subscribers connected, skipping event: {e}");
-		}
+			let event = payment_to_event(&payment);
+			if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
+				debug!("No event subscribers connected, skipping event: {e}");
+			}
 
-		upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
-	} else {
-		error!("Unable to find payment with paymentId: {payment_id}");
+			upsert_payment_details(event_node, Arc::clone(&paginated_store), &payment);
+		},
+		Ok(None) => error!("Unable to find payment with payment ID: {payment_id}"),
+		Err(e) => error!("Failed to retrieve payment with payment ID {payment_id}: {e}"),
 	}
 }
 

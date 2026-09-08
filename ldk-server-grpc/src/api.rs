@@ -205,8 +205,8 @@ pub struct Bolt11ReceiveResponse {
 }
 /// Return a BOLT11 payable invoice for a given payment hash.
 /// The inbound payment will NOT be automatically claimed upon arrival.
-/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForHash`
-/// or manually failed by calling `Bolt11FailForHash`.
+/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+/// or manually failed by calling `Bolt11FailForId`.
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_for_hash>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_for_hash>
@@ -227,6 +227,7 @@ pub struct Bolt11ReceiveForHashRequest {
 	#[prost(uint32, tag = "3")]
 	pub expiry_secs: u32,
 	/// The hex-encoded 32-byte payment hash to use for the invoice.
+	/// Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
 	#[prost(string, tag = "4")]
 	pub payment_hash: ::prost::alloc::string::String,
 }
@@ -243,19 +244,18 @@ pub struct Bolt11ReceiveForHashResponse {
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,
 }
-/// Manually claim a payment for a given payment hash with the corresponding preimage.
+/// Manually claim a payment for a given payment ID with the corresponding preimage.
 /// This should be used to claim payments created via `Bolt11ReceiveForHash`.
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_hash>
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11ClaimForHashRequest {
-	/// The hex-encoded 32-byte payment hash.
-	/// If provided, it will be used to verify that the preimage matches.
-	#[prost(string, optional, tag = "1")]
-	pub payment_hash: ::core::option::Option<::prost::alloc::string::String>,
+pub struct Bolt11ClaimForIdRequest {
+	/// The hex-encoded 32-byte payment ID from `PaymentClaimable`.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
 	/// The amount in millisatoshi that is claimable.
 	/// If not provided, skips amount verification.
 	#[prost(uint64, optional, tag = "2")]
@@ -264,33 +264,33 @@ pub struct Bolt11ClaimForHashRequest {
 	#[prost(string, tag = "3")]
 	pub preimage: ::prost::alloc::string::String,
 }
-/// The response for the `Bolt11ClaimForHash` RPC. On failure, a gRPC error status is returned.
+/// The response for the `Bolt11ClaimForId` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11ClaimForHashResponse {}
-/// Manually fail a payment for a given payment hash.
+pub struct Bolt11ClaimForIdResponse {}
+/// Manually fail a payment for a given payment ID.
 /// This should be used to reject payments created via `Bolt11ReceiveForHash`.
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_hash>
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11FailForHashRequest {
-	/// The hex-encoded 32-byte payment hash.
+pub struct Bolt11FailForIdRequest {
+	/// The hex-encoded 32-byte payment ID from `PaymentClaimable`.
 	#[prost(string, tag = "1")]
-	pub payment_hash: ::prost::alloc::string::String,
+	pub payment_id: ::prost::alloc::string::String,
 }
-/// The response for the `Bolt11FailForHash` RPC. On failure, a gRPC error status is returned.
+/// The response for the `Bolt11FailForId` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Bolt11FailForHashResponse {}
+pub struct Bolt11FailForIdResponse {}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment via an
 /// LSPS2 just-in-time channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel>

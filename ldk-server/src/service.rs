@@ -19,7 +19,7 @@ use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
 use ldk_server_grpc::endpoints::{
-	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
+	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH, BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH,
@@ -42,8 +42,8 @@ use ldk_server_grpc::grpc::{
 use prost::Message;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::api::bolt11_claim_for_hash::handle_bolt11_claim_for_hash_request;
-use crate::api::bolt11_fail_for_hash::handle_bolt11_fail_for_hash_request;
+use crate::api::bolt11_claim_for_id::handle_bolt11_claim_for_id_request;
+use crate::api::bolt11_fail_for_id::handle_bolt11_fail_for_id_request;
 use crate::api::bolt11_receive::handle_bolt11_receive_request;
 use crate::api::bolt11_receive_for_hash::handle_bolt11_receive_for_hash_request;
 use crate::api::bolt11_receive_via_jit_channel::{
@@ -295,13 +295,11 @@ impl Service<Request<Incoming>> for NodeService {
 					handle_grpc_unary(context, body_bytes, handle_bolt11_receive_for_hash_request)
 						.await
 				},
-				BOLT11_CLAIM_FOR_HASH_PATH => {
-					handle_grpc_unary(context, body_bytes, handle_bolt11_claim_for_hash_request)
-						.await
+				BOLT11_CLAIM_FOR_ID_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bolt11_claim_for_id_request).await
 				},
-				BOLT11_FAIL_FOR_HASH_PATH => {
-					handle_grpc_unary(context, body_bytes, handle_bolt11_fail_for_hash_request)
-						.await
+				BOLT11_FAIL_FOR_ID_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bolt11_fail_for_id_request).await
 				},
 				BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH => {
 					handle_grpc_unary(
