@@ -113,8 +113,8 @@ These RPCs support a manual claim/fail workflow for held payments. See
 | RPC                    | Description                                                        |
 |------------------------|--------------------------------------------------------------------|
 | `Bolt11ReceiveForHash` | Create an invoice for a given payment hash (manual claim required) |
-| `Bolt11ClaimForHash`   | Claim a held payment by providing the preimage                     |
-| `Bolt11FailForHash`    | Reject a held payment                                              |
+| `Bolt11ClaimForId`      | Claim a held payment by its payment ID and preimage                |
+| `Bolt11FailForId`       | Reject a held payment by its payment ID                            |
 
 ### BOLT11 JIT Channels (LSPS2)
 
@@ -128,12 +128,13 @@ when the invoice is paid.
 
 ### BOLT12 Offers and Refunds
 
-| RPC                   | Description                                                             |
-|-----------------------|-------------------------------------------------------------------------|
-| `Bolt12Receive`       | Create a BOLT12 offer (fixed or variable amount)                        |
-| `Bolt12Send`          | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
-| `Bolt12SendRefund`    | Create a BOLT12 refund that this node will pay                          |
-| `Bolt12ReceiveRefund` | Request an incoming payment for a BOLT12 refund                         |
+| RPC                      | Description                                                             |
+|--------------------------|-------------------------------------------------------------------------|
+| `Bolt12Receive`          | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12Send`             | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12SendRefund`       | Create a BOLT12 refund that this node will pay                          |
+| `Bolt12ReceiveRefund`    | Request an incoming payment for a BOLT12 refund                         |
+| `Bolt12CreatePayerProof` | Create a BOLT 12 payer proof from a successful payment                  |
 
 ### Spontaneous and Unified Send
 
@@ -215,8 +216,21 @@ See [Pagination](#pagination) below for how to page through results.
 | `SpliceNegotiated` | A channel splice was negotiated and the funding transaction is pending confirmation |
 | `SpliceNegotiationFailed` | A channel splice negotiation round failed                       |
 
-Events are broadcast to all connected subscribers. The server uses a bounded broadcast channel
-(capacity 1024). A slow subscriber that falls behind will miss events.
+> [!WARNING]
+> `SubscribeEvents` is a best-effort stream of new events. Events are not persisted for
+> subscribers, cannot be replayed after reconnecting, and have no client acknowledgement.
+> Acceptance by the server's broadcast channel does not guarantee that a client received or
+> processed an event.
+
+Events are broadcast to all currently connected subscribers. The server uses a bounded broadcast
+channel (capacity 1024), so a slow subscriber that falls behind will miss events. Disconnected
+clients also miss events and receive only new events after reconnecting. If the server cannot read
+data required to construct a payment event, it logs the error and skips that event so the event
+queue can continue processing.
+
+Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
+`GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
+cannot be recovered through these APIs.
 
 ### Metrics
 
@@ -229,27 +243,56 @@ GET /metrics
 Returns Prometheus-format text. Requires `[metrics] enabled = true` in the config. Supports
 optional Basic Auth. See [Configuration](configuration.md#metrics) for setup.
 
+## BOLT 12 Payer-Proof Lifecycle
+
+Subscribe with `SubscribeEvents` before you send a BOLT 12 payment. Events are not replayed.
+
+When `PaymentSuccessful` arrives, retain its `payment_id`, `payment_preimage`, and
+`bolt12_invoice`. Pass these values to `Bolt12CreatePayerProof`. The request can also select the
+optional invoice fields that the proof discloses. Payment history APIs cannot recover all the
+inputs required to create a proof if this event is missed. Save these values before processing
+other events.
+
+The `bolt12_invoice` field is absent for static-invoice payments. These asynchronous payments
+cannot produce payer proofs.
+
 ## Hodl Invoice Lifecycle
 
 Hodl invoices allow you to inspect and conditionally accept incoming payments:
 
-1. **Create the invoice:** Call `Bolt11ReceiveForHash` with a payment hash you control.
-2. **Wait for payment:** Subscribe to events via `SubscribeEvents` and watch for a
-   `PaymentClaimable` event matching your payment hash.
-3. **Decide:**
-    - **Accept:** Call `Bolt11ClaimForHash` with the preimage corresponding to the payment hash.
-    - **Reject:** Call `Bolt11FailForHash` with the payment hash.
+1. **Subscribe:** Call `SubscribeEvents` before you create or share the invoice. Events are not
+   replayed.
+2. **Create the invoice:** Generate a new payment hash. Call `Bolt11ReceiveForHash` with this hash.
+   Never reuse a payment hash. Reuse is unsafe and can cause loss of funds.
+3. **Handle each payment:** Save the payment ID from each `PaymentClaimable` event. A payer can pay
+   the same invoice more than once. Each payment has a separate event and payment ID.
+4. **Decide before `claim_deadline`:**
+    - **Accept an expected payment:** Check the event's `claimable_amount_msat` against the amount
+      you expect. Call `Bolt11ClaimForId` with its payment ID, preimage, and the event's claimable
+      amount.
+    - **Reject an unexpected payment:** Call `Bolt11FailForId` with its payment ID. Reject duplicate
+      and late payments instead of ignoring or claiming them.
 
-The payment is held in a pending state until you explicitly claim or fail it. **You must
-always call one of these.** If you do neither, the HTLC will eventually time out, which
-can cause a force-closure of the channel.
+The claim request's optional amount is passed to LDK Node for a lower-bound check against its
+stored payment amount, less any skimmed fee. It is not an exact amount check or a request to claim
+that many millisatoshis. A larger supplied amount passes this check; omitting it skips the check.
+Always validate the event's amount before you claim the payment.
+
+The payment is held in a pending state until you claim it, fail it, or its `claim_deadline` is
+reached. `PaymentClaimable` notifications are best-effort and are not replayed. If you miss the
+event or do not act before the deadline, LDK Node automatically fails the HTLC backward and the
+payment can no longer be claimed. Keep the subscriber healthy and resolve reported persistence
+errors before accepting further payments.
 
 ## Pagination
 
 `ListPayments` and `ListForwardedPayments` support cursor-based pagination:
 
-1. Make the first request with your desired `number_of_payments` page size.
+1. Make the first request without a `page_token`. The server controls the page size.
 2. If the response includes a `next_page_token`, pass it as `page_token` in the next request.
 3. When `next_page_token` is absent, you have reached the end of the results.
 
-Results are ordered by creation time (most recent first).
+The page token is one opaque string. Do not parse or modify it. Results are ordered by creation
+time (most recent first).
+
+The CLI `--number-of-payments` option combines multiple pages. It does not set the gRPC page size.

@@ -9,19 +9,17 @@
 
 use std::sync::Arc;
 
-use ldk_server_grpc::api::{GetPaymentDetailsRequest, GetPaymentDetailsResponse};
+use ldk_server_grpc::api::{Bolt11FailForIdRequest, Bolt11FailForIdResponse};
 
 use crate::api::error::LdkServerError;
 use crate::service::Context;
-use crate::util::proto_adapter::payment_to_proto;
 
-pub(crate) async fn handle_get_payment_details_request(
-	context: Arc<Context>, request: GetPaymentDetailsRequest,
-) -> Result<GetPaymentDetailsResponse, LdkServerError> {
+pub(crate) async fn handle_bolt11_fail_for_id_request(
+	context: Arc<Context>, request: Bolt11FailForIdRequest,
+) -> Result<Bolt11FailForIdResponse, LdkServerError> {
 	let payment_id = crate::api::parse_payment_id(&request.payment_id)?;
-	let payment_details = context.node.payment(&payment_id)?;
 
-	let response = GetPaymentDetailsResponse { payment: payment_details.map(payment_to_proto) };
+	context.node.bolt11_payment().fail_for_id(payment_id)?;
 
-	Ok(response)
+	Ok(Bolt11FailForIdResponse {})
 }

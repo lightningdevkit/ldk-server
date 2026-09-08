@@ -17,7 +17,7 @@
 pub struct Payment {
 	/// An identifier used to uniquely identify a payment in hex-encoded form.
 	#[prost(string, tag = "1")]
-	pub id: ::prost::alloc::string::String,
+	pub payment_id: ::prost::alloc::string::String,
 	/// The kind of the payment.
 	#[prost(message, optional, tag = "2")]
 	pub kind: ::core::option::Option<PaymentKind>,
@@ -47,6 +47,33 @@ pub struct Payment {
 	/// The timestamp, in seconds since start of the UNIX epoch, when this entry was last updated.
 	#[prost(uint64, tag = "6")]
 	pub latest_update_timestamp: u64,
+}
+/// Options that control which BOLT 12 invoice fields a payer proof discloses.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PayerProofOptions.html>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PayerProofOptions {
+	/// An optional note to attach to the payer proof itself.
+	#[prost(string, optional, tag = "1")]
+	pub note: ::core::option::Option<::prost::alloc::string::String>,
+	/// Whether to disclose the offer description.
+	#[prost(bool, tag = "2")]
+	pub include_offer_description: bool,
+	/// Whether to disclose the offer issuer.
+	#[prost(bool, tag = "3")]
+	pub include_offer_issuer: bool,
+	/// Whether to disclose the invoice amount.
+	#[prost(bool, tag = "4")]
+	pub include_invoice_amount: bool,
+	/// Whether to disclose the invoice creation timestamp.
+	#[prost(bool, tag = "5")]
+	pub include_invoice_created_at: bool,
+	/// Additional TLV types to disclose, for fields not covered by the flags above.
+	#[prost(uint64, repeated, tag = "6")]
+	pub extra_tlv_types: ::prost::alloc::vec::Vec<u64>,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -426,6 +453,11 @@ pub struct HtlcLocator {
 	/// This can be unset for older serialized events.
 	#[prost(string, optional, tag = "3")]
 	pub node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The amount in millisatoshis of the HTLC that was sent or received, if known.
+	/// This can be unset for events serialized by LDK Node v0.7.0 and prior,
+	/// or forwarding records stored by LDK Server before this field was added.
+	#[prost(uint64, optional, tag = "4")]
+	pub amount_msat: ::core::option::Option<u64>,
 }
 /// A forwarded payment through our node.
 ///
@@ -643,6 +675,10 @@ pub struct Channel {
 	/// uses anchor or legacy reserve behavior.
 	#[prost(enumeration = "ReserveType", optional, tag = "32")]
 	pub reserve_type: ::core::option::Option<i32>,
+	/// The negotiated channel-type features, keyed by the signaled BOLT feature bit.
+	/// This map is empty until channel negotiation determines the channel type.
+	#[prost(btree_map = "uint32, message", tag = "33")]
+	pub channel_type: ::prost::alloc::collections::BTreeMap<u32, Feature>,
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>
@@ -1050,18 +1086,6 @@ pub struct AwaitingThresholdConfirmations {
 	/// The amount, in satoshis, of the output being swept.
 	#[prost(uint64, tag = "5")]
 	pub amount_satoshis: u64,
-}
-/// Token used to determine start of next page in paginated APIs.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[cfg_attr(feature = "serde", serde(default))]
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PageToken {
-	#[prost(string, tag = "1")]
-	pub token: ::prost::alloc::string::String,
-	#[prost(int64, tag = "2")]
-	pub index: i64,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

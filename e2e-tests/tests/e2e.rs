@@ -22,9 +22,10 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
+use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
 use ldk_server_client::ldk_server_grpc::api::{
-	open_channel_request, Bolt11ReceiveRequest, Bolt12ReceiveRequest, GetBalancesRequest,
-	OnchainReceiveRequest, OpenChannelRequest,
+	open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveRequest,
+	Bolt12ReceiveRequest, GetBalancesRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -826,6 +827,7 @@ async fn test_cli_list_channels() {
 	// This test opens a default (anchor) channel with no trusted_peers_no_reserve
 	// configured, so the reserve type is deterministically Adaptive.
 	assert_eq!(channel["reserve_type"].as_i64(), Some(ReserveType::Adaptive as i64));
+	assert!(!channel["channel_type"].as_object().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -875,14 +877,21 @@ async fn test_cli_bolt11_send() {
 
 	// Pay via CLI from A
 	let output = run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
-	assert!(!output["payment_id"].as_str().unwrap().is_empty());
+	let send_payment_id = output["payment_id"].as_str().unwrap();
+	assert!(!send_payment_id.is_empty());
 
 	// Verify events
 	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
-	assert!(matches!(&event_a.event, Some(Event::PaymentSuccessful(_))));
+	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
+		panic!("expected PaymentSuccessful");
+	};
+	assert_eq!(successful.payment.as_ref().unwrap().payment_id, send_payment_id);
 
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
-	assert!(matches!(&event_b.event, Some(Event::PaymentReceived(_))));
+	let Some(Event::PaymentReceived(received)) = &event_b.event else {
+		panic!("expected PaymentReceived");
+	};
+	assert!(!received.payment.as_ref().unwrap().payment_id.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1048,6 +1057,55 @@ async fn test_cli_bolt12_refund() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_cli_bolt12_create_payer_proof() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	let offer_resp = server_b
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "payer proof offer".to_string(),
+			amount_msat: Some(10_000_000),
+			expiry_secs: None,
+			quantity: None,
+		})
+		.await
+		.unwrap();
+
+	let send_output = run_cli(&server_a, &["bolt12-send", &offer_resp.offer]);
+	let send_payment_id = send_output["payment_id"].as_str().unwrap();
+	assert!(!send_payment_id.is_empty());
+
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
+		panic!("expected PaymentSuccessful");
+	};
+	assert_eq!(successful.payment_id, send_payment_id);
+	let payment_preimage = successful.payment_preimage.as_ref().expect("preimage");
+	let invoice = successful.bolt12_invoice.as_ref().expect("bolt12 invoice");
+
+	let proof_output = run_cli(
+		&server_a,
+		&[
+			"bolt12-create-payer-proof",
+			send_payment_id,
+			payment_preimage,
+			invoice,
+			"--include-offer-description",
+			"--include-invoice-amount",
+			"--note",
+			"Paid in full",
+		],
+	);
+	assert!(!proof_output["payer_proof"].as_str().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_cli_spontaneous_send() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
@@ -1059,14 +1117,21 @@ async fn test_cli_spontaneous_send() {
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
 	let output = run_cli(&server_a, &["spontaneous-send", server_b.node_id(), "10000sat"]);
-	assert!(!output["payment_id"].as_str().unwrap().is_empty());
+	let send_payment_id = output["payment_id"].as_str().unwrap();
+	assert!(!send_payment_id.is_empty());
 
 	// Verify events
 	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
-	assert!(matches!(&event_a.event, Some(Event::PaymentSuccessful(_))));
+	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
+		panic!("expected PaymentSuccessful");
+	};
+	assert_eq!(successful.payment.as_ref().unwrap().payment_id, send_payment_id);
 
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentReceived(_))).await;
-	assert!(matches!(&event_b.event, Some(Event::PaymentReceived(_))));
+	let Some(Event::PaymentReceived(received)) = &event_b.event else {
+		panic!("expected PaymentReceived");
+	};
+	assert!(!received.payment.as_ref().unwrap().payment_id.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1099,6 +1164,7 @@ async fn test_cli_spontaneous_send_with_custom_tlvs() {
 	let Some(Event::PaymentReceived(pr)) = event_b.event else {
 		panic!("expected PaymentReceived");
 	};
+	assert!(!pr.payment.as_ref().unwrap().payment_id.is_empty());
 	assert_eq!(pr.custom_records.len(), 2);
 	let by_type: HashMap<u64, Vec<u8>> =
 		pr.custom_records.into_iter().map(|r| (r.type_num, r.value.to_vec())).collect();
@@ -1134,7 +1200,7 @@ async fn test_cli_get_payment_details() {
 
 	let output = run_cli(&server_a, &["get-payment-details", payment_id]);
 	assert!(output.get("payment").is_some());
-	assert_eq!(output["payment"]["id"], payment_id);
+	assert_eq!(output["payment"]["payment_id"], payment_id);
 }
 
 #[tokio::test]
@@ -1400,7 +1466,7 @@ async fn test_forwarded_payment_event() {
 	let b_addr = SocketAddress::from_str(&format!("127.0.0.1:{}", server_b.p2p_port)).unwrap();
 	builder_c.add_liquidity_source(b_node_id, b_addr, None, true);
 
-	let mnemonic_c = ldk_node::entropy::generate_entropy_mnemonic(None);
+	let mnemonic_c = ldk_node::bip39::Mnemonic::generate(24).unwrap();
 	let node_entropy_c = ldk_node::entropy::NodeEntropy::from_bip39_mnemonic(mnemonic_c, None);
 	let node_c = builder_c.build(node_entropy_c).unwrap();
 
@@ -1448,6 +1514,11 @@ async fn test_forwarded_payment_event() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_hodl_invoice_claim() {
+	enum InvalidClaim {
+		WrongPreimage,
+		InsufficientAmount,
+	}
+
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -1457,15 +1528,15 @@ async fn test_hodl_invoice_claim() {
 
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	// Test three claim variants: (preimage, amount, hash)
-	let test_cases: Vec<([u8; 32], Option<&str>, bool)> = vec![
-		([42u8; 32], Some("10000000msat"), true),  // all args
-		([44u8; 32], Some("10000000msat"), false), // preimage + amount
-		([45u8; 32], None, true),                  // preimage + hash
-		([46u8; 32], None, false),                 // preimage only
+	// Test optional amount verification and rejected claim inputs.
+	let test_cases = [
+		([42u8; 32], Some("10000000msat"), None),
+		([44u8; 32], None, None),
+		([45u8; 32], Some("10000000msat"), Some(InvalidClaim::WrongPreimage)),
+		([46u8; 32], Some("10000000msat"), Some(InvalidClaim::InsufficientAmount)),
 	];
 
-	for (preimage_bytes, amount, include_hash) in &test_cases {
+	for (preimage_bytes, amount, invalid_claim) in &test_cases {
 		let preimage_hex = preimage_bytes.to_lower_hex_string();
 		let payment_hash_hex =
 			sha256::Hash::hash(preimage_bytes).to_byte_array().to_lower_hex_string();
@@ -1491,25 +1562,45 @@ async fn test_hodl_invoice_claim() {
 		// Wait for PaymentClaimable event on B (drain other events)
 		let claimable =
 			wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentClaimable(_))).await;
-		assert!(matches!(
-			&claimable.event,
-			Some(Event::PaymentClaimable(event)) if event.claim_deadline.is_some()
-		));
+		let Some(Event::PaymentClaimable(claimable_event)) = &claimable.event else {
+			panic!("expected PaymentClaimable");
+		};
+		assert!(claimable_event.claim_deadline.is_some());
+		assert!(!claimable_event.payment_id.is_empty());
+
+		if let Some(invalid_claim) = invalid_claim {
+			let invalid_preimage = [99u8; 32].to_lower_hex_string();
+			let (attempted_preimage, attempted_amount) = match invalid_claim {
+				InvalidClaim::WrongPreimage => (&invalid_preimage, Some(10_000_000)),
+				InvalidClaim::InsufficientAmount => (&preimage_hex, Some(9_999_999)),
+			};
+			let error = server_b
+				.client()
+				.bolt11_claim_for_id(Bolt11ClaimForIdRequest {
+					payment_id: claimable_event.payment_id.clone(),
+					claimable_amount_msat: attempted_amount,
+					preimage: attempted_preimage.clone(),
+				})
+				.await
+				.unwrap_err();
+			assert_eq!(error.error_code, InvalidRequestError);
+		}
 
 		// Claim the payment on B
-		let mut args: Vec<&str> = vec!["bolt11-claim-for-hash", &preimage_hex];
+		let mut args: Vec<&str> =
+			vec!["bolt11-claim-for-id", &claimable_event.payment_id, &preimage_hex];
 		if let Some(amt) = amount {
 			args.extend(["-c", amt]);
-		}
-		if *include_hash {
-			args.extend(["-p", &payment_hash_hex]);
 		}
 		run_cli(&server_b, &args);
 
 		// Wait for PaymentSuccessful on A after claim (drain other events)
 		let successful =
 			wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
-		assert!(matches!(&successful.event, Some(Event::PaymentSuccessful(_))));
+		let Some(Event::PaymentSuccessful(event)) = &successful.event else {
+			panic!("expected PaymentSuccessful");
+		};
+		assert!(!event.payment.as_ref().unwrap().payment_id.is_empty());
 	}
 }
 
@@ -1549,22 +1640,32 @@ async fn test_hodl_invoice_fail() {
 
 	// Verify PaymentClaimable event on B
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentClaimable(_))).await;
-	assert!(matches!(&event_b.event, Some(Event::PaymentClaimable(_))));
+	let Some(Event::PaymentClaimable(claimable)) = &event_b.event else {
+		panic!("expected PaymentClaimable");
+	};
+	assert!(!claimable.payment_id.is_empty());
+	let unknown_payment_id = "00".repeat(32);
+	assert_ne!(claimable.payment_id, unknown_payment_id);
+	let error = server_b
+		.client()
+		.bolt11_fail_for_id(Bolt11FailForIdRequest { payment_id: unknown_payment_id })
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
 
 	// Fail the payment on B using CLI
-	run_cli(&server_b, &["bolt11-fail-for-hash", &payment_hash_hex]);
+	run_cli(&server_b, &["bolt11-fail-for-id", &claimable.payment_id]);
 
 	// Verify PaymentFailed on A and its failure reason.
 	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentFailed(_))).await;
-	match &event_a.event {
-		Some(Event::PaymentFailed(payment_failed)) => {
-			assert_eq!(
-				payment_failed.reason,
-				Some(PaymentFailureReason::RecipientRejected as i32)
-			);
-		},
-		other => panic!("expected PaymentFailed event, got {other:?}"),
-	}
+	let Some(Event::PaymentFailed(failed)) = &event_a.event else {
+		panic!("expected PaymentFailed");
+	};
+	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
+	assert_eq!(
+		failed.reason,
+		Some(PaymentFailureReason::RecipientRejected as i32)
+	);
 }
 
 #[tokio::test]
@@ -1724,8 +1825,8 @@ async fn test_cli_spontaneous_send_with_preimage() {
 	let Some(Event::PaymentReceived(pr)) = event_b.event else {
 		panic!("expected PaymentReceived");
 	};
-
 	let payment = pr.payment.unwrap();
+	assert!(!payment.payment_id.is_empty());
 
 	let Some(payment_kind::Kind::Spontaneous(spont)) = payment.kind.unwrap().kind else {
 		panic!("expected spontaneous kind");

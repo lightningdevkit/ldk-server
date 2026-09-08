@@ -16,44 +16,46 @@ use hyper::body::HttpBody as _;
 use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use ldk_server_grpc::api::{
-	Bolt11ClaimForHashRequest, Bolt11ClaimForHashResponse, Bolt11FailForHashRequest,
-	Bolt11FailForHashResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
+	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
+	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
 	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12ReceiveRefundRequest,
-	Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest, Bolt12ReceiveResponse,
-	Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest, Bolt12SendResponse,
-	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
-	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
-	ListChannelsResponse, ListForwardedPaymentsRequest, ListForwardedPaymentsResponse,
-	ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
+	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
+	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
+	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
+	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
+	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
+	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
+	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
+	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainReceiveRequest,
+	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
+	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
 	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
 	VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
-	BOLT11_CLAIM_FOR_HASH_PATH, BOLT11_FAIL_FOR_HASH_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
+	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
-	BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH, BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH,
-	CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH,
-	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
-	GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
-	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
-	GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH,
-	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH,
-	SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH,
-	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
+	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
+	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
+	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
+	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
+	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -210,18 +212,18 @@ impl LdkServerClient {
 		self.grpc_unary(&request, BOLT11_RECEIVE_FOR_HASH_PATH).await
 	}
 
-	/// Manually claim a payment for a given payment hash.
-	pub async fn bolt11_claim_for_hash(
-		&self, request: Bolt11ClaimForHashRequest,
-	) -> Result<Bolt11ClaimForHashResponse, LdkServerError> {
-		self.grpc_unary(&request, BOLT11_CLAIM_FOR_HASH_PATH).await
+	/// Manually claim a payment for a given payment ID.
+	pub async fn bolt11_claim_for_id(
+		&self, request: Bolt11ClaimForIdRequest,
+	) -> Result<Bolt11ClaimForIdResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT11_CLAIM_FOR_ID_PATH).await
 	}
 
-	/// Manually fail a payment for a given payment hash.
-	pub async fn bolt11_fail_for_hash(
-		&self, request: Bolt11FailForHashRequest,
-	) -> Result<Bolt11FailForHashResponse, LdkServerError> {
-		self.grpc_unary(&request, BOLT11_FAIL_FOR_HASH_PATH).await
+	/// Manually fail a payment for a given payment ID.
+	pub async fn bolt11_fail_for_id(
+		&self, request: Bolt11FailForIdRequest,
+	) -> Result<Bolt11FailForIdResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT11_FAIL_FOR_ID_PATH).await
 	}
 
 	/// Retrieve a new fixed-amount BOLT11 invoice for receiving via an LSPS2 JIT channel.
@@ -282,6 +284,13 @@ impl LdkServerClient {
 		&self, request: Bolt12ReceiveRefundRequest,
 	) -> Result<Bolt12ReceiveRefundResponse, LdkServerError> {
 		self.grpc_unary(&request, BOLT12_RECEIVE_REFUND_PATH).await
+	}
+
+	/// Create a BOLT 12 payer proof for a payment this node made.
+	pub async fn bolt12_create_payer_proof(
+		&self, request: Bolt12CreatePayerProofRequest,
+	) -> Result<Bolt12CreatePayerProofResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT12_CREATE_PAYER_PROOF_PATH).await
 	}
 
 	/// Creates a new outbound channel.

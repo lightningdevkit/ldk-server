@@ -7,7 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use hex::FromHex;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
+use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::routing::router::RouteParametersConfig;
 use ldk_node::CustomTlvRecord as NodeCustomTlvRecord;
 use ldk_server_grpc::types::channel_config::MaxDustHtlcExposure;
@@ -16,12 +18,13 @@ use ldk_server_grpc::types::CustomTlvRecord as ProtoCustomTlvRecord;
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 
-pub(crate) mod bolt11_claim_for_hash;
-pub(crate) mod bolt11_fail_for_hash;
+pub(crate) mod bolt11_claim_for_id;
+pub(crate) mod bolt11_fail_for_id;
 pub(crate) mod bolt11_receive;
 pub(crate) mod bolt11_receive_for_hash;
 pub(crate) mod bolt11_receive_via_jit_channel;
 pub(crate) mod bolt11_send;
+pub(crate) mod bolt12_create_payer_proof;
 pub(crate) mod bolt12_receive;
 pub(crate) mod bolt12_refund;
 pub(crate) mod bolt12_send;
@@ -60,6 +63,16 @@ pub(crate) fn require_amount<T>(amount: Option<T>) -> Result<T, LdkServerError> 
 			"Must specify either an exact amount or all available funds",
 		)
 	})
+}
+
+pub(crate) fn parse_payment_id(payment_id: &str) -> Result<PaymentId, LdkServerError> {
+	let bytes = <[u8; PaymentId::LENGTH]>::from_hex(payment_id).map_err(|_| {
+		LdkServerError::new(
+			InvalidRequestError,
+			format!("Invalid payment_id, must be a {}-byte hex string.", PaymentId::LENGTH),
+		)
+	})?;
+	Ok(PaymentId(bytes))
 }
 
 pub(crate) fn build_channel_config_from_proto(
@@ -154,6 +167,13 @@ mod tests {
 	fn amount_is_required() {
 		assert_eq!(require_amount(Some(42)).unwrap(), 42);
 		assert!(require_amount::<u64>(None).is_err());
+	}
+
+	#[test]
+	fn payment_id_is_parsed() {
+		let payment_id = "01".repeat(PaymentId::LENGTH);
+		assert_eq!(parse_payment_id(&payment_id).unwrap(), PaymentId([1; PaymentId::LENGTH]));
+		assert!(parse_payment_id("invalid").is_err());
 	}
 
 	#[test]

@@ -53,8 +53,8 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 | File                                   | Priority     | Description                                                                |
 | -------------------------------------- | ------------ | -------------------------------------------------------------------------- |
 | `<storage_dir>/keys_mnemonic`          | **Critical** | BIP39 mnemonic. Required to recover on-chain funds. Default for new installs. |
-| `<network_dir>/ldk_node_data.sqlite`   | **Critical** | Channel state and on-chain wallet data. Required to recover channel funds. |
-| `<network_dir>/ldk_server_data.sqlite` | Nice-to-have | Payment and forwarding history                                             |
+| `<network_dir>/ldk_node_data.sqlite`   | **Critical** | Channel state, on-chain wallet data, and payment history. Required to recover channel funds. |
+| `<network_dir>/ldk_server_data.sqlite` | Nice-to-have | Forwarded-payment history                                                  |
 
 ### What is Reconstructable
 

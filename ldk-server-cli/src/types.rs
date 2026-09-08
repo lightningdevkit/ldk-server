@@ -17,11 +17,11 @@ use std::fmt;
 use std::str::FromStr;
 
 use hex_conservative::{DisplayHex, FromHex};
-use ldk_server_client::ldk_server_grpc::types::{ForwardedPayment, PageToken, Payment};
+use ldk_server_client::ldk_server_grpc::types::{ForwardedPayment, Payment};
 use serde::Serialize;
 
-/// CLI-specific wrapper for paginated responses that formats the page token
-/// as "token:idx" instead of a JSON object.
+/// CLI-specific wrapper for paginated responses that keeps the page token as
+/// one opaque string.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliPaginatedResponse<T> {
 	/// List of items.
@@ -32,17 +32,13 @@ pub struct CliPaginatedResponse<T> {
 }
 
 impl<T> CliPaginatedResponse<T> {
-	pub fn new(list: Vec<T>, next_page_token: Option<PageToken>) -> Self {
-		Self { list, next_page_token: next_page_token.map(format_page_token) }
+	pub fn new(list: Vec<T>, next_page_token: Option<String>) -> Self {
+		Self { list, next_page_token }
 	}
 }
 
 pub type CliListPaymentsResponse = CliPaginatedResponse<Payment>;
 pub type CliListForwardedPaymentsResponse = CliPaginatedResponse<ForwardedPayment>;
-
-fn format_page_token(token: PageToken) -> String {
-	format!("{}:{}", token.token, token.index)
-}
 
 /// A denomination-aware amount that stores its value internally in millisatoshis.
 ///

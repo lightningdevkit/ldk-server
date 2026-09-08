@@ -106,16 +106,16 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_bolt11_receive_for_hash(client, args)),
 		),
 		tool_spec(
-			"bolt11_claim_for_hash",
-			"Manually claim a BOLT11 payment for a specific payment hash",
-			schema::bolt11_claim_for_hash_schema,
-			|client, args| Box::pin(handlers::handle_bolt11_claim_for_hash(client, args)),
+			"bolt11_claim_for_id",
+			"Manually claim a BOLT11 payment for a specific payment ID",
+			schema::bolt11_claim_for_id_schema,
+			|client, args| Box::pin(handlers::handle_bolt11_claim_for_id(client, args)),
 		),
 		tool_spec(
-			"bolt11_fail_for_hash",
-			"Manually fail a BOLT11 payment for a specific payment hash",
-			schema::bolt11_fail_for_hash_schema,
-			|client, args| Box::pin(handlers::handle_bolt11_fail_for_hash(client, args)),
+			"bolt11_fail_for_id",
+			"Manually fail a BOLT11 payment for a specific payment ID",
+			schema::bolt11_fail_for_id_schema,
+			|client, args| Box::pin(handlers::handle_bolt11_fail_for_id(client, args)),
 		),
 		tool_spec(
 			"bolt11_receive_via_jit_channel",
@@ -168,6 +168,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			"Request an incoming payment for a BOLT12 refund",
 			schema::bolt12_receive_refund_schema,
 			|client, args| Box::pin(handlers::handle_bolt12_receive_refund(client, args)),
+		),
+		tool_spec(
+			"bolt12_create_payer_proof",
+			"Create a BOLT12 payer proof for a payment this node made",
+			schema::bolt12_create_payer_proof_schema,
+			|client, args| Box::pin(handlers::handle_bolt12_create_payer_proof(client, args)),
 		),
 		tool_spec(
 			"spontaneous_send",
