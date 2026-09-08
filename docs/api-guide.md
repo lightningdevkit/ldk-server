@@ -271,8 +271,11 @@ force-closure of the channel.
 
 `ListPayments` and `ListForwardedPayments` support cursor-based pagination:
 
-1. Make the first request with your desired `number_of_payments` page size.
+1. Make the first request without a `page_token`. The server controls the page size.
 2. If the response includes a `next_page_token`, pass it as `page_token` in the next request.
 3. When `next_page_token` is absent, you have reached the end of the results.
 
-Results are ordered by creation time (most recent first).
+The page token is one opaque string. Do not parse or modify it. Results are ordered by creation
+time (most recent first).
+
+The CLI `--number-of-payments` option combines multiple pages. It does not set the gRPC page size.

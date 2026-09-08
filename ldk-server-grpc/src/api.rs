@@ -896,14 +896,14 @@ pub struct GetPaymentDetailsResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListPaymentsRequest {
-	/// `page_token` is a pagination token.
+	/// `page_token` is an opaque pagination token string.
 	///
 	/// To query for the first page, `page_token` must not be specified.
 	///
 	/// For subsequent pages, use the value that was returned as `next_page_token` in the previous
 	/// page's response.
-	#[prost(message, optional, tag = "1")]
-	pub page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `ListPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -915,7 +915,8 @@ pub struct ListPaymentsResponse {
 	/// List of payments.
 	#[prost(message, repeated, tag = "1")]
 	pub payments: ::prost::alloc::vec::Vec<super::types::Payment>,
-	/// `next_page_token` is a pagination token, used to retrieve the next page of results.
+	/// `next_page_token` is an opaque pagination token string used to retrieve the next page of
+	/// results.
 	/// Use this value to query for next-page of paginated operation, by specifying
 	/// this value as the `page_token` in the next request.
 	///
@@ -928,8 +929,8 @@ pub struct ListPaymentsResponse {
 	///
 	/// **Caution**: Clients must not assume a specific number of records to be present in a page for
 	/// paginated response.
-	#[prost(message, optional, tag = "2")]
-	pub next_page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Retrieves list of all forwarded payments.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
@@ -939,14 +940,14 @@ pub struct ListPaymentsResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListForwardedPaymentsRequest {
-	/// `page_token` is a pagination token.
+	/// `page_token` is an opaque pagination token string.
 	///
 	/// To query for the first page, `page_token` must not be specified.
 	///
 	/// For subsequent pages, use the value that was returned as `next_page_token` in the previous
 	/// page's response.
-	#[prost(message, optional, tag = "1")]
-	pub page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// The response for the `ListForwardedPayments` RPC. On failure, a gRPC error status is returned.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -958,7 +959,8 @@ pub struct ListForwardedPaymentsResponse {
 	/// List of forwarded payments.
 	#[prost(message, repeated, tag = "1")]
 	pub forwarded_payments: ::prost::alloc::vec::Vec<super::types::ForwardedPayment>,
-	/// `next_page_token` is a pagination token, used to retrieve the next page of results.
+	/// `next_page_token` is an opaque pagination token string used to retrieve the next page of
+	/// results.
 	/// Use this value to query for next-page of paginated operation, by specifying
 	/// this value as the `page_token` in the next request.
 	///
@@ -971,8 +973,8 @@ pub struct ListForwardedPaymentsResponse {
 	///
 	/// **Caution**: Clients must not assume a specific number of records to be present in a page for
 	/// paginated response.
-	#[prost(message, optional, tag = "2")]
-	pub next_page_token: ::core::option::Option<super::types::PageToken>,
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Sign a message with the node's secret key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.sign_message>

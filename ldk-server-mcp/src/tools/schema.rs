@@ -132,13 +132,8 @@ fn channel_config_schema() -> Value {
 
 fn page_token_schema() -> Value {
 	json!({
-		"type": "object",
-		"description": "Pagination token from a previous response",
-		"properties": {
-			"token": { "type": "string" },
-			"index": { "type": "integer" }
-		},
-		"required": ["token", "index"]
+		"type": "string",
+		"description": "Opaque pagination token from a previous response"
 	})
 }
 

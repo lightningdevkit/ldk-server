@@ -50,7 +50,7 @@ use ldk_server_client::ldk_server_grpc::api::{
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
-	PageToken, PayerProofOptions, RouteParametersConfig,
+	PayerProofOptions, RouteParametersConfig,
 };
 use ldk_server_client::{
 	DEFAULT_EXPIRY_SECS, DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF, DEFAULT_MAX_PATH_COUNT,
@@ -540,7 +540,7 @@ enum Commands {
 		)]
 		number_of_payments: Option<u64>,
 		#[arg(long)]
-		#[arg(help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(help = "Opaque page token returned by a previous request")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Get details of a specific payment by its payment ID")]
@@ -556,7 +556,7 @@ enum Commands {
 			help = "Fetch at least this many forwarded payments by iterating through multiple pages. Returns combined results with the last page token. If not provided, returns only a single page."
 		)]
 		number_of_payments: Option<u64>,
-		#[arg(long, help = "Page token to continue from a previous page (format: token:index)")]
+		#[arg(long, help = "Opaque page token returned by a previous request")]
 		page_token: Option<String>,
 	},
 	#[command(about = "Update the forwarding fees and CLTV expiry delta for an existing channel")]
@@ -1174,9 +1174,6 @@ async fn main() {
 			);
 		},
 		Commands::ListPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
 			handle_response_result::<_, CliListPaymentsResponse>(
 				fetch_paginated(
 					number_of_payments,
@@ -1193,9 +1190,6 @@ async fn main() {
 			);
 		},
 		Commands::ListForwardedPayments { number_of_payments, page_token } => {
-			let page_token = page_token
-				.map(|token_str| parse_page_token(&token_str).unwrap_or_else(|e| handle_error(e)));
-
 			handle_response_result::<_, CliListForwardedPaymentsResponse>(
 				fetch_paginated(
 					number_of_payments,
@@ -1334,9 +1328,8 @@ fn build_open_channel_config(
 }
 
 async fn fetch_paginated<T, R, Fut>(
-	target_count: Option<u64>, initial_page_token: Option<PageToken>,
-	fetch_page: impl Fn(Option<PageToken>) -> Fut,
-	extract: impl Fn(R) -> (Vec<T>, Option<PageToken>),
+	target_count: Option<u64>, initial_page_token: Option<String>,
+	fetch_page: impl Fn(Option<String>) -> Fut, extract: impl Fn(R) -> (Vec<T>, Option<String>),
 ) -> Result<CliPaginatedResponse<T>, LdkServerError>
 where
 	Fut: std::future::Future<Output = Result<R, LdkServerError>>,
@@ -1446,20 +1439,6 @@ fn parse_bolt11_invoice_description(
 	}
 }
 
-fn parse_page_token(token_str: &str) -> Result<PageToken, LdkServerError> {
-	let parts: Vec<&str> = token_str.split(':').collect();
-	if parts.len() != 2 {
-		return Err(LdkServerError::new(
-			InvalidRequestError,
-			"Page token must be in format 'token:index'".to_string(),
-		));
-	}
-	let index = parts[1].parse::<i64>().map_err(|_| {
-		LdkServerError::new(InvalidRequestError, "Invalid page token index".to_string())
-	})?;
-	Ok(PageToken { token: parts[0].to_string(), index })
-}
-
 fn parse_custom_tlv(s: &str) -> Result<(u64, Vec<u8>), String> {
 	let (type_str, hex_str) =
 		s.split_once(':').ok_or_else(|| format!("expected <type_num>:<hex_value>, got '{s}'"))?;
@@ -1493,6 +1472,31 @@ fn handle_error(e: LdkServerError) -> ! {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[tokio::test]
+	async fn fetch_paginated_collects_multiple_pages() {
+		let response = fetch_paginated(
+			Some(3),
+			None,
+			|page_token| async move {
+				match page_token {
+					None => {
+						Ok::<_, LdkServerError>((vec![1, 2], Some("store:v2:cursor:7".to_string())))
+					},
+					Some(token) => {
+						assert_eq!(token, "store:v2:cursor:7");
+						Ok((vec![3], None))
+					},
+				}
+			},
+			|response| response,
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(response.list, vec![1, 2, 3]);
+		assert!(response.next_page_token.is_none());
+	}
 
 	#[test]
 	fn parse_custom_tlv_accepts_valid_record() {
