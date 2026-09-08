@@ -333,12 +333,13 @@ fn main() {
 		let metrics: Option<Arc<Metrics>> = if config_file.metrics_enabled {
 			let poll_metrics_interval = Duration::from_secs(config_file.poll_metrics_interval.unwrap_or(60));
 			let metrics_node = Arc::clone(&node);
-			let mut interval = tokio::time::interval(poll_metrics_interval);
+			let first_poll = tokio::time::Instant::now() + poll_metrics_interval;
+			let mut interval = tokio::time::interval_at(first_poll, poll_metrics_interval);
 			let metrics = Arc::new(Metrics::new());
 			let metrics_bg = Arc::clone(&metrics);
 
-			// Initialize metrics that are event-driven to ensure they start with correct values from persistence
-			metrics.initialize_payment_metrics(&metrics_node);
+			// Initialize metrics before the first delayed poll.
+			metrics.initialize_metrics(&metrics_node);
 
 			runtime.spawn(async move {
 				loop {
@@ -546,7 +547,6 @@ fn main() {
 								Arc::clone(&paginated_store));
 
 							if let Some(metrics) = &metrics {
-								metrics.update_payments_count(true);
 								metrics.update_all_balances(&event_node);
 							}
 						},
@@ -562,9 +562,6 @@ fn main() {
 								&event_sender,
 								Arc::clone(&paginated_store));
 
-							if let Some(metrics) = &metrics {
-								metrics.update_payments_count(false);
-							}
 						},
 						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, claimable_amount_msat, .. } => {
 							send_event_and_upsert_payment(
