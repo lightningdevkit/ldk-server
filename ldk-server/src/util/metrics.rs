@@ -26,7 +26,7 @@
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 
 use ldk_node::payment::PaymentStatus;
-use ldk_node::{Node, NodeError};
+use ldk_node::{ChannelDetails, Node, NodeError};
 use log::error;
 
 #[derive(Default)]
@@ -123,18 +123,17 @@ impl Metrics {
 		let all_channels = node.list_channels();
 		self.total_channels_count.store(all_channels.len() as i64, Ordering::Relaxed);
 
-		let public_channels_count =
-			all_channels.iter().filter(|channel_details| channel_details.is_announced).count()
-				as i64;
-		self.total_public_channels_count.store(public_channels_count, Ordering::Relaxed);
-
-		let private_channels_count =
-			all_channels.iter().filter(|channel_details| !channel_details.is_announced).count()
-				as i64;
-		self.total_private_channels_count.store(private_channels_count, Ordering::Relaxed);
+		self.update_channel_visibility_counts(&all_channels);
 
 		self.update_peer_count(node);
 		self.update_all_balances(node);
+	}
+
+	fn update_channel_visibility_counts(&self, channels: &[ChannelDetails]) {
+		let public_count = channels.iter().filter(|channel| channel.is_announced).count();
+		let private_count = channels.len() - public_count;
+		self.total_public_channels_count.store(public_count as i64, Ordering::Relaxed);
+		self.total_private_channels_count.store(private_count as i64, Ordering::Relaxed);
 	}
 
 	pub fn update_all_balances(&self, node: &Node) {
@@ -160,15 +159,7 @@ impl Metrics {
 			Err(e) => error!("Failed to update payment metrics: {e}"),
 		}
 
-		let public_channels_count =
-			all_channels.iter().filter(|channel_details| channel_details.is_announced).count()
-				as i64;
-		self.total_public_channels_count.store(public_channels_count, Ordering::Relaxed);
-
-		let private_channels_count =
-			all_channels.iter().filter(|channel_details| !channel_details.is_announced).count()
-				as i64;
-		self.total_private_channels_count.store(private_channels_count, Ordering::Relaxed);
+		self.update_channel_visibility_counts(&all_channels);
 
 		self.update_peer_count(node);
 		self.update_all_balances(node);

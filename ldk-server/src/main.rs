@@ -506,18 +506,17 @@ fn main() {
 								payment_id, payment_hash, amount_msat
 							);
 
-							let proto_custom_records: Vec<_> = custom_records
-								.iter()
-								.map(node_to_proto_custom_tlv)
-								.collect();
-
 							send_payment_event(
 								&payment_id,
-								move |payment_ref| {
+								move |payment| {
+									let custom_records = custom_records
+										.iter()
+										.map(node_to_proto_custom_tlv)
+										.collect();
 									event_envelope::Event::PaymentReceived(events::PaymentReceived {
 										payment_id: payment_id.to_string(),
-										payment: Some(payment_ref.clone()),
-										custom_records: proto_custom_records,
+										payment: Some(payment),
+										custom_records,
 									})
 								},
 								&event_node,
@@ -529,17 +528,19 @@ fn main() {
 							}
 						},
 						Event::PaymentSuccessful { payment_id, payment_preimage, bolt12_invoice, .. } => {
-							let payment_preimage = payment_preimage.map(|p| p.to_string());
-							let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
-								invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
-							});
 							send_payment_event(&payment_id,
-								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
-									payment_id: payment_id.to_string(),
-									payment: Some(payment_ref.clone()),
-									payment_preimage,
-									bolt12_invoice,
-								}),
+								move |payment| {
+									let payment_preimage = payment_preimage.map(|p| p.to_string());
+									let bolt12_invoice = bolt12_invoice.as_ref().and_then(|invoice| {
+										invoice.bolt12_invoice().map(|i| i.encode().to_lower_hex_string())
+									});
+									event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
+										payment_id: payment_id.to_string(),
+										payment: Some(payment),
+										payment_preimage,
+										bolt12_invoice,
+									})
+								},
 								&event_node,
 								&event_sender);
 
@@ -550,9 +551,9 @@ fn main() {
 						Event::PaymentFailed {payment_id, reason, ..} => {
 							let proto_reason = reason.as_ref().map(payment_failure_reason_to_proto);
 							send_payment_event(&payment_id,
-								move |payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
+								move |payment| event_envelope::Event::PaymentFailed(events::PaymentFailed {
 									payment_id: payment_id.to_string(),
-									payment: Some(payment_ref.clone()),
+									payment: Some(payment),
 									reason: proto_reason.map(|r| r as i32),
 								}),
 								&event_node,
@@ -562,10 +563,10 @@ fn main() {
 						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, claimable_amount_msat, .. } => {
 							send_payment_event(
 								&payment_id,
-								|payment_ref| {
+								|payment| {
 									event_envelope::Event::PaymentClaimable(
 										build_payment_claimable_proto(
-											payment_ref,
+											payment,
 											&custom_records,
 											claim_deadline,
 											claimable_amount_msat,
@@ -757,7 +758,7 @@ fn main() {
 }
 
 fn send_payment_event(
-	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
+	payment_id: &PaymentId, payment_to_event: impl FnOnce(Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
 ) {
 	if event_sender.receiver_count() == 0 {
@@ -772,7 +773,7 @@ fn send_payment_event(
 		Ok(Some(payment_details)) => {
 			let payment = payment_to_proto(payment_details);
 
-			let event = payment_to_event(&payment);
+			let event = payment_to_event(payment);
 			if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
 				debug!("No event subscribers connected, skipping event: {e}");
 			}
@@ -1004,14 +1005,14 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 }
 
 fn build_payment_claimable_proto(
-	payment_ref: &Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
+	payment: Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
 	claimable_amount_msat: u64, payment_id: String,
 ) -> events::PaymentClaimable {
 	let proto_custom_records: Vec<_> =
 		custom_records.iter().map(node_to_proto_custom_tlv).collect();
 	events::PaymentClaimable {
 		payment_id,
-		payment: Some(payment_ref.clone()),
+		payment: Some(payment),
 		custom_records: proto_custom_records,
 		claim_deadline,
 		claimable_amount_msat,
@@ -1144,7 +1145,7 @@ mod tests {
 			CustomTlvRecord { type_num: 65538, value: Vec::new() },
 		];
 		let proto = build_payment_claimable_proto(
-			&payment,
+			payment,
 			&records,
 			Some(800_000),
 			42_123,
