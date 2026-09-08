@@ -60,7 +60,7 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 - Network graph data (re-synced from gossip or RGS)
 - Fee rate cache (re-fetched from the chain backend)
-- The API key (can be regenerated, but clients will need the new one)
+- Macaroon credentials (can be replaced, but clients will need new tokens)
 - The TLS certificate (can be regenerated, but clients will need the new one)
 
 > **Warning:** Do not restore a backup onto two running nodes simultaneously. Running the
@@ -69,13 +69,21 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 ## Security
 
-### API Key
+### Macaroons
 
-- Auto-generated as 32 random bytes on first startup
-- Stored at `<network_dir>/api_key` with `0400` permissions (read-only for owner)
-- The hex-encoded form of this key is used for HMAC authentication
-- Treat it as a secret: anyone with the API key and network access to the gRPC port can
-  control the node
+- An unrestricted admin token is generated at `<network_dir>/macaroons/admin.macaroon`.
+- Root keys stay in `<network_dir>/macaroons/roots/`. Never give these files to clients.
+- Use `create-macaroon` for independently revocable clients and `attenuate-macaroon` for local
+  restrictions. Use the minimum permissions each client needs.
+- Treat tokens as secrets. A copied token grants its capabilities to the holder.
+- Revoking a root ID blocks new requests from it and all its locally restricted copies.
+  Existing event streams continue until the client disconnects or the server stops. Expiry is
+  also checked at subscription start only.
+- Restoring old root-key backups can restore revoked access. Preserve current revocation state
+  when restoring a node, or replace its credentials.
+- The last unrestricted admin root cannot be revoked through the API. To rotate the initial
+  admin token, create a new admin macaroon, save its token securely, then revoke the old ID.
+  Update the default `admin.macaroon` file or pass `--macaroon` to use the new token.
 
 ### TLS
 
@@ -188,7 +196,7 @@ To allow clients to connect from other machines:
    (e.g., `0.0.0.0:3536`).
 3. **Distribute the TLS certificate:** Copy `<storage_dir>/tls.crt` to each client machine.
    Clients must pin this certificate since it is self-signed.
-4. **Share the API key:** Provide the hex-encoded API key to authorized clients.
+4. **Share the macaroon:** Provide the hex-encoded macaroon to authorized clients.
 
 If you regenerate the TLS certificate (by deleting `tls.crt` and `tls.key` and restarting),
 all clients will need the new certificate.

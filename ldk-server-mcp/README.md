@@ -17,9 +17,9 @@ cargo build -p ldk-server-mcp --release
 
 The server reads configuration in this precedence order (highest wins):
 
-1. **Environment variables**: `LDK_BASE_URL`, `LDK_API_KEY`, `LDK_TLS_CERT_PATH`
+1. **Environment variables**: `LDK_BASE_URL`, `LDK_MACAROON`, `LDK_TLS_CERT_PATH`
 2. **CLI argument**: `--config <path>` pointing to a TOML config file
-3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_key`
+3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/macaroons/admin.macaroon`
 
 The TOML config format is the same as used by [
 `ldk-server-cli`](https://github.com/lightningdevkit/ldk-server/tree/main/ldk-server-cli):
@@ -39,7 +39,7 @@ cert_path = "/path/to/tls.crt"
 
 ```bash
 export LDK_BASE_URL="localhost:3000"
-export LDK_API_KEY="your_hex_encoded_api_key"
+export LDK_MACAROON="your_hex_encoded_macaroon"
 export LDK_TLS_CERT_PATH="/path/to/tls.crt"
 cargo run -p ldk-server-mcp --release
 ```
@@ -64,7 +64,7 @@ Add the following to your Claude Desktop MCP configuration (`claude_desktop_conf
       "command": "/path/to/ldk-server-mcp",
       "env": {
         "LDK_BASE_URL": "localhost:3000",
-        "LDK_API_KEY": "your_hex_encoded_api_key",
+        "LDK_MACAROON": "your_hex_encoded_macaroon",
         "LDK_TLS_CERT_PATH": "/path/to/tls.crt"
       }
     }
@@ -83,7 +83,7 @@ Add to your Claude Code MCP settings (`.claude/settings.json`):
       "command": "/path/to/ldk-server-mcp",
       "env": {
         "LDK_BASE_URL": "localhost:3000",
-        "LDK_API_KEY": "your_hex_encoded_api_key",
+        "LDK_MACAROON": "your_hex_encoded_macaroon",
         "LDK_TLS_CERT_PATH": "/path/to/tls.crt"
       }
     }

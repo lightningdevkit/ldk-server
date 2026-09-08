@@ -1437,3 +1437,97 @@ pub struct DecodeOfferResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeEventsRequest {}
+/// Public metadata for a macaroon root ID. The bearer token and root key are not included.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Macaroon {
+	/// The stable, hex-encoded identifier used to look up the key.
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+	/// The human-readable name assigned when the key was created.
+	#[prost(string, tag = "2")]
+	pub name: ::prost::alloc::string::String,
+	/// The capabilities granted to the root (effective capabilities in GetPermissions).
+	#[prost(string, repeated, tag = "3")]
+	pub permissions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+	/// Additional restrictions. All caveats must pass.
+	#[prost(string, repeated, tag = "4")]
+	pub caveats: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Create a macaroon with the specified capabilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateMacaroonRequest {
+	/// A unique human-readable name.
+	#[prost(string, tag = "1")]
+	pub name: ::prost::alloc::string::String,
+	/// The capabilities to grant. Use "admin" by itself for unrestricted access.
+	#[prost(string, repeated, tag = "2")]
+	pub permissions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// The created macaroon and its hex-encoded v2 bearer token. The root key is never returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateMacaroonResponse {
+	#[prost(message, optional, tag = "1")]
+	pub macaroon: ::core::option::Option<Macaroon>,
+	#[prost(string, tag = "2")]
+	pub token: ::prost::alloc::string::String,
+}
+/// List server-issued roots without returning tokens or root keys.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListMacaroonsRequest {}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListMacaroonsResponse {
+	#[prost(message, repeated, tag = "1")]
+	pub macaroons: ::prost::alloc::vec::Vec<Macaroon>,
+}
+/// Revoke a macaroon by ID.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeMacaroonRequest {
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeMacaroonResponse {}
+/// Return metadata and permissions for the calling macaroon.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsRequest {}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsResponse {
+	#[prost(message, optional, tag = "1")]
+	pub macaroon: ::core::option::Option<Macaroon>,
+}

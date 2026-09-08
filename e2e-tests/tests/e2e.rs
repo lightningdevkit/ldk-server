@@ -22,10 +22,12 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
+use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
 use ldk_server_client::ldk_server_grpc::api::{
 	open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveRequest,
-	Bolt12ReceiveRequest, GetBalancesRequest, OnchainReceiveRequest, OpenChannelRequest,
+	Bolt12ReceiveRequest, GetBalancesRequest, GetNodeInfoRequest, GetPermissionsRequest,
+	OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -79,6 +81,164 @@ async fn test_cli_get_balances() {
 	assert_eq!(output["total_onchain_balance_sats"], 0);
 	assert_eq!(output["spendable_onchain_balance_sats"], 0);
 	assert_eq!(output["total_lightning_balance_sats"], 0);
+}
+
+#[tokio::test]
+async fn test_scoped_macaroon_lifecycle() {
+	use ldk_server_client::error::LdkServerErrorCode::{
+		AuthError, AuthorizationError, InvalidRequestError,
+	};
+
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let created = run_cli(&server, &["create-macaroon", "readonly-client", "--preset", "readonly"]);
+	let key_id = created["macaroon"]["id"].as_str().unwrap();
+	let secret = created["token"].as_str().unwrap();
+	let certificate = std::fs::read(&server.tls_cert_path).unwrap();
+	let client = LdkServerClient::new(
+		format!("127.0.0.1:{}", server.grpc_port),
+		secret.to_string(),
+		&certificate,
+	)
+	.unwrap();
+
+	client.get_node_info(GetNodeInfoRequest {}).await.unwrap();
+	let permissions = client.get_permissions(GetPermissionsRequest {}).await.unwrap();
+	assert_eq!(permissions.macaroon.unwrap().name, "readonly-client");
+	assert_eq!(
+		client.onchain_receive(OnchainReceiveRequest {}).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+	assert_eq!(
+		client.list_macaroons(Default::default()).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+
+	let keys = run_cli(&server, &["list-macaroons"]);
+	assert!(keys["macaroons"].as_array().unwrap().iter().any(|key| key["id"] == key_id));
+	// Invalid request fields distinguish reaching the splice handler from an auth rejection.
+	for (name, permission, expected) in [
+		("manager", "channels:manage", AuthorizationError),
+		("splicer", "channels:splice", InvalidRequestError),
+	] {
+		let created = run_cli(&server, &["create-macaroon", name, "--permissions", permission]);
+		let scoped_client = LdkServerClient::new(
+			format!("127.0.0.1:{}", server.grpc_port),
+			created["token"].as_str().unwrap().to_string(),
+			&certificate,
+		)
+		.unwrap();
+		assert_eq!(
+			scoped_client.splice_in(Default::default()).await.unwrap_err().error_code,
+			expected
+		);
+		assert_eq!(
+			scoped_client.splice_out(Default::default()).await.unwrap_err().error_code,
+			expected
+		);
+	}
+
+	// Offline attenuation must affect both unary and streaming authorization.
+	let attenuated = ldk_server_client::macaroon::attenuate_macaroon(
+		secret,
+		&["permissions = node:read".into(), "method = GetNodeInfo".into()],
+	)
+	.unwrap();
+	let restricted = LdkServerClient::new(
+		format!("127.0.0.1:{}", server.grpc_port),
+		attenuated.clone(),
+		&certificate,
+	)
+	.unwrap();
+	restricted.get_node_info(Default::default()).await.unwrap();
+	assert_eq!(
+		restricted.get_balances(Default::default()).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+	assert_eq!(restricted.subscribe_events().await.err().unwrap().error_code, AuthorizationError);
+	let expired =
+		ldk_server_client::macaroon::attenuate_macaroon(secret, &["time-before = 0".into()])
+			.unwrap();
+	let expired =
+		LdkServerClient::new(format!("127.0.0.1:{}", server.grpc_port), expired, &certificate)
+			.unwrap();
+	assert_eq!(
+		expired.get_node_info(Default::default()).await.unwrap_err().error_code,
+		AuthorizationError
+	);
+
+	let output = std::process::Command::new(e2e_tests::cli_binary_path())
+		.args([
+			"--base-url",
+			"invalid.invalid:1",
+			"--tls-cert",
+			"/no-certificate-needed",
+			"attenuate-macaroon",
+			secret,
+			"--caveat",
+			"permissions = node:read",
+			"--caveat",
+			"method = GetNodeInfo",
+		])
+		.output()
+		.unwrap();
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+	assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), attenuated);
+
+	run_cli(&server, &["revoke-macaroon", key_id]);
+	assert_eq!(
+		restricted.get_node_info(Default::default()).await.unwrap_err().error_code,
+		AuthError
+	);
+
+	assert_eq!(
+		client.subscribe_events().await.err().expect("Revoked key must not subscribe").error_code,
+		AuthError
+	);
+	assert_eq!(
+		client.get_node_info(GetNodeInfoRequest {}).await.unwrap_err().error_code,
+		AuthError
+	);
+}
+
+#[tokio::test]
+async fn test_revoking_a_key_keeps_existing_event_streams_open() {
+	use ldk_server_client::error::LdkServerErrorCode::AuthError;
+
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	let channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+	let created =
+		run_cli(&server_a, &["create-macaroon", "reader", "--permissions", "events:read"]);
+	let certificate = std::fs::read(&server_a.tls_cert_path).unwrap();
+	let client = LdkServerClient::new(
+		format!("127.0.0.1:{}", server_a.grpc_port),
+		created["token"].as_str().unwrap().to_string(),
+		&certificate,
+	)
+	.unwrap();
+	let mut events = client.subscribe_events().await.unwrap();
+
+	run_cli(&server_a, &["revoke-macaroon", created["macaroon"]["id"].as_str().unwrap()]);
+	assert_eq!(
+		client.subscribe_events().await.err().expect("Revoked key must not subscribe").error_code,
+		AuthError
+	);
+
+	// An event created after revocation must still reach the existing subscription.
+	run_cli(&server_a, &["close-channel", &channel_id, server_b.node_id()]);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_event(&mut events, |event| {
+		matches!(
+			event,
+			Event::ChannelStateChanged(channel_event)
+				if channel_event.user_channel_id == channel_id
+					&& channel_event.state == ChannelState::Closed as i32
+		)
+	})
+	.await;
 }
 
 #[tokio::test]
@@ -439,13 +599,7 @@ async fn open_channel_via_cli(channel_amount: &str) {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&[
-			"open-channel",
-			server_b.node_id(),
-			&addr,
-			channel_amount,
-			"--announce-channel",
-		],
+		&["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
 }
@@ -482,9 +636,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -512,7 +664,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -650,9 +805,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -680,7 +833,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -1272,14 +1428,11 @@ async fn splice_in_via_cli(splice_amount: &str) {
 
 	let mut events_a = server_a.client().subscribe_events().await.unwrap();
 
-	let output = run_cli(
-		&server_a,
-		&["splice-in", &user_channel_id, server_b.node_id(), splice_amount],
-	);
+	let output =
+		run_cli(&server_a, &["splice-in", &user_channel_id, server_b.node_id(), splice_amount]);
 	assert!(output.is_object());
 
-	let event_a =
-		wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
 	match &event_a.event {
 		Some(Event::SpliceNegotiated(splice_negotiated)) => {
 			assert_eq!(splice_negotiated.user_channel_id, user_channel_id);
@@ -1662,10 +1815,7 @@ async fn test_hodl_invoice_fail() {
 		panic!("expected PaymentFailed");
 	};
 	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
-	assert_eq!(
-		failed.reason,
-		Some(PaymentFailureReason::RecipientRejected as i32)
-	);
+	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
 }
 
 #[tokio::test]

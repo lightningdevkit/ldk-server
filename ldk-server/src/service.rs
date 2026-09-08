@@ -15,30 +15,34 @@ use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
 use hyper::service::Service;
 use hyper::{HeaderMap, Request, Response};
-use ldk_node::bitcoin::hashes::hmac::{Hmac, HmacEngine};
-use ldk_node::bitcoin::hashes::{sha256, Hash, HashEngine};
 use ldk_node::Node;
+use ldk_server_grpc::api::{
+	CreateMacaroonRequest, CreateMacaroonResponse, GetPermissionsRequest, GetPermissionsResponse,
+	ListMacaroonsRequest, ListMacaroonsResponse, Macaroon, RevokeMacaroonRequest,
+	RevokeMacaroonResponse,
+};
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
-	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
+	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH,
+	SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
 	decode_grpc_body, encode_grpc_frame, grpc_error_response, grpc_response, parse_grpc_timeout,
 	validate_grpc_request, GrpcBody, GrpcStatus, GRPC_STATUS_DEADLINE_EXCEEDED,
 	GRPC_STATUS_FAILED_PRECONDITION, GRPC_STATUS_INTERNAL, GRPC_STATUS_INVALID_ARGUMENT,
-	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE, GRPC_STATUS_UNIMPLEMENTED,
+	GRPC_STATUS_PERMISSION_DENIED, GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
+	GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
 use tokio::sync::{broadcast, mpsc};
@@ -86,6 +90,7 @@ use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
 use crate::io::persist::paginated_kv_store::PaginatedKVStore;
+use crate::macaroons::{method_authorization, MacaroonInfo, MacaroonStore, MethodAuthorization};
 use crate::util::metrics::Metrics;
 
 /// gRPC path prefix for the LightningNode service.
@@ -97,7 +102,7 @@ const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 #[derive(Clone)]
 pub(crate) struct NodeService {
 	context: Arc<Context>,
-	api_key: String,
+	macaroon_store: Arc<MacaroonStore>,
 	metrics: Option<Arc<Metrics>>,
 	metrics_auth_header: Option<String>,
 	event_sender: broadcast::Sender<EventEnvelope>,
@@ -106,65 +111,14 @@ pub(crate) struct NodeService {
 
 impl NodeService {
 	pub(crate) fn new(
-		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
-		metrics: Option<Arc<Metrics>>, metrics_auth_header: Option<String>,
-		event_sender: broadcast::Sender<EventEnvelope>,
+		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>,
+		macaroon_store: Arc<MacaroonStore>, metrics: Option<Arc<Metrics>>,
+		metrics_auth_header: Option<String>, event_sender: broadcast::Sender<EventEnvelope>,
 		shutdown_rx: tokio::sync::watch::Receiver<bool>,
 	) -> Self {
 		let context = Arc::new(Context { node, paginated_kv_store });
-		Self { context, api_key, metrics, metrics_auth_header, event_sender, shutdown_rx }
+		Self { context, macaroon_store, metrics, metrics_auth_header, event_sender, shutdown_rx }
 	}
-}
-
-// Maximum allowed time difference between client timestamp and server time (1 minute)
-const AUTH_TIMESTAMP_TOLERANCE_SECS: u64 = 60;
-
-fn compute_auth_hmac(api_key: &str, timestamp: u64, body: &[u8]) -> Hmac<sha256::Hash> {
-	let mut hmac_engine: HmacEngine<sha256::Hash> = HmacEngine::new(api_key.as_bytes());
-	hmac_engine.input(&timestamp.to_be_bytes());
-	hmac_engine.input(body);
-	Hmac::<sha256::Hash>::from_engine(hmac_engine)
-}
-
-/// Validates HMAC authentication from request headers.
-/// The signature covers the timestamp and raw gRPC request body bytes.
-fn validate_auth<B>(req: &Request<B>, api_key: &str, body: &[u8]) -> Result<(), LdkServerError> {
-	let auth_err = |msg: &str| LdkServerError::new(LdkServerErrorCode::AuthError, msg.to_string());
-
-	let auth_header = req
-		.headers()
-		.get("x-auth")
-		.and_then(|v| v.to_str().ok())
-		.ok_or_else(|| auth_err("Missing x-auth metadata"))?;
-
-	let auth_data =
-		auth_header.strip_prefix("HMAC ").ok_or_else(|| auth_err("Invalid x-auth format"))?;
-
-	let (timestamp_str, provided_hmac_hex) =
-		auth_data.split_once(':').ok_or_else(|| auth_err("Invalid x-auth format"))?;
-
-	let timestamp = timestamp_str.parse::<u64>().map_err(|_| auth_err("Invalid timestamp"))?;
-
-	let now = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.map_err(|_| auth_err("System time error"))?
-		.as_secs();
-
-	if now.abs_diff(timestamp) > AUTH_TIMESTAMP_TOLERANCE_SECS {
-		return Err(auth_err("Request timestamp expired"));
-	}
-
-	let expected_hmac = compute_auth_hmac(api_key, timestamp, body);
-
-	let provided_hmac = provided_hmac_hex
-		.parse::<Hmac<sha256::Hash>>()
-		.map_err(|_| auth_err("Invalid HMAC in x-auth"))?;
-
-	if expected_hmac != provided_hmac {
-		return Err(auth_err("Invalid credentials"));
-	}
-
-	Ok(())
 }
 
 pub(crate) struct Context {
@@ -257,7 +211,7 @@ impl Service<Request<Incoming>> for NodeService {
 		};
 
 		let is_streaming = method == SUBSCRIBE_EVENTS_PATH;
-		let api_key = self.api_key.clone();
+		let macaroon_store = Arc::clone(&self.macaroon_store);
 		let event_sender = self.event_sender.clone();
 		let shutdown_rx = self.shutdown_rx.clone();
 		let (request_parts, request_body) = req.into_parts();
@@ -271,10 +225,28 @@ impl Service<Request<Incoming>> for NodeService {
 				Err(status) => return Ok(grpc_error_response(status)),
 			};
 
-			let auth_req = Request::from_parts(request_parts, ());
-			if let Err(e) = validate_auth(&auth_req, &api_key, &body_bytes) {
-				let status = ldk_error_to_grpc_status(e);
-				return Ok(grpc_error_response(status));
+			let auth_header =
+				request_parts.headers.get("macaroon").and_then(|value| value.to_str().ok());
+			let authenticated_key = match macaroon_store.authenticate(&method, auth_header) {
+				Ok(key) => key,
+				Err(error) => return Ok(grpc_error_response(ldk_error_to_grpc_status(error))),
+			};
+			match method_authorization(&method) {
+				MethodAuthorization::Permission(permission) => {
+					if !authenticated_key.allows(permission) {
+						return Ok(grpc_error_response(GrpcStatus::new(
+							GRPC_STATUS_PERMISSION_DENIED,
+							format!("macaroon requires permission: {permission}"),
+						)));
+					}
+				},
+				MethodAuthorization::AuthenticatedOnly => {},
+				MethodAuthorization::Unknown => {
+					return Ok(grpc_error_response(GrpcStatus::new(
+						GRPC_STATUS_UNIMPLEMENTED,
+						format!("Unknown method: {method}"),
+					)));
+				},
 			}
 
 			match method.as_str() {
@@ -419,6 +391,7 @@ impl Service<Request<Incoming>> for NodeService {
 					handle_grpc_unary(context, body_bytes, handle_decode_offer_request).await
 				},
 				SUBSCRIBE_EVENTS_PATH => {
+					// Authorization applies when the subscription starts; revocation does not close it.
 					let mut shutdown_rx = shutdown_rx;
 					let mut rx = event_sender.subscribe();
 					let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
@@ -462,6 +435,33 @@ impl Service<Request<Incoming>> for NodeService {
 					});
 					Ok(grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false }))
 				},
+				CREATE_MACAROON_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_create_macaroon_request(store, authenticated_key, request)
+					})
+					.await
+				},
+				LIST_MACAROONS_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_list_macaroons_request(store, request)
+					})
+					.await
+				},
+				REVOKE_MACAROON_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_revoke_macaroon_request(store, authenticated_key, request)
+					})
+					.await
+				},
+				GET_PERMISSIONS_PATH => {
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_get_permissions_request(authenticated_key, request)
+					})
+					.await
+				},
 				_ => {
 					let status = GrpcStatus::new(
 						GRPC_STATUS_UNIMPLEMENTED,
@@ -487,11 +487,58 @@ impl Service<Request<Incoming>> for NodeService {
 	}
 }
 
+async fn handle_create_macaroon_request(
+	store: Arc<MacaroonStore>, issuer: Arc<MacaroonInfo>, request: CreateMacaroonRequest,
+) -> Result<CreateMacaroonResponse, LdkServerError> {
+	let created = tokio::task::spawn_blocking(move || {
+		store.create_key(&request.name, request.permissions, &issuer)
+	})
+	.await
+	.map_err(|error| {
+		LdkServerError::new(LdkServerErrorCode::InternalServerError, error.to_string())
+	})??;
+	Ok(CreateMacaroonResponse {
+		macaroon: Some(macaroon_to_proto(created.info)),
+		token: created.token,
+	})
+}
+
+async fn handle_list_macaroons_request(
+	store: Arc<MacaroonStore>, _request: ListMacaroonsRequest,
+) -> Result<ListMacaroonsResponse, LdkServerError> {
+	let macaroons = store.list_keys()?.into_iter().map(macaroon_to_proto).collect();
+	Ok(ListMacaroonsResponse { macaroons })
+}
+
+async fn handle_revoke_macaroon_request(
+	store: Arc<MacaroonStore>, issuer: Arc<MacaroonInfo>, request: RevokeMacaroonRequest,
+) -> Result<RevokeMacaroonResponse, LdkServerError> {
+	tokio::task::spawn_blocking(move || store.revoke_key(&request.id, &issuer)).await.map_err(
+		|error| LdkServerError::new(LdkServerErrorCode::InternalServerError, error.to_string()),
+	)??;
+	Ok(RevokeMacaroonResponse {})
+}
+
+async fn handle_get_permissions_request(
+	authenticated_key: Arc<MacaroonInfo>, _request: GetPermissionsRequest,
+) -> Result<GetPermissionsResponse, LdkServerError> {
+	Ok(GetPermissionsResponse { macaroon: Some(macaroon_to_proto((*authenticated_key).clone())) })
+}
+
+fn macaroon_to_proto(info: MacaroonInfo) -> Macaroon {
+	Macaroon {
+		id: info.id,
+		name: info.name,
+		permissions: info.permissions.into_iter().collect(),
+		caveats: info.caveats,
+	}
+}
+
 async fn handle_grpc_unary<
 	T: Message + Default,
 	R: Message,
 	Fut: Future<Output = Result<R, LdkServerError>> + Send,
-	F: Fn(Arc<Context>, T) -> Fut + Send,
+	F: FnOnce(Arc<Context>, T) -> Fut + Send,
 >(
 	context: Arc<Context>, body_bytes: bytes::Bytes, handler: F,
 ) -> Result<Response<GrpcBody>, hyper::Error> {
@@ -574,6 +621,7 @@ pub(crate) fn ldk_error_to_grpc_status(e: LdkServerError) -> GrpcStatus {
 	let code = match e.error_code {
 		LdkServerErrorCode::InvalidRequestError => GRPC_STATUS_INVALID_ARGUMENT,
 		LdkServerErrorCode::AuthError => GRPC_STATUS_UNAUTHENTICATED,
+		LdkServerErrorCode::AuthorizationError => GRPC_STATUS_PERMISSION_DENIED,
 		LdkServerErrorCode::LightningError => GRPC_STATUS_FAILED_PRECONDITION,
 		LdkServerErrorCode::InternalServerError => GRPC_STATUS_INTERNAL,
 	};
@@ -583,85 +631,6 @@ pub(crate) fn ldk_error_to_grpc_status(e: LdkServerError) -> GrpcStatus {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	fn compute_hmac(api_key: &str, timestamp: u64, body: &[u8]) -> String {
-		compute_auth_hmac(api_key, timestamp, body).to_string()
-	}
-
-	fn create_test_request(auth_header: Option<String>) -> Request<()> {
-		let mut builder =
-			Request::builder().method("POST").header("content-type", "application/grpc+proto");
-		if let Some(header) = auth_header {
-			builder = builder.header("x-auth", header);
-		}
-		builder.body(()).unwrap()
-	}
-
-	#[test]
-	fn test_validate_auth_success() {
-		let api_key = "test_api_key";
-		let body = b"test body";
-		let timestamp =
-			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-		let hmac = compute_hmac(api_key, timestamp, body);
-		let auth_header = format!("HMAC {timestamp}:{hmac}");
-		let req = create_test_request(Some(auth_header));
-
-		assert!(validate_auth(&req, api_key, body).is_ok());
-	}
-
-	#[test]
-	fn test_validate_auth_missing_header() {
-		let req = create_test_request(None);
-		let result = validate_auth(&req, "test_key", b"test body");
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
-	}
-
-	#[test]
-	fn test_validate_auth_invalid_format() {
-		let req = create_test_request(Some("12345:deadbeef".to_string()));
-		let result = validate_auth(&req, "test_key", b"test body");
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
-	}
-
-	#[test]
-	fn test_validate_auth_wrong_key() {
-		let timestamp =
-			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-		let hmac = compute_hmac("wrong_key", timestamp, b"test body");
-		let req = create_test_request(Some(format!("HMAC {timestamp}:{hmac}")));
-
-		let result = validate_auth(&req, "test_api_key", b"test body");
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
-	}
-
-	#[test]
-	fn test_validate_auth_wrong_body() {
-		let timestamp =
-			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-		let hmac = compute_hmac("test_api_key", timestamp, b"signed body");
-		let req = create_test_request(Some(format!("HMAC {timestamp}:{hmac}")));
-
-		let result = validate_auth(&req, "test_api_key", b"modified body");
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
-	}
-
-	#[test]
-	fn test_validate_auth_expired_timestamp() {
-		let timestamp =
-			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
-				- 600;
-		let hmac = compute_hmac("test_api_key", timestamp, b"test body");
-		let req = create_test_request(Some(format!("HMAC {timestamp}:{hmac}")));
-
-		let result = validate_auth(&req, "test_api_key", b"test body");
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().error_code, LdkServerErrorCode::AuthError);
-	}
 
 	#[test]
 	fn test_request_content_length_missing() {

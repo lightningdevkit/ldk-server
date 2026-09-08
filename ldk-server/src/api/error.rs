@@ -47,6 +47,9 @@ pub(crate) enum LdkServerErrorCode {
 	/// Please refer to [`protos::error::ErrorCode::AuthError`].
 	AuthError,
 
+	/// The request was authenticated, but the key does not have the required permission.
+	AuthorizationError,
+
 	/// Please refer to [`protos::error::ErrorCode::LightningError`].
 	LightningError,
 
@@ -59,6 +62,7 @@ impl fmt::Display for LdkServerErrorCode {
 		match self {
 			LdkServerErrorCode::InvalidRequestError => write!(f, "InvalidRequestError"),
 			LdkServerErrorCode::AuthError => write!(f, "AuthError"),
+			LdkServerErrorCode::AuthorizationError => write!(f, "AuthorizationError"),
 			LdkServerErrorCode::LightningError => write!(f, "LightningError"),
 			LdkServerErrorCode::InternalServerError => write!(f, "InternalServerError"),
 		}

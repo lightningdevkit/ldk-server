@@ -207,7 +207,11 @@ Two resolution methods are supported via the `mode` field:
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
-    api_key                # API key
+    macaroons/
+      admin.macaroon       # Hex-encoded initial admin bearer token (0400)
+      roots/               # Server-only root keys (0700); never share this directory
+        admin.toml         # Initial root key and metadata (0400)
+        <id>.toml          # Independently revocable root keys (0400)
     ldk-server.log         # Log file
     ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
     ldk_server_data.sqlite # Forwarded-payment history

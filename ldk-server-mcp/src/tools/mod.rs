@@ -70,6 +70,30 @@ impl ToolRegistry {
 pub fn build_tool_registry() -> ToolRegistry {
 	let tools = vec![
 		tool_spec(
+			"get_permissions",
+			"Get the current macaroon metadata and permissions",
+			schema::get_permissions_schema,
+			|client, args| Box::pin(handlers::handle_get_permissions(client, args)),
+		),
+		tool_spec(
+			"revoke_macaroon",
+			"Revoke a macaroon for new requests",
+			schema::revoke_macaroon_schema,
+			|client, args| Box::pin(handlers::handle_revoke_macaroon(client, args)),
+		),
+		tool_spec(
+			"list_macaroons",
+			"List macaroon metadata without secrets",
+			schema::list_macaroons_schema,
+			|client, args| Box::pin(handlers::handle_list_macaroons(client, args)),
+		),
+		tool_spec(
+			"create_macaroon",
+			"Create a macaroon with scoped permissions and return its bearer token",
+			schema::create_macaroon_schema,
+			|client, args| Box::pin(handlers::handle_create_macaroon(client, args)),
+		),
+		tool_spec(
 			"get_node_info",
 			"Retrieve node info including node_id, sync status, and best block",
 			schema::get_node_info_schema,

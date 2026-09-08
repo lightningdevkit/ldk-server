@@ -15,24 +15,93 @@ underlying LDK Node documentation.
 
 ## Authentication
 
-Every gRPC request must include an `x-auth` metadata header with an HMAC-SHA256 signature:
+Every gRPC request must include a `macaroon` metadata header containing a hex-encoded v2
+binary macaroon:
 
+```text
+macaroon: <hex-encoded-macaroon>
 ```
-x-auth: HMAC <unix_timestamp>:<hmac_hex>
+
+Macaroons use the standard HMAC-SHA256 key derivation and signature chain. The server supports
+first-party caveats only. It rejects third-party caveats, unknown conditions, malformed tokens,
+and tokens larger than 4096 binary bytes (8192 hex characters), with at most 32 caveats.
+An optional location field is a routing hint and is never used for authorization.
+
+A macaroon is a bearer credential: anyone who obtains it can use its permitted operations.
+TLS is required. There is no per-request signature, body binding, or automatic replay protection.
+The old `x-auth` HMAC scheme and API keys are no longer accepted. Upgrade clients together with
+the server and supply the generated `macaroons/admin.macaroon` file or a scoped macaroon.
+The old `api_key` file is not imported.
+
+### Caveats and delegation
+
+All caveats must pass. Supported conditions use these exact forms:
+
+| Caveat | Meaning |
+|--------|---------|
+| `permissions = node:read,payments:read` | Permit only these capabilities |
+| `method = GetNodeInfo` | Permit only this RPC method name |
+| `time-before = 1800000000` | Require server Unix time to be strictly less than this value |
+
+Additional permission caveats intersect existing permissions. Adding `permissions = admin`
+to a restricted token does not restore admin access. Additional expiry conditions can only
+shorten its lifetime. Unknown or malformed conditions deny access.
+
+Restrict a token locally, without contacting the server:
+
+```bash
+ldk-server-cli attenuate-macaroon "$MACAROON" \
+  --caveat 'permissions = node:read' \
+  --caveat 'method = GetNodeInfo' \
+  --caveat "time-before = $EXPIRY_UNIX_SECONDS"
 ```
 
-Where:
+The command prints a hex token. The Rust client provides `macaroon::attenuate_macaroon` for the
+same operation. Give the restricted copy to the application and keep the original private.
 
-- `unix_timestamp` is the current time in seconds since the Unix epoch
-- `hmac_hex` is the hex-encoded result of
-  `HMAC-SHA256(api_key_bytes, timestamp_be_bytes || grpc_request_body_bytes)`
-    - `api_key_bytes` is the API key string encoded as UTF-8 bytes
-    - `timestamp_be_bytes` is the timestamp as a big-endian 8-byte unsigned integer
-    - `grpc_request_body_bytes` is the raw gRPC request body sent over HTTP/2, including
-      the 5-byte gRPC message frame
+Each `CreateMacaroon` call creates an independent root ID. Locally restricted copies retain
+the parent's ID; revoking that ID invalidates all such copies. To revoke clients independently,
+issue a separate macaroon for each client. The server cannot list copies made locally.
+Tokens created through the API inherit all the caller's caveats as well as their requested
+permissions. They have independent revocation IDs, so revoking the issuing credential does not
+revoke those separately issued tokens. Root keys are never returned by the API.
 
-The server rejects requests where the timestamp differs from the server's clock by more than
-**60 seconds**.
+Authorization, including expiry, is checked when a request or event subscription starts.
+Revocation and expiry do not close an existing event stream. Reconnecting requires a valid token.
+
+### Macaroon Permissions
+
+Each macaroon has one or more capabilities. New RPCs are denied to scoped macaroons until they have an
+explicit capability mapping. The `admin` capability grants unrestricted access and must be used by
+itself.
+
+| Capability             | Access                                                        |
+|------------------------|---------------------------------------------------------------|
+| `node:read`            | Node information, balances, and pathfinding scores            |
+| `onchain:receive`      | Create on-chain receive addresses                              |
+| `onchain:send`         | Send on-chain funds                                            |
+| `invoices:create`      | Create BOLT11/BOLT12 invoices and incoming refund requests     |
+| `payments:read`        | Read payments and forwarded payments                           |
+| `payments:claim`       | Claim or fail held BOLT11 payments                             |
+| `payments:send`        | Send BOLT11, BOLT12, spontaneous, unified, and refund payments |
+| `channels:read`        | List channels                                                  |
+| `channels:manage`      | Open, configure, or cooperatively close channels       |
+| `channels:splice`      | Splice funds in or out, including to an external address       |
+| `channels:force_close` | Force-close channels                                           |
+| `peers:read`           | List peers                                                     |
+| `peers:manage`         | Connect or disconnect peers                                    |
+| `messages:sign`        | Sign messages and create BOLT12 payer proofs                   |
+| `messages:verify`      | Verify message signatures                                      |
+| `graph:read`           | Read network graph data                                        |
+| `utilities:read`       | Decode invoices and offers                                     |
+| `events:read`          | Subscribe to the event stream                                  |
+| `macaroons:manage`      | Create, list, and revoke macaroons without privilege escalation     |
+
+Use `CreateMacaroon`, `ListMacaroons`, `RevokeMacaroon`, and `GetPermissions` to manage credentials.
+`CreateMacaroon` returns the hex bearer credential in `token`; list operations return metadata
+only. `GetPermissions` reports the effective permissions and caveats of the calling token. The CLI also provides `readonly`, `invoice`, and
+`admin` presets. MCP exposes the same operations as `create_macaroon`, `list_macaroons`,
+`revoke_macaroon`, and `get_permissions` tools.
 
 ## TLS
 
@@ -67,9 +136,10 @@ Errors are returned as standard gRPC status codes:
 | gRPC Code                 | Meaning                                                          |
 |---------------------------|------------------------------------------------------------------|
 | `INVALID_ARGUMENT` (3)    | Malformed request or invalid parameters                          |
+| `PERMISSION_DENIED` (7)   | Valid macaroon without the required capability or with an unsatisfied caveat                    |
 | `FAILED_PRECONDITION` (9) | Lightning operation error (e.g., insufficient balance, no route) |
 | `INTERNAL` (13)           | Server-side bug                                                  |
-| `UNAUTHENTICATED` (16)    | Missing or invalid `x-auth` header                               |
+| `UNAUTHENTICATED` (16)    | Missing, invalid, or revoked macaroon                               |
 
 The `grpc-message` trailer contains a human-readable error description.
 
@@ -231,6 +301,21 @@ queue can continue processing.
 Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
 `GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
 cannot be recovered through these APIs.
+
+### Macaroon Management
+
+| RPC              | Description                                                   |
+|------------------|---------------------------------------------------------------|
+| `CreateMacaroon`   | Create a scoped macaroon and return its token                |
+| `ListMacaroons`     | List root IDs, names, permissions, and inherited caveats          |
+| `RevokeMacaroon`   | Revoke a key for new requests                                 |
+| `GetPermissions` | Return the calling token’s ID, name, effective permissions, and caveats            |
+
+The first three RPCs require `macaroons:manage` or `admin`. A scoped key manager cannot create or
+revoke a key with permissions that it does not have. The final admin key cannot be revoked.
+Revoking a key blocks new requests, including new event subscriptions. Existing event streams
+remain open and continue to receive events until the client disconnects or the server stops.
+Authorization is checked only when a subscription starts.
 
 ### Metrics
 

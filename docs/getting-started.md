@@ -73,28 +73,34 @@ gRPC service listening on 127.0.0.1:3536
 NODE_URI: <node_id>@<address>
 ```
 
-Two files are auto-generated on first run:
+The admin macaroon and TLS certificate are auto-generated on first run:
 
-| File            | Location                          | Purpose                                  |
-|-----------------|-----------------------------------|------------------------------------------|
-| API key         | `<storage_dir>/<network>/api_key` | 32-byte random key (stored as raw bytes) |
-| TLS certificate | `<storage_dir>/tls.crt`           | Self-signed ECDSA P-256 certificate      |
+| File            | Location                                          | Purpose                             |
+|-----------------|---------------------------------------------------|-------------------------------------|
+| Admin macaroon   | `<storage_dir>/<network>/macaroons/admin.macaroon`     | Unrestricted API credential         |
+| TLS certificate | `<storage_dir>/tls.crt`                           | Self-signed ECDSA P-256 certificate |
 
 The default storage directory is `~/.ldk-server/` on Linux and
 `~/Library/Application Support/ldk-server/` on macOS.
 
-### Reading the API Key
+### Reading the Macaroon
 
-The API key file contains raw bytes. To get the hex string the CLI and client library expect:
+The CLI reads the admin macaroon automatically from the configured storage directory. No
+manual extraction is needed. To use the admin macaroon with another client, read
+`<storage_dir>/<network>/macaroons/admin.macaroon`. The entire file is the hex-encoded token.
+Do not copy files from the server-only `macaroons/roots/` directory.
+
+Create a restricted macaroon for an application instead of copying the admin macaroon:
 
 ```bash
-xxd -p -c 64 ~/.ldk-server/bitcoin/api_key
+ldk-server-cli create-macaroon my-app --preset readonly
+ldk-server-cli create-macaroon invoice-app --preset invoice
 ```
 
 ## First Commands
 
 If the CLI and server share the same machine and use the default storage directory, the CLI
-auto-discovers the API key and TLS certificate, so no flags are needed:
+auto-discovers the macaroon and TLS certificate, so no flags are needed:
 
 ```bash
 # Check the node is running
@@ -113,7 +119,7 @@ details explicitly:
 ```bash
 ldk-server-cli \
   --base-url localhost:3536 \
-  --api-key <hex_api_key> \
+  --macaroon <hex_macaroon> \
   --tls-cert /path/to/tls.crt \
   get-node-info
 ```

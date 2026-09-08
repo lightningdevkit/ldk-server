@@ -14,6 +14,8 @@ pub mod endpoints;
 pub mod error;
 pub mod events;
 pub mod grpc;
+pub mod macaroon;
+pub mod permissions;
 #[cfg(feature = "serde")]
 pub mod serde_utils;
 pub mod types;
