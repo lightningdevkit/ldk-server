@@ -827,6 +827,7 @@ async fn test_cli_list_channels() {
 	// This test opens a default (anchor) channel with no trusted_peers_no_reserve
 	// configured, so the reserve type is deterministically Adaptive.
 	assert_eq!(channel["reserve_type"].as_i64(), Some(ReserveType::Adaptive as i64));
+	assert!(!channel["channel_type"].as_object().unwrap().is_empty());
 }
 
 #[tokio::test]

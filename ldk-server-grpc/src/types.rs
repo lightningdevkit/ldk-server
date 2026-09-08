@@ -426,6 +426,11 @@ pub struct HtlcLocator {
 	/// This can be unset for older serialized events.
 	#[prost(string, optional, tag = "3")]
 	pub node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The amount in millisatoshis of the HTLC that was sent or received, if known.
+	/// This can be unset for events serialized by LDK Node v0.7.0 and prior,
+	/// or forwarding records stored by LDK Server before this field was added.
+	#[prost(uint64, optional, tag = "4")]
+	pub amount_msat: ::core::option::Option<u64>,
 }
 /// A forwarded payment through our node.
 ///
@@ -643,6 +648,10 @@ pub struct Channel {
 	/// uses anchor or legacy reserve behavior.
 	#[prost(enumeration = "ReserveType", optional, tag = "32")]
 	pub reserve_type: ::core::option::Option<i32>,
+	/// The negotiated channel-type features, keyed by the signaled BOLT feature bit.
+	/// This map is empty until channel negotiation determines the channel type.
+	#[prost(btree_map = "uint32, message", tag = "33")]
+	pub channel_type: ::prost::alloc::collections::BTreeMap<u32, Feature>,
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>

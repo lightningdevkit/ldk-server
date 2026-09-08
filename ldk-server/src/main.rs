@@ -600,6 +600,7 @@ fn main() {
 									channel_id: htlc.channel_id.to_string(),
 									user_channel_id: htlc.user_channel_id.map(|u| u.0.to_string()),
 									node_id: htlc.node_id.map(|n| n.to_string()),
+									amount_msat: htlc.amount_msat,
 								})
 								.collect();
 							let next_htlcs = next_htlcs
@@ -608,6 +609,7 @@ fn main() {
 									channel_id: htlc.channel_id.to_string(),
 									user_channel_id: htlc.user_channel_id.map(|u| u.0.to_string()),
 									node_id: htlc.node_id.map(|n| n.to_string()),
+									amount_msat: htlc.amount_msat,
 								})
 								.collect();
 
