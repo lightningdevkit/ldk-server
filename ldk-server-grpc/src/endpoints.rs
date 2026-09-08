@@ -27,6 +27,7 @@ pub const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
 pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
 pub const BOLT12_SEND_REFUND_PATH: &str = "Bolt12SendRefund";
 pub const BOLT12_RECEIVE_REFUND_PATH: &str = "Bolt12ReceiveRefund";
+pub const BOLT12_CREATE_PAYER_PROOF_PATH: &str = "Bolt12CreatePayerProof";
 pub const OPEN_CHANNEL_PATH: &str = "OpenChannel";
 pub const SPLICE_IN_PATH: &str = "SpliceIn";
 pub const SPLICE_OUT_PATH: &str = "SpliceOut";

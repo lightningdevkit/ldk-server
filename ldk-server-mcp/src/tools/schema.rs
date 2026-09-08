@@ -418,6 +418,58 @@ pub fn bolt12_receive_refund_schema() -> Value {
 	})
 }
 
+pub fn bolt12_create_payer_proof_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"payment_id": {
+				"type": "string",
+				"description": "The hex-encoded payment id from PaymentSuccessful"
+			},
+			"payment_preimage": {
+				"type": "string",
+				"description": "The hex-encoded 32-byte payment preimage from PaymentSuccessful"
+			},
+			"invoice": {
+				"type": "string",
+				"description": "The hex-encoded BOLT 12 invoice from PaymentSuccessful"
+			},
+			"options": {
+				"type": "object",
+				"description": "Controls which optional invoice fields the proof discloses",
+				"properties": {
+					"note": {
+						"type": "string",
+						"description": "Optional note to attach to the payer proof"
+					},
+					"include_offer_description": {
+						"type": "boolean",
+						"description": "Disclose the offer description"
+					},
+					"include_offer_issuer": {
+						"type": "boolean",
+						"description": "Disclose the offer issuer"
+					},
+					"include_invoice_amount": {
+						"type": "boolean",
+						"description": "Disclose the invoice amount"
+					},
+					"include_invoice_created_at": {
+						"type": "boolean",
+						"description": "Disclose the invoice creation timestamp"
+					},
+					"extra_tlv_types": {
+						"type": "array",
+						"items": { "type": "integer" },
+						"description": "Additional TLV types to disclose"
+					}
+				}
+			}
+		},
+		"required": ["payment_id", "payment_preimage", "invoice"]
+	})
+}
+
 pub fn spontaneous_send_schema() -> Value {
 	json!({
 		"type": "object",

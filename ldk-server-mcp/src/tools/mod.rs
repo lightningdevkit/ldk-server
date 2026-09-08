@@ -170,6 +170,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_bolt12_receive_refund(client, args)),
 		),
 		tool_spec(
+			"bolt12_create_payer_proof",
+			"Create a BOLT12 payer proof for a payment this node made",
+			schema::bolt12_create_payer_proof_schema,
+			|client, args| Box::pin(handlers::handle_bolt12_create_payer_proof(client, args)),
+		),
+		tool_spec(
 			"spontaneous_send",
 			"Send a spontaneous (keysend) payment to a Lightning node",
 			schema::spontaneous_send_schema,

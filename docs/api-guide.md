@@ -128,12 +128,13 @@ when the invoice is paid.
 
 ### BOLT12 Offers and Refunds
 
-| RPC                   | Description                                                             |
-|-----------------------|-------------------------------------------------------------------------|
-| `Bolt12Receive`       | Create a BOLT12 offer (fixed or variable amount)                        |
-| `Bolt12Send`          | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
-| `Bolt12SendRefund`    | Create a BOLT12 refund that this node will pay                          |
-| `Bolt12ReceiveRefund` | Request an incoming payment for a BOLT12 refund                         |
+| RPC                      | Description                                                             |
+|--------------------------|-------------------------------------------------------------------------|
+| `Bolt12Receive`          | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12Send`             | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
+| `Bolt12SendRefund`       | Create a BOLT12 refund that this node will pay                          |
+| `Bolt12ReceiveRefund`    | Request an incoming payment for a BOLT12 refund                         |
+| `Bolt12CreatePayerProof` | Create a BOLT 12 payer proof from a successful payment                  |
 
 ### Spontaneous and Unified Send
 
@@ -228,6 +229,17 @@ GET /metrics
 
 Returns Prometheus-format text. Requires `[metrics] enabled = true` in the config. Supports
 optional Basic Auth. See [Configuration](configuration.md#metrics) for setup.
+
+## BOLT 12 Payer-Proof Lifecycle
+
+Subscribe with `SubscribeEvents` before you send a BOLT 12 payment. Events are not replayed.
+
+When `PaymentSuccessful` arrives, retain its `payment_id`, `payment_preimage`, and
+`bolt12_invoice`. Pass these values to `Bolt12CreatePayerProof`. The request can also select the
+optional invoice fields that the proof discloses.
+
+The `bolt12_invoice` field is absent for static-invoice payments. These asynchronous payments
+cannot produce payer proofs.
 
 ## Hodl Invoice Lifecycle
 

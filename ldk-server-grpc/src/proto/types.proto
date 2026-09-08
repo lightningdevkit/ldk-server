@@ -29,6 +29,28 @@ message Payment {
   uint64 latest_update_timestamp = 6;
 }
 
+// Options that control which BOLT 12 invoice fields a payer proof discloses.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.PayerProofOptions.html
+message PayerProofOptions {
+  // An optional note to attach to the payer proof itself.
+  optional string note = 1;
+
+  // Whether to disclose the offer description.
+  bool include_offer_description = 2;
+
+  // Whether to disclose the offer issuer.
+  bool include_offer_issuer = 3;
+
+  // Whether to disclose the invoice amount.
+  bool include_invoice_amount = 4;
+
+  // Whether to disclose the invoice creation timestamp.
+  bool include_invoice_created_at = 5;
+
+  // Additional TLV types to disclose, for fields not covered by the flags above.
+  repeated uint64 extra_tlv_types = 6;
+}
+
 message PaymentKind {
   oneof kind {
     Onchain onchain = 1;
