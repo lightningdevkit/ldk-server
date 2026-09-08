@@ -237,12 +237,19 @@ Hodl invoices allow you to inspect and conditionally accept incoming payments:
    replayed.
 2. **Create the invoice:** Generate a new payment hash. Call `Bolt11ReceiveForHash` with this hash.
    Never reuse a payment hash. Reuse is unsafe and can cause loss of funds.
-3. **Handle each payment:** Save `payment.payment_id` from each `PaymentClaimable` event. A payer can pay
+3. **Handle each payment:** Save the payment ID from each `PaymentClaimable` event. A payer can pay
    the same invoice more than once. Each payment has a separate event and payment ID.
 4. **Decide before `claim_deadline`:**
-    - **Accept an expected payment:** Call `Bolt11ClaimForId` with its payment ID and preimage.
+    - **Accept an expected payment:** Check the event's `claimable_amount_msat` against the amount
+      you expect. Call `Bolt11ClaimForId` with its payment ID, preimage, and the event's claimable
+      amount.
     - **Reject an unexpected payment:** Call `Bolt11FailForId` with its payment ID. Reject duplicate
       and late payments instead of ignoring or claiming them.
+
+The claim request's optional amount is passed to LDK Node for a lower-bound check against its
+stored payment amount, less any skimmed fee. It is not an exact amount check or a request to claim
+that many millisatoshis. A larger supplied amount passes this check; omitting it skips the check.
+Always validate the event's amount before you claim the payment.
 
 The payment is held in a pending state until you explicitly claim or fail it. **You must
 always handle each event.** If you do not, the HTLC will eventually time out. This can cause a

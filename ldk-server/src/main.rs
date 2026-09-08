@@ -514,6 +514,7 @@ fn main() {
 								&payment_id,
 								move |payment_ref| {
 									event_envelope::Event::PaymentReceived(events::PaymentReceived {
+										payment_id: payment_id.to_string(),
 										payment: Some(payment_ref.clone()),
 										custom_records: proto_custom_records,
 									})
@@ -530,6 +531,7 @@ fn main() {
 						Event::PaymentSuccessful {payment_id, ..} => {
 							send_event_and_upsert_payment(&payment_id,
 								|payment_ref| event_envelope::Event::PaymentSuccessful(events::PaymentSuccessful {
+									payment_id: payment_id.to_string(),
 									payment: Some(payment_ref.clone()),
 								}),
 								&event_node,
@@ -545,6 +547,7 @@ fn main() {
 							let proto_reason = reason.as_ref().map(payment_failure_reason_to_proto);
 							send_event_and_upsert_payment(&payment_id,
 								move |payment_ref| event_envelope::Event::PaymentFailed(events::PaymentFailed {
+									payment_id: payment_id.to_string(),
 									payment: Some(payment_ref.clone()),
 									reason: proto_reason.map(|r| r as i32),
 								}),
@@ -556,7 +559,7 @@ fn main() {
 								metrics.update_payments_count(false);
 							}
 						},
-						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, .. } => {
+						Event::PaymentClaimable { payment_id, custom_records, claim_deadline, claimable_amount_msat, .. } => {
 							send_event_and_upsert_payment(
 								&payment_id,
 								|payment_ref| {
@@ -565,6 +568,8 @@ fn main() {
 											payment_ref,
 											&custom_records,
 											claim_deadline,
+											claimable_amount_msat,
+											payment_id.to_string(),
 										),
 									)
 								},
@@ -1011,13 +1016,16 @@ fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
 
 fn build_payment_claimable_proto(
 	payment_ref: &Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
+	claimable_amount_msat: u64, payment_id: String,
 ) -> events::PaymentClaimable {
 	let proto_custom_records: Vec<_> =
 		custom_records.iter().map(node_to_proto_custom_tlv).collect();
 	events::PaymentClaimable {
+		payment_id,
 		payment: Some(payment_ref.clone()),
 		custom_records: proto_custom_records,
 		claim_deadline,
+		claimable_amount_msat,
 	}
 }
 
@@ -1140,13 +1148,24 @@ mod tests {
 	}
 
 	#[test]
-	fn payment_claimable_proto_contains_custom_records() {
+	fn payment_claimable_proto_preserves_event_fields() {
 		let payment = ldk_server_grpc::types::Payment::default();
 		let records = vec![
 			CustomTlvRecord { type_num: 65537, value: vec![1, 2, 3] },
 			CustomTlvRecord { type_num: 65538, value: Vec::new() },
 		];
-		let proto = build_payment_claimable_proto(&payment, &records, None);
+		let proto = build_payment_claimable_proto(
+			&payment,
+			&records,
+			Some(800_000),
+			42_123,
+			"abc123".to_string(),
+		);
+		let encoded = proto.encode_to_vec();
+		let proto = events::PaymentClaimable::decode(encoded.as_slice()).unwrap();
+		assert_eq!(proto.payment_id, "abc123");
+		assert_eq!(proto.claim_deadline, Some(800_000));
+		assert_eq!(proto.claimable_amount_msat, 42_123);
 		assert_eq!(proto.custom_records.len(), 2);
 		assert_eq!(proto.custom_records[0].type_num, 65537);
 		assert_eq!(proto.custom_records[0].value.to_vec(), vec![1, 2, 3]);

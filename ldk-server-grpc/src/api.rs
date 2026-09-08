@@ -256,8 +256,11 @@ pub struct Bolt11ClaimForIdRequest {
 	/// The hex-encoded 32-byte payment ID from `PaymentClaimable`.
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
-	/// The amount in millisatoshi that is claimable.
-	/// If not provided, skips amount verification.
+	/// The claimable amount in millisatoshis from the PaymentClaimable event.
+	/// LDK Node rejects a value below its stored payment amount, less any skimmed fee.
+	/// A larger value passes this check. This is not an exact amount check or a request
+	/// to claim that many millisatoshis. Validate the event's amount before claiming.
+	/// If not provided, skips this amount check.
 	#[prost(uint64, optional, tag = "2")]
 	pub claimable_amount_msat: ::core::option::Option<u64>,
 	/// The hex-encoded 32-byte payment preimage.

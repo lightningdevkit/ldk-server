@@ -171,7 +171,7 @@ enum Commands {
 		#[arg(
 			short,
 			long,
-			help = "The claimable amount, e.g. 50sat or 50000msat, only used for verifying we are claiming the expected amount"
+			help = "The amount from PaymentClaimable, e.g. 50sat or 50000msat. Used for a lower-bound check, not an exact amount check; validate the event amount before claiming"
 		)]
 		claimable_amount: Option<Amount>,
 	},
