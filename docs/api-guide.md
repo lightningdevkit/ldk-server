@@ -216,8 +216,21 @@ See [Pagination](#pagination) below for how to page through results.
 | `SpliceNegotiated` | A channel splice was negotiated and the funding transaction is pending confirmation |
 | `SpliceNegotiationFailed` | A channel splice negotiation round failed                       |
 
-Events are broadcast to all connected subscribers. The server uses a bounded broadcast channel
-(capacity 1024). A slow subscriber that falls behind will miss events.
+> [!WARNING]
+> `SubscribeEvents` is a best-effort stream of new events. Events are not persisted for
+> subscribers, cannot be replayed after reconnecting, and have no client acknowledgement.
+> Acceptance by the server's broadcast channel does not guarantee that a client received or
+> processed an event.
+
+Events are broadcast to all currently connected subscribers. The server uses a bounded broadcast
+channel (capacity 1024), so a slow subscriber that falls behind will miss events. Disconnected
+clients also miss events and receive only new events after reconnecting. If the server cannot read
+data required to construct a payment event, it logs the error and skips that event so the event
+queue can continue processing.
+
+Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
+`GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
+cannot be recovered through these APIs.
 
 ### Metrics
 
@@ -236,7 +249,9 @@ Subscribe with `SubscribeEvents` before you send a BOLT 12 payment. Events are n
 
 When `PaymentSuccessful` arrives, retain its `payment_id`, `payment_preimage`, and
 `bolt12_invoice`. Pass these values to `Bolt12CreatePayerProof`. The request can also select the
-optional invoice fields that the proof discloses.
+optional invoice fields that the proof discloses. Payment history APIs cannot recover all the
+inputs required to create a proof if this event is missed. Save these values before processing
+other events.
 
 The `bolt12_invoice` field is absent for static-invoice payments. These asynchronous payments
 cannot produce payer proofs.
@@ -263,9 +278,11 @@ stored payment amount, less any skimmed fee. It is not an exact amount check or 
 that many millisatoshis. A larger supplied amount passes this check; omitting it skips the check.
 Always validate the event's amount before you claim the payment.
 
-The payment is held in a pending state until you explicitly claim or fail it. **You must
-always handle each event.** If you do not, the HTLC will eventually time out. This can cause a
-force-closure of the channel.
+The payment is held in a pending state until you claim it, fail it, or its `claim_deadline` is
+reached. `PaymentClaimable` notifications are best-effort and are not replayed. If you miss the
+event or do not act before the deadline, LDK Node automatically fails the HTLC backward and the
+payment can no longer be claimed. Keep the subscriber healthy and resolve reported persistence
+errors before accepting further payments.
 
 ## Pagination
 

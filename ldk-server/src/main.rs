@@ -760,6 +760,14 @@ fn send_payment_event(
 	payment_id: &PaymentId, payment_to_event: impl FnOnce(&Payment) -> event_envelope::Event,
 	event_node: &Node, event_sender: &broadcast::Sender<EventEnvelope>,
 ) {
+	if event_sender.receiver_count() == 0 {
+		debug!("No event subscribers connected, skipping payment event");
+		if let Err(e) = event_node.event_handled() {
+			error!("Failed to mark event as handled: {e}");
+		}
+		return;
+	}
+
 	match event_node.payment(payment_id) {
 		Ok(Some(payment_details)) => {
 			let payment = payment_to_proto(payment_details);
@@ -768,13 +776,16 @@ fn send_payment_event(
 			if let Err(e) = event_sender.send(EventEnvelope { event: Some(event) }) {
 				debug!("No event subscribers connected, skipping event: {e}");
 			}
-
-			if let Err(e) = event_node.event_handled() {
-				error!("Failed to mark event as handled: {e}");
-			}
 		},
-		Ok(None) => error!("Unable to find payment with payment ID: {payment_id}"),
-		Err(e) => error!("Failed to retrieve payment with payment ID {payment_id}: {e}"),
+		Ok(None) => {
+			error!("Unable to find payment with payment ID: {payment_id}");
+		},
+		Err(e) => {
+			error!("Failed to retrieve payment with payment ID {payment_id}: {e}");
+		},
+	}
+	if let Err(e) = event_node.event_handled() {
+		error!("Failed to mark event as handled: {e}");
 	}
 }
 

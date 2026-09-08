@@ -244,6 +244,9 @@ pub struct PaymentFailed {
 /// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
 /// Handle every event by its payment ID before `claim_deadline`.
 /// The same invoice can produce more than one event. Fail unexpected duplicate or late payments.
+/// Delivery through SubscribeEvents is best-effort and is not replayed. If the event is missed and
+/// the payment is not otherwise claimed or failed, LDK Node automatically fails the HTLC backward at
+/// claim_deadline.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]

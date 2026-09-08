@@ -184,6 +184,9 @@ message PaymentFailed {
 // This event is only emitted for payments created via `Bolt11ReceiveForHash`.
 // Handle every event by its payment ID before `claim_deadline`.
 // The same invoice can produce more than one event. Fail unexpected duplicate or late payments.
+// Delivery through SubscribeEvents is best-effort and is not replayed. If the event is missed and
+// the payment is not otherwise claimed or failed, LDK Node automatically fails the HTLC backward at
+// claim_deadline.
 message PaymentClaimable {
   // The local identifier used to track the payment, in hex-encoded form.
   string payment_id = 1;

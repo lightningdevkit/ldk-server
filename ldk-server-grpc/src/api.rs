@@ -1422,7 +1422,15 @@ pub struct DecodeOfferResponse {
 	#[prost(bool, tag = "12")]
 	pub is_expired: bool,
 }
-/// Subscribe to a stream of server events.
+/// Subscribe to a best-effort stream of new server events.
+///
+/// Events are not persisted for subscribers or replayed after reconnecting, and the server does not
+/// wait for client acknowledgement. Slow or disconnected subscribers may miss events. Reconcile
+/// recoverable state with the listing and detail APIs after reconnecting. Some event fields,
+/// including inputs required for payer proofs, cannot be recovered through these APIs.
+///
+/// If a PaymentClaimable event is missed and the payment is not otherwise claimed or failed, LDK
+/// Node automatically fails the HTLC backward at its claim_deadline.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
