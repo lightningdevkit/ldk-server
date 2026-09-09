@@ -568,6 +568,16 @@ message Channel {
   // The negotiated channel-type features, keyed by the signaled BOLT feature bit.
   // This map is empty until channel negotiation determines the channel type.
   map<uint32, Feature> channel_type = 33;
+
+// The witness script that is used to lock the channel's funding output to commitment transactions.
+//
+// This field will be `None` if we have not negotiated the funding transaction with our
+// counterparty already.
+//
+// When a channel is spliced, this continues to refer to the original pre-splice channel
+// state until the splice transaction reaches sufficient confirmations to be locked (and we
+// exchange `splice_locked` messages with our peer).
+  optional string funding_redeem_script = 34;
 }
 
 // ChannelConfig represents the configuration settings for a channel in a Lightning Network node.

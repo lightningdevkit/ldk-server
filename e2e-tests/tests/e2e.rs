@@ -828,6 +828,9 @@ async fn test_cli_list_channels() {
 	// configured, so the reserve type is deterministically Adaptive.
 	assert_eq!(channel["reserve_type"].as_i64(), Some(ReserveType::Adaptive as i64));
 	assert!(!channel["channel_type"].as_object().unwrap().is_empty());
+
+	// A funded, usable channel has a real funding redeem script.
+	assert!(channel["funding_redeem_script"].as_str().is_some_and(|s| !s.is_empty()));
 }
 
 #[tokio::test]

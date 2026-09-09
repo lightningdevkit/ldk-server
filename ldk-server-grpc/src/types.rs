@@ -679,6 +679,16 @@ pub struct Channel {
 	/// This map is empty until channel negotiation determines the channel type.
 	#[prost(btree_map = "uint32, message", tag = "33")]
 	pub channel_type: ::prost::alloc::collections::BTreeMap<u32, Feature>,
+	/// The witness script that is used to lock the channel's funding output to commitment transactions.
+	///
+	/// This field will be `None` if we have not negotiated the funding transaction with our
+	/// counterparty already.
+	///
+	/// When a channel is spliced, this continues to refer to the original pre-splice channel
+	/// state until the splice transaction reaches sufficient confirmations to be locked (and we
+	/// exchange `splice_locked` messages with our peer).
+	#[prost(string, optional, tag = "34")]
+	pub funding_redeem_script: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>
