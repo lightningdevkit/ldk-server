@@ -59,3 +59,7 @@ pub const GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH: &str = "GetForwardedPaymentT
 pub const GET_CHANNEL_FORWARDING_STATS_PATH: &str = "GetChannelForwardingStats";
 pub const LIST_CHANNEL_FORWARDING_STATS_PATH: &str = "ListChannelForwardingStats";
 pub const LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH: &str = "ListChannelPairForwardingStats";
+pub const CREATE_MACAROON_PATH: &str = "CreateMacaroon";
+pub const LIST_MACAROONS_PATH: &str = "ListMacaroons";
+pub const REVOKE_MACAROON_PATH: &str = "RevokeMacaroon";
+pub const GET_PERMISSIONS_PATH: &str = "GetPermissions";

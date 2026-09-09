@@ -73,28 +73,32 @@ gRPC service listening on 127.0.0.1:3536
 NODE_URI: <node_id>@<address>
 ```
 
-Two files are auto-generated on first run:
+The server creates these files on first run:
 
-| File            | Location                          | Purpose                                  |
-|-----------------|-----------------------------------|------------------------------------------|
-| API key         | `<storage_dir>/<network>/api_key` | 32-byte random key (stored as raw bytes) |
-| TLS certificate | `<storage_dir>/tls.crt`           | Self-signed ECDSA P-256 certificate      |
+| File | Location | Purpose |
+|------|----------|---------|
+| Admin macaroon | `<storage_dir>/<network>/macaroons/admin.macaroon` | Full API access |
+| TLS certificate | `<storage_dir>/tls.crt` | Secure client connections |
 
 The default storage directory is `~/.ldk-server/` on Linux and
 `~/Library/Application Support/ldk-server/` on macOS.
 
-### Reading the API Key
+### Client Macaroons
 
-The API key file contains raw bytes. To get the hex string the CLI and client library expect:
+The CLI reads `admin.macaroon` automatically. This file contains a hex token.
+Keep it private, and never give clients files from `macaroons/roots/`.
+
+Create a restricted token for each application:
 
 ```bash
-xxd -p -c 64 ~/.ldk-server/bitcoin/api_key
+ldk-server-cli create-macaroon my-app --preset readonly
+ldk-server-cli create-macaroon invoice-app --preset invoice
 ```
 
 ## First Commands
 
 If the CLI and server share the same machine and use the default storage directory, the CLI
-auto-discovers the API key and TLS certificate, so no flags are needed:
+auto-discovers the macaroon and TLS certificate, so no flags are needed:
 
 ```bash
 # Check the node is running
@@ -113,7 +117,7 @@ details explicitly:
 ```bash
 ldk-server-cli \
   --base-url localhost:3536 \
-  --api-key <hex_api_key> \
+  --macaroon <hex_macaroon> \
   --tls-cert /path/to/tls.crt \
   get-node-info
 ```

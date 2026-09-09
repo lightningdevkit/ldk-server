@@ -18,6 +18,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 pub const GRPC_STATUS_OK: u32 = 0;
 pub const GRPC_STATUS_INVALID_ARGUMENT: u32 = 3;
 pub const GRPC_STATUS_DEADLINE_EXCEEDED: u32 = 4;
+pub const GRPC_STATUS_PERMISSION_DENIED: u32 = 7;
 pub const GRPC_STATUS_FAILED_PRECONDITION: u32 = 9;
 pub const GRPC_STATUS_UNIMPLEMENTED: u32 = 12;
 pub const GRPC_STATUS_INTERNAL: u32 = 13;
