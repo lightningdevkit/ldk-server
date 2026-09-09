@@ -147,14 +147,22 @@ You must configure **exactly one** of the following sections:
 > against the blockchain. This means a malicious peer could flood your node with fake channel
 > announcements, consuming memory and disk. If your node is publicly reachable, use bitcoind.
 
-### `[liquidity.lsps2_client]`
+### `[[liquidity.lsps_client]]`
 
-Connects to an [LSPS2](https://github.com/BitcoinAndLightningLayerSpecs/lsp/blob/main/LSPS2/README.md)
-Liquidity Service Provider for just-in-time (JIT) inbound channel opening. When configured,
-the `Bolt11ReceiveViaJitChannel` and `Bolt11ReceiveVariableAmountViaJitChannel` RPCs become
-available, the LSP will open a channel on the fly when the generated invoice is paid.
+Registers a Liquidity Service Provider to source inbound liquidity from. Repeat the section
+to register several LSPs. Each LSP's supported protocols are discovered on startup via
+[bLIP-50 / LSPS0](https://github.com/lightning/blips/blob/master/blip-0050.md). LDK Server
+currently supports LSPS2 only, so an LSP that does not advertise it is registered but unused.
 
-Requires the LSP's public key and address. Some LSPs also require an authentication token.
+When at least one LSPS2-capable LSP is configured, the `Bolt11ReceiveViaJitChannel` and
+`Bolt11ReceiveVariableAmountViaJitChannel` RPCs become available, and the cheapest fee offer
+across all LSPS2-capable LSPs is selected per invoice.
+
+Requires each LSP's public key and address. Some LSPs also require an authentication token.
+`trust_peer_0conf` is required and controls whether 0-confirmation channels from that LSP are
+accepted. Setting it to `true` is generally necessary for JIT channels to be usable before
+the funding transaction confirms. Each entry must name a distinct `node_pubkey` as duplicates
+are rejected at startup.
 
 ### `[liquidity.lsps2_service]`
 

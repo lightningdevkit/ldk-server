@@ -61,7 +61,7 @@ pub struct Config {
 	pub storage_dir_path: Option<String>,
 	pub chain_source: ChainSource,
 	pub rgs_server_url: Option<String>,
-	pub lsps2_client_config: Option<LSPSClientConfig>,
+	pub lsps_client_config: Option<Vec<LSPSClientConfig>>,
 	#[cfg_attr(not(feature = "experimental-lsps2-support"), allow(dead_code))]
 	pub lsps2_service_config: Option<LSPS2ServiceConfig>,
 	pub log_level: LevelFilter,
@@ -87,6 +87,7 @@ pub struct LSPSClientConfig {
 	pub node_id: PublicKey,
 	pub address: SocketAddress,
 	pub token: Option<String>,
+	pub trust_peer_0conf: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,7 +139,7 @@ struct ConfigBuilder {
 	rescan_from_height: Option<u32>,
 	force_wallet_full_scan: bool,
 	rgs_server_url: Option<String>,
-	lsps2: Option<LiquidityConfig>,
+	lsps: Option<LiquidityConfig>,
 	log_level: Option<String>,
 	log_file_path: Option<String>,
 	log_max_size_mb: Option<u64>,
@@ -208,7 +209,7 @@ impl ConfigBuilder {
 		}
 
 		if let Some(liquidity) = toml.liquidity {
-			self.lsps2 = Some(liquidity);
+			self.lsps = Some(liquidity);
 		}
 
 		if let Some(tls) = toml.tls {
@@ -510,16 +511,35 @@ impl ConfigBuilder {
 		let log_max_files = self.log_max_files.unwrap_or(DEFAULT_LOG_MAX_FILES);
 		let log_to_file = self.log_to_file.unwrap_or(true);
 
-		let lsps2_client_config = self
-			.lsps2
+		let lsps_client_config = self
+			.lsps
 			.as_ref()
-			.and_then(|liquidity| liquidity.lsps2_client.as_ref())
-			.map(LSPSClientConfig::try_from)
+			.and_then(|liquidity| liquidity.lsps_client.as_ref())
+			.map(|clients| {
+				let clients = clients
+					.iter()
+					.map(LSPSClientConfig::try_from)
+					.collect::<io::Result<Vec<_>>>()?;
+				let mut seen = std::collections::HashSet::new();
+				for client in &clients {
+					if !seen.insert(client.node_id) {
+						return Err(io::Error::new(
+							io::ErrorKind::InvalidInput,
+							format!(
+								"Duplicate liquidity client node pubkey configured: {}",
+								client.node_id
+							),
+						));
+					}
+				}
+
+				Ok(clients)
+			})
 			.transpose()?;
 
 		#[cfg(feature = "experimental-lsps2-support")]
 		let lsps2_service_config = {
-			let liquidity = self.lsps2.ok_or_else(|| io::Error::new(
+			let liquidity = self.lsps.ok_or_else(|| io::Error::new(
 				io::ErrorKind::InvalidInput,
 				"`liquidity.lsps2_service` must be defined in config if enabling `experimental-lsps2-support` feature."
 			))?;
@@ -595,7 +615,7 @@ impl ConfigBuilder {
 			storage_dir_path: self.storage_dir_path,
 			chain_source,
 			rgs_server_url: self.rgs_server_url,
-			lsps2_client_config,
+			lsps_client_config,
 			lsps2_service_config,
 			log_level,
 			log_file_path: self.log_file_path,
@@ -912,7 +932,7 @@ fn build_probing_config(config: Option<ProbingTomlConfig>) -> io::Result<Option<
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LiquidityConfig {
-	lsps2_client: Option<LSPSClientTomlConfig>,
+	lsps_client: Option<Vec<LSPSClientTomlConfig>>,
 	lsps2_service: Option<LSPS2ServiceTomlConfig>,
 }
 
@@ -922,6 +942,7 @@ struct LSPSClientTomlConfig {
 	node_pubkey: String,
 	address: String,
 	token: Option<String>,
+	trust_peer_0conf: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -989,7 +1010,12 @@ impl TryFrom<&LSPSClientTomlConfig> for LSPSClientConfig {
 			)
 		})?;
 
-		Ok(Self { node_id, address, token: value.token.clone() })
+		Ok(Self {
+			node_id,
+			address,
+			token: value.token.clone(),
+			trust_peer_0conf: value.trust_peer_0conf,
+		})
 	}
 }
 
@@ -1332,10 +1358,11 @@ mod tests {
 				rpc_user = "bitcoind-testuser"
 				rpc_password = "bitcoind-testpassword"
 
-				[liquidity.lsps2_client]
+				[[liquidity.lsps_client]]
 				node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
 				address = "127.0.0.1:39735"
 				token = "lsps2-token"
+				trust_peer_0conf = true
 
 				[liquidity.lsps2_service]
 				advertise_service = false
@@ -1490,14 +1517,15 @@ mod tests {
 				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
-			lsps2_client_config: Some(LSPSClientConfig {
+			lsps_client_config: Some(vec![LSPSClientConfig {
 				node_id: PublicKey::from_str(
 					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
 				)
 				.unwrap(),
 				address: SocketAddress::from_str("127.0.0.1:39735").unwrap(),
 				token: Some("lsps2-token".to_string()),
-			}),
+				trust_peer_0conf: true,
+			}]),
 			lsps2_service_config: Some(LSPS2ServiceConfig {
 				require_token: None,
 				advertise_service: false,
@@ -1539,7 +1567,7 @@ mod tests {
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
-		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
+		assert_eq!(config.lsps_client_config, expected.lsps_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.log_level, expected.log_level);
@@ -1576,9 +1604,10 @@ mod tests {
 			[electrum]
 			server_url = "ssl://electrum.blockstream.info:50002"
 
-			[liquidity.lsps2_client]
+			[[liquidity.lsps_client]]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
 			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1632,9 +1661,10 @@ mod tests {
 			rpc_user = "bitcoind-testuser"
 			rpc_password = "bitcoind-testpassword"
 
-			[liquidity.lsps2_client]
+			[[liquidity.lsps_client]]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
 			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1700,9 +1730,10 @@ mod tests {
 			[esplora]
 			server_url = "https://mempool.space/api"
 
-			[liquidity.lsps2_client]
+			[[liquidity.lsps_client]]
 			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
 			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
 
 			[liquidity.lsps2_service]
 			advertise_service = false
@@ -1771,6 +1802,202 @@ mod tests {
 
 		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
 		assert!(load_config(&args_config).is_ok());
+	}
+
+	#[test]
+	fn test_multiple_liquidity_sources_from_file() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_multiple_liquidity_sources.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let toml_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+			
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
+			token = "first-lsp-token"
+			trust_peer_0conf = true
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+			address = "127.0.0.1:39736"
+			trust_peer_0conf = false
+			{}"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let config = load_config(&args_config).unwrap();
+
+		let lsps_clients = config.lsps_client_config.expect("liquidity sources configured");
+		assert_eq!(lsps_clients.len(), 2);
+
+		assert_eq!(
+			lsps_clients[0],
+			LSPSClientConfig {
+				node_id: PublicKey::from_str(
+					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+				)
+				.unwrap(),
+				address: SocketAddress::from_str("127.0.0.1:39735").unwrap(),
+				token: Some("first-lsp-token".to_string()),
+				trust_peer_0conf: true,
+			}
+		);
+
+		assert_eq!(
+			lsps_clients[1],
+			LSPSClientConfig {
+				node_id: PublicKey::from_str(
+					"0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+				)
+				.unwrap(),
+				address: SocketAddress::from_str("127.0.0.1:39736").unwrap(),
+				token: None,
+				trust_peer_0conf: false,
+			}
+		);
+	}
+
+	#[test]
+	fn test_rejects_liquidity_source_without_trust_peer_0conf() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_liquidity_source_missing_trust_peer_0conf.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		// `trust_peer_0conf` is deliberately not defaulted: accepting 0-conf channels from an LSP
+		// is a trust decision each operator has to state explicitly, per LSP.
+		fs::write(
+			storage_path.join(config_file_name),
+			remove_config_line(DEFAULT_CONFIG, "trust_peer_0conf"),
+		)
+		.unwrap();
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+		assert!(err.to_string().contains("missing field `trust_peer_0conf`"));
+	}
+
+	#[test]
+	fn test_rejects_invalid_liquidity_source_among_several() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_invalid_liquidity_source.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		// A malformed entry following a valid one must fail the whole load rather than being
+		// silently skipped.
+		let invalid_pubkey_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "invalid-node-pubkey"
+			address = "127.0.0.1:39736"
+			trust_peer_0conf = false
+			{}"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), invalid_pubkey_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("Invalid liquidity client node pubkey configured"));
+
+		let invalid_address_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+			address = "not-a-socket-address"
+			trust_peer_0conf = false
+			{}"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), invalid_address_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("Invalid liquidity client address configured"));
+	}
+
+	#[test]
+	fn test_rejects_duplicate_liquidity_source_node_pubkey() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_duplicate_liquidity_source.toml";
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		// LDK Node ignores duplicate node IDs, so reject them here rather than silently
+		// discarding the second entry's address, token and trust_peer_0conf.
+		let duplicate_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39735"
+			trust_peer_0conf = true
+
+			[[liquidity.lsps_client]]
+			node_pubkey = "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+			address = "127.0.0.1:39736"
+			trust_peer_0conf = false
+			{}"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), duplicate_config).unwrap();
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("Duplicate liquidity client node pubkey configured"));
 	}
 
 	#[test]
@@ -1971,7 +2198,7 @@ mod tests {
 				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: None,
-			lsps2_client_config: None,
+			lsps_client_config: None,
 			lsps2_service_config: None,
 			log_level: LevelFilter::Trace,
 			log_file_path: Some("/var/log/ldk-server.log".to_string()),
@@ -2074,14 +2301,15 @@ mod tests {
 				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
-			lsps2_client_config: Some(LSPSClientConfig {
+			lsps_client_config: Some(vec![LSPSClientConfig {
 				node_id: PublicKey::from_str(
 					"0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266",
 				)
 				.unwrap(),
 				address: SocketAddress::from_str("127.0.0.1:39735").unwrap(),
 				token: Some("lsps2-token".to_string()),
-			}),
+				trust_peer_0conf: true,
+			}]),
 			lsps2_service_config: Some(LSPS2ServiceConfig {
 				require_token: None,
 				advertise_service: false,
@@ -2122,7 +2350,7 @@ mod tests {
 		assert_eq!(config.storage_dir_path, expected.storage_dir_path);
 		assert_eq!(config.chain_source, expected.chain_source);
 		assert_eq!(config.rgs_server_url, expected.rgs_server_url);
-		assert_eq!(config.lsps2_client_config, expected.lsps2_client_config);
+		assert_eq!(config.lsps_client_config, expected.lsps_client_config);
 		#[cfg(feature = "experimental-lsps2-support")]
 		assert_eq!(config.lsps2_service_config.is_some(), expected.lsps2_service_config.is_some());
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);

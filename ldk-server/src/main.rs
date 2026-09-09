@@ -223,13 +223,15 @@ fn main() {
 		std::process::exit(-1);
 	}
 
-	if let Some(lsps2_client_config) = config_file.lsps2_client_config {
-		builder.add_liquidity_source(
-			lsps2_client_config.node_id,
-			lsps2_client_config.address,
-			lsps2_client_config.token,
-			false,
-		);
+	if let Some(lsps_client_configs) = config_file.lsps_client_config {
+		for lsps_client_config in lsps_client_configs {
+			builder.add_liquidity_source(
+				lsps_client_config.node_id,
+				lsps_client_config.address,
+				lsps_client_config.token,
+				lsps_client_config.trust_peer_0conf,
+			);
+		}
 	}
 
 	if let Some(tor_config) = config_file.tor_config {
