@@ -802,6 +802,30 @@ pub struct SpliceOutResponse {
 	#[prost(string, tag = "1")]
 	pub address: ::prost::alloc::string::String,
 }
+/// Replace a pending splice transaction with a higher-fee transaction.
+/// This does not support general channel-opening fee bumping.
+/// LDK Node selects the fee rate; callers cannot set it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BumpChannelFundingFeeRequest {
+	/// The local user channel ID as a decimal u128 string.
+	#[prost(string, tag = "1")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	/// The hex-encoded public key of the channel's peer.
+	#[prost(string, tag = "2")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+}
+/// The pending splice fee bump was initiated. Confirmation is asynchronous.
+/// On failure, a gRPC error status is returned, including when no splice is pending.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BumpChannelFundingFeeResponse {}
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

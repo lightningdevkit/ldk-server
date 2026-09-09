@@ -612,6 +612,24 @@ pub fn splice_out_schema() -> Value {
 	})
 }
 
+/// Only pending splices can be fee-bumped at the pinned LDK Node revision.
+pub fn bump_channel_funding_fee_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"user_channel_id": {
+				"type": "string",
+				"description": "The local user channel ID as a decimal u128 string"
+			},
+			"counterparty_node_id": {
+				"type": "string",
+				"description": "The hex-encoded public key of the channel's peer"
+			}
+		},
+		"required": ["user_channel_id", "counterparty_node_id"]
+	})
+}
+
 pub fn close_channel_schema() -> Value {
 	json!({
 		"type": "object",
