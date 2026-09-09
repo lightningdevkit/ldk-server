@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use e2e_tests::{
 	assert_replacement, close_channel, find_available_port, list_payments, mine_and_sync,
 	payment_for_tx, run_cli, run_cli_raw, run_cli_with_config, send_bolt11_payment,
-	setup_funded_channel, wait_for_channels, wait_for_event, wait_for_gossip,
+	setup_funded_channel, splice_txid, wait_for_channels, wait_for_event, wait_for_gossip,
 	wait_for_onchain_balance, wait_for_settled_balance, wait_for_transaction,
 	wait_for_usable_channel, wait_for_wallet_sync, LdkServerConfig, LdkServerHandle, TestBitcoind,
 	TestConfigBuilder,
@@ -26,12 +26,12 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
+use ldk_server_client::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest,
-	Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest,
+	Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest, BumpChannelFundingFeeRequest,
 	GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest, GetPaymentDetailsRequest,
-	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest,
+	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest, ListChannelsRequest,
 	ListForwardedPaymentsRequest, OnchainBumpFeeRequest, OnchainReceiveRequest, OnchainSendRequest,
 	OpenChannelRequest,
 };
@@ -1520,6 +1520,132 @@ async fn test_cli_splice_out() {
 		run_cli(&server_a, &["splice-out", &user_channel_id, server_b.node_id(), "10000sat"]);
 	let address = output["address"].as_str().unwrap();
 	assert!(address.starts_with("bcrt1"), "Expected regtest address, got: {}", address);
+}
+
+#[tokio::test]
+async fn test_pending_splice_fee_bump_client_cli() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let peer = LdkServerHandle::start(&bitcoind).await;
+	let channel = setup_funded_channel(&bitcoind, &server, &peer, 100_000).await;
+	let request = BumpChannelFundingFeeRequest {
+		user_channel_id: channel.clone(),
+		counterparty_node_id: peer.node_id().into(),
+	};
+	let error = server.client().bump_channel_funding_fee(request.clone()).await.unwrap_err();
+	assert_eq!(error.error_code, LightningError);
+	let mut wrong_peer = request.clone();
+	wrong_peer.counterparty_node_id = server.node_id().into();
+	assert_eq!(
+		server.client().bump_channel_funding_fee(wrong_peer).await.unwrap_err().error_code,
+		LightningError
+	);
+
+	let mut events = server.client().subscribe_events().await.unwrap();
+	// Use the same funded channel and splice-in operation as the existing splice fixtures.
+	run_cli(&server, &["splice-in", &channel, peer.node_id(), "50000sat"]);
+	let original = splice_txid(&mut events).await;
+	let original_tx = wait_for_transaction(&bitcoind, &original).await;
+	let funding_output = original_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["type"] == "witness_v0_scripthash")
+		.unwrap();
+	let expected_channel_value =
+		ldk_node::bitcoin::Amount::from_btc(funding_output["value"].as_f64().unwrap())
+			.unwrap()
+			.to_sat();
+	assert!(expected_channel_value >= 150_000);
+
+	let funding = payment_for_tx(&server, &original).await;
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: funding.payment_id,
+			fee_rate_sat_per_vb: Some(10),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
+
+	server.client().bump_channel_funding_fee(request.clone()).await.unwrap();
+	let replacement = splice_txid(&mut events).await;
+	assert_ne!(original, replacement);
+	wait_for_transaction(&bitcoind, &replacement).await;
+	let cli = run_cli(&server, &["bump-channel-funding-fee", &channel, peer.node_id()]);
+	assert_eq!(cli, json!({}));
+	let cli_txid = splice_txid(&mut events).await;
+	assert_ne!(replacement, cli_txid);
+	let replacement_tx = wait_for_transaction(&bitcoind, &cli_txid).await;
+	let replacement_output = replacement_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"] == funding_output["scriptPubKey"])
+		.unwrap();
+	assert_eq!(replacement_output["value"], funding_output["value"]);
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	for old in [&original, &replacement] {
+		assert!(!mempool.contains(old));
+	}
+	mine_and_sync(&bitcoind, &[&server, &peer], 6).await;
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let channels = server.client().list_channels(ListChannelsRequest {}).await.unwrap();
+			if channels.channels.iter().any(|c| {
+				c.user_channel_id == channel
+					&& c.channel_value_sats == expected_channel_value
+					&& c.is_usable
+			}) {
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("replacement splice did not confirm with the original amount");
+	assert_eq!(
+		server.client().bump_channel_funding_fee(request).await.unwrap_err().error_code,
+		LightningError
+	);
+}
+
+#[tokio::test]
+async fn test_pending_splice_fee_bump_invalid_requests() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	for id in ["", "-1", "xyz", "340282366920938463463374607431768211456"] {
+		let error = server
+			.client()
+			.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+				user_channel_id: id.into(),
+				counterparty_node_id: server.node_id().into(),
+			})
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+	}
+	for peer in ["", "invalid", &"00".repeat(33)] {
+		let error = server
+			.client()
+			.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+				user_channel_id: "1".into(),
+				counterparty_node_id: peer.into(),
+			})
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+	}
+	let error = server
+		.client()
+		.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+			user_channel_id: u128::MAX.to_string(),
+			counterparty_node_id: server.node_id().into(),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, LightningError);
 }
 
 #[tokio::test]

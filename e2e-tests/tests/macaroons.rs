@@ -144,6 +144,14 @@ async fn test_macaroon_splice_permissions() {
 			scoped_client.splice_out(Default::default()).await.unwrap_err().error_code,
 			splice_out_error
 		);
+		assert_eq!(
+			scoped_client
+				.bump_channel_funding_fee(Default::default())
+				.await
+				.unwrap_err()
+				.error_code,
+			splice_in_error
+		);
 	}
 }
 

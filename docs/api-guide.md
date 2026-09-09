@@ -103,7 +103,7 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | `payments:claim` | Claim or fail held BOLT11 payments |
 | `payments:send` | Send BOLT11, BOLT12, spontaneous, unified, and refund payments; splice out |
 | `channels:read` | List channels |
-| `channels:manage` | Open, configure, cooperatively close, or splice funds into channels |
+| `channels:manage` | Open, configure, cooperatively close, splice funds into channels, or bump pending splice fees |
 | `channels:force_close` | Force-close channels |
 | `peers:read` | List peers |
 | `peers:manage` | Connect or disconnect peers |
@@ -235,15 +235,28 @@ a channel just-in-time when the invoice is paid.
 
 ### Channel Management
 
-| RPC                   | Description                                                            |
-|-----------------------|------------------------------------------------------------------------|
-| `OpenChannel`         | Open a new outbound channel (with optional push amount and fee config) |
-| `CloseChannel`        | Cooperatively close a channel                                          |
-| `ForceCloseChannel`   | Force-close a channel unilaterally                                     |
-| `SpliceIn`            | Add on-chain funds to an existing channel                              |
-| `SpliceOut`           | Remove funds from a channel back on-chain                              |
-| `UpdateChannelConfig` | Update forwarding fees and CLTV expiry delta                           |
-| `ListChannels`        | List all channels with balances and configuration                      |
+| RPC                     | Description                                                            |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `OpenChannel`           | Open a new outbound channel (with optional push amount and fee config) |
+| `CloseChannel`          | Cooperatively close a channel                                          |
+| `ForceCloseChannel`     | Force-close a channel unilaterally                                     |
+| `SpliceIn`              | Add on-chain funds to an existing channel                              |
+| `SpliceOut`             | Remove funds from a channel back on-chain                              |
+| `BumpChannelFundingFee` | Raise the fee of a pending splice transaction                          |
+| `UpdateChannelConfig`   | Update forwarding fees and CLTV expiry delta                           |
+| `ListChannels`          | List all channels with balances and configuration                      |
+
+> [!NOTE]
+> `BumpChannelFundingFee` supports pending splices only. It preserves the splice amount and
+> destination, and LDK Node selects the fee rate. General channel-opening fee bumps and
+> caller-selected splice fee rates are not supported.
+
+Call it on the node that contributed to the splice, using the channel's `user_channel_id` and
+`counterparty_node_id`. A channel with no pending splice returns an error. An empty response means
+the fee bump has started; use [channel events](#event-streaming) to follow its progress.
+
+The automatic increase can be below Bitcoin Core 29's minimum relay fee increase. Check that the
+replacement transaction reaches the mempool; a successful RPC does not guarantee relay or confirmation.
 
 ### Payment History
 
