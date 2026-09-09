@@ -34,13 +34,13 @@ use ldk_server_grpc::api::{
 	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
 	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
-	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
-	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainBumpFeeRequest,
+	OnchainBumpFeeResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
+	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest,
+	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -52,10 +52,10 @@ use ldk_server_grpc::endpoints::{
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
 	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -196,6 +196,15 @@ impl LdkServerClient {
 		&self, request: OnchainSendRequest,
 	) -> Result<OnchainSendResponse, LdkServerError> {
 		self.grpc_unary(&request, ONCHAIN_SEND_PATH).await
+	}
+
+	/// Replace an unconfirmed outbound on-chain payment using RBF.
+	/// The payment ID is 32 bytes encoded as hex. The optional absolute rate is in sat/vB.
+	/// Funding payments are not eligible. Returns the replacement transaction ID.
+	pub async fn onchain_bump_fee(
+		&self, request: OnchainBumpFeeRequest,
+	) -> Result<OnchainBumpFeeResponse, LdkServerError> {
+		self.grpc_unary(&request, ONCHAIN_BUMP_FEE_PATH).await
 	}
 
 	/// Retrieve a new BOLT11 payable invoice.

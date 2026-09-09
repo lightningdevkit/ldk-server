@@ -13,6 +13,7 @@ pub const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 pub const GET_NODE_INFO_PATH: &str = "GetNodeInfo";
 pub const GET_BALANCES_PATH: &str = "GetBalances";
 pub const ONCHAIN_RECEIVE_PATH: &str = "OnchainReceive";
+pub const ONCHAIN_BUMP_FEE_PATH: &str = "OnchainBumpFee";
 pub const ONCHAIN_SEND_PATH: &str = "OnchainSend";
 pub const BOLT11_RECEIVE_PATH: &str = "Bolt11Receive";
 pub const BOLT11_RECEIVE_FOR_HASH_PATH: &str = "Bolt11ReceiveForHash";

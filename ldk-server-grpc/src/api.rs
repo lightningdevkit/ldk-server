@@ -161,6 +161,35 @@ pub struct OnchainSendResponse {
 	#[prost(string, tag = "1")]
 	pub txid: ::prost::alloc::string::String,
 }
+/// Replace an unconfirmed outbound on-chain payment with a higher-fee transaction.
+/// Channel funding payments (including splices) are not eligible.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OnchainBumpFeeRequest {
+	/// The payment ID from ListPayments or GetPaymentDetails: 32 bytes encoded as hex.
+	/// This is not the displayed transaction ID.
+	#[prost(string, tag = "1")]
+	pub payment_id: ::prost::alloc::string::String,
+	/// Absolute fee rate in satoshis per virtual byte, not a fee increment.
+	/// Must be positive and high enough to replace the current transaction.
+	/// If omitted, LDK Node selects a rate from its estimate and the RBF minimum.
+	#[prost(uint64, optional, tag = "2")]
+	pub fee_rate_sat_per_vb: ::core::option::Option<u64>,
+}
+/// The response for OnchainBumpFee. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OnchainBumpFeeResponse {
+	/// The replacement transaction ID. The recipient amount is preserved.
+	#[prost(string, tag = "1")]
+	pub txid: ::prost::alloc::string::String,
+}
 /// Return a BOLT11 payable invoice that can be used to request and receive a payment
 /// for the given amount, if specified.
 /// The inbound payment will be automatically claimed upon arrival.

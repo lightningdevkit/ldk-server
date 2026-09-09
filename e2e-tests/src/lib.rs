@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
@@ -20,10 +20,11 @@ use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoRes
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::api::{
-	open_channel_request, GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest,
-	OpenChannelRequest,
+	open_channel_request, GetBalancesRequest, ListChannelsRequest, ListPaymentsRequest,
+	OnchainReceiveRequest, OpenChannelRequest,
 };
-use serde_json::Value;
+use ldk_server_grpc::types::{payment_kind, Payment};
+use serde_json::{json, Value};
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -688,6 +689,91 @@ pub async fn mine_and_sync(
 			tokio::time::sleep(Duration::from_millis(500)).await;
 		}
 	}
+}
+
+/// Wait for a transaction to enter the mempool and return its decoded details.
+pub async fn wait_for_transaction(bitcoind: &TestBitcoind, txid: &str) -> Value {
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+			if mempool.iter().any(|id| id == txid) {
+				return bitcoind
+					.bitcoind
+					.client
+					.call("getrawtransaction", &[json!(txid), json!(true)])
+					.unwrap();
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("transaction did not enter the mempool")
+}
+
+/// Wait for the on-chain wallet to complete another sync.
+///
+/// The pinned wallet records a replacement before its background sync sees the transaction.
+pub async fn wait_for_wallet_sync(server: &LdkServerHandle) {
+	let after = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let info = server.client().get_node_info(GetNodeInfoRequest {}).await.unwrap();
+			if info.latest_onchain_wallet_sync_timestamp.is_some_and(|timestamp| timestamp > after)
+			{
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("wallet did not sync after the replacement");
+}
+
+/// Wait for a transaction to appear in the node's payment history.
+pub async fn payment_for_tx(server: &LdkServerHandle, txid: &str) -> Payment {
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let mut page_token = None;
+			loop {
+				let page = server
+					.client()
+					.list_payments(ListPaymentsRequest { page_token })
+					.await
+					.unwrap();
+				for payment in page.payments {
+					if let Some(payment_kind::Kind::Onchain(onchain)) =
+						payment.kind.as_ref().and_then(|kind| kind.kind.as_ref())
+					{
+						if onchain.txid == txid {
+							return payment;
+						}
+					}
+				}
+				page_token = page.next_page_token;
+				if page_token.is_none() {
+					break;
+				}
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("payment was not recorded")
+}
+
+/// Check that a replacement preserves the 50,000 sat recipient output.
+pub async fn assert_replacement(bitcoind: &TestBitcoind, old: &str, new: &str, address: &str) {
+	assert_ne!(old, new);
+	let tx = wait_for_transaction(bitcoind, new).await;
+	let recipient = tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["address"] == address)
+		.unwrap();
+	assert_eq!(recipient["value"], json!(0.0005));
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	assert!(!mempool.iter().any(|id| id == old));
 }
 
 /// Wait until the given client has at least one usable channel,

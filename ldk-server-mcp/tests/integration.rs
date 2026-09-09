@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 41;
+const NUM_TOOLS: usize = 42;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
@@ -44,6 +44,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"list_forwarded_payments",
 	"list_payments",
 	"list_peers",
+	"onchain_bump_fee",
 	"onchain_receive",
 	"onchain_send",
 	"open_channel",
@@ -181,6 +182,10 @@ fn test_tools_list() {
 		EXPECTED_TOOLS.iter().map(|name| name.to_string()).collect::<Vec<_>>();
 	expected_tool_names.sort();
 	assert_eq!(tool_names, expected_tool_names, "Tool names drifted from the expected API surface");
+
+	let onchain = tools.iter().find(|tool| tool["name"] == "onchain_bump_fee").unwrap();
+	assert_eq!(onchain["inputSchema"]["required"], json!(["payment_id"]));
+	assert_eq!(onchain["inputSchema"]["properties"]["fee_rate_sat_per_vb"]["minimum"], 1);
 
 	for tool in tools {
 		assert!(tool["name"].is_string(), "Tool missing name");

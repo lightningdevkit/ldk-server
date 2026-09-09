@@ -87,9 +87,15 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 ### On-Chain
 
 | RPC              | Description                                                          |
-|------------------|----------------------------------------------------------------------|
+| ---------------- | -------------------------------------------------------------------- |
 | `OnchainReceive` | Generate a new on-chain funding address                              |
 | `OnchainSend`    | Send to a Bitcoin address (with optional fee rate and send-all mode) |
+| `OnchainBumpFee` | Raise the fee of an unconfirmed outbound on-chain payment using RBF  |
+
+`OnchainBumpFee` replaces a payment's transaction while preserving its payment ID and recipient
+amount. Use the `payment_id` from `ListPayments`. The optional `fee_rate_sat_per_vb` sets the new
+total fee rate in sat/vB; omit it to use an automatic rate. The response contains the replacement
+`txid`. Confirmed, inbound, Lightning, and channel funding payments are not eligible.
 
 ### BOLT11 Payments
 

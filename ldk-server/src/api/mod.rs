@@ -46,6 +46,7 @@ pub(crate) mod list_channels;
 pub(crate) mod list_forwarded_payments;
 pub(crate) mod list_payments;
 pub(crate) mod list_peers;
+pub(crate) mod onchain_bump_fee;
 pub(crate) mod onchain_receive;
 pub(crate) mod onchain_send;
 pub(crate) mod open_channel;

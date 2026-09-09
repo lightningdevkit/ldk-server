@@ -125,6 +125,25 @@ message OnchainSendResponse {
   string txid = 1;
 }
 
+// Replace an unconfirmed outbound on-chain payment with a higher-fee transaction.
+// Channel funding payments (including splices) are not eligible.
+message OnchainBumpFeeRequest {
+  // The payment ID from ListPayments or GetPaymentDetails: 32 bytes encoded as hex.
+  // This is not the displayed transaction ID.
+  string payment_id = 1;
+
+  // Absolute fee rate in satoshis per virtual byte, not a fee increment.
+  // Must be positive and high enough to replace the current transaction.
+  // If omitted, LDK Node selects a rate from its estimate and the RBF minimum.
+  optional uint64 fee_rate_sat_per_vb = 2;
+}
+
+// The response for OnchainBumpFee. On failure, a gRPC error status is returned.
+message OnchainBumpFeeResponse {
+  // The replacement transaction ID. The recipient amount is preserved.
+  string txid = 1;
+}
+
 // Return a BOLT11 payable invoice that can be used to request and receive a payment
 // for the given amount, if specified.
 // The inbound payment will be automatically claimed upon arrival.
@@ -1041,6 +1060,8 @@ service LightningNode {
   rpc OnchainReceive(OnchainReceiveRequest) returns (OnchainReceiveResponse);
   // Send an on-chain payment to the given address.
   rpc OnchainSend(OnchainSendRequest) returns (OnchainSendResponse);
+  // Replace an unconfirmed outbound on-chain payment using RBF.
+  rpc OnchainBumpFee(OnchainBumpFeeRequest) returns (OnchainBumpFeeResponse);
   // Return a BOLT11 payable invoice.
   rpc Bolt11Receive(Bolt11ReceiveRequest) returns (Bolt11ReceiveResponse);
   // Return a BOLT11 payable invoice for a given payment hash.

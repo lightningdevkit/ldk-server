@@ -41,12 +41,12 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
 	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
 	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
-	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ListPeersResponse, OnchainBumpFeeRequest, OnchainBumpFeeResponse, OnchainReceiveRequest,
+	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
+	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
@@ -124,6 +124,18 @@ enum Commands {
 		#[arg(
 			long,
 			help = "Fee rate in satoshis per virtual byte. If not set, a reasonable estimate will be used"
+		)]
+		fee_rate_sat_per_vb: Option<u64>,
+	},
+	#[command(about = "Replace an unconfirmed outbound on-chain payment using RBF")]
+	OnchainBumpFee {
+		#[arg(
+			help = "Payment ID from list-payments: 32 bytes encoded as hex, not the transaction ID"
+		)]
+		payment_id: String,
+		#[arg(
+			long,
+			help = "Absolute fee rate in sat/vB, not an increment. Must be positive and high enough for RBF. If omitted, LDK Node selects the rate"
 		)]
 		fee_rate_sat_per_vb: Option<u64>,
 	},
@@ -715,6 +727,13 @@ async fn main() {
 		Commands::OnchainReceive => {
 			handle_response_result::<_, OnchainReceiveResponse>(
 				client.onchain_receive(OnchainReceiveRequest {}).await,
+			);
+		},
+		Commands::OnchainBumpFee { payment_id, fee_rate_sat_per_vb } => {
+			handle_response_result::<_, OnchainBumpFeeResponse>(
+				client
+					.onchain_bump_fee(OnchainBumpFeeRequest { payment_id, fee_rate_sat_per_vb })
+					.await,
 			);
 		},
 		Commands::OnchainSend { address, amount, fee_rate_sat_per_vb } => {
@@ -1472,6 +1491,34 @@ fn handle_error(e: LdkServerError) -> ! {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn onchain_bump_fee_arguments() {
+		for rate in [None, Some("12")] {
+			let mut args = vec!["ldk-server-cli", "onchain-bump-fee", "payment"];
+			if let Some(rate) = rate {
+				args.extend(["--fee-rate-sat-per-vb", rate]);
+			}
+			let cli = Cli::try_parse_from(args).unwrap();
+			match cli.command {
+				Commands::OnchainBumpFee { payment_id, fee_rate_sat_per_vb } => {
+					assert_eq!(payment_id, "payment");
+					assert_eq!(fee_rate_sat_per_vb, rate.map(|r| r.parse().unwrap()));
+				},
+				_ => panic!("wrong command"),
+			}
+		}
+		for rate in ["-1", "1.5", "18446744073709551616"] {
+			assert!(Cli::try_parse_from([
+				"ldk-server-cli",
+				"onchain-bump-fee",
+				"payment",
+				"--fee-rate-sat-per-vb",
+				rate
+			])
+			.is_err());
+		}
+	}
 
 	#[tokio::test]
 	async fn fetch_paginated_collects_multiple_pages() {

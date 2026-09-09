@@ -173,6 +173,27 @@ pub fn onchain_send_schema() -> Value {
 	})
 }
 
+/// Replace an eligible on-chain payment using RBF.
+pub fn onchain_bump_fee_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"payment_id": {
+				"type": "string",
+				"pattern": "^[0-9a-fA-F]{64}$",
+				"description": "Payment ID from list_payments: 32 bytes encoded as hex, not the transaction ID"
+			},
+			"fee_rate_sat_per_vb": {
+				"type": "integer",
+				"minimum": 1,
+				"maximum": u64::MAX / 250,
+				"description": "Absolute fee rate in sat/vB, not an increment. Must meet the RBF minimum. If omitted, LDK Node selects the rate"
+			}
+		},
+		"required": ["payment_id"]
+	})
+}
+
 pub fn bolt11_receive_schema() -> Value {
 	json!({
 		"type": "object",
