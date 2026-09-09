@@ -19,6 +19,7 @@ a Lightning node while exposing a robust, language-agnostic API via [Protocol Bu
 - `ldk-server-cli`: CLI client for the server API
 - `ldk-server-client`: Rust client library for authenticated TLS gRPC calls
 - `ldk-server-grpc`: generated protobuf and shared gRPC types
+- `ldk-server-macaroons`: shared token parsing, signing, derivation, and request binding
 - `ldk-server-mcp`: stdio MCP bridge exposing unary `ldk-server` RPCs as MCP tools
 
 ### Features

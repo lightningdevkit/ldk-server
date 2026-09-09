@@ -15,24 +15,107 @@ underlying LDK Node documentation.
 
 ## Authentication
 
-Every gRPC request must include an `x-auth` metadata header with an HMAC-SHA256 signature:
+Each request needs a hex-encoded v2 macaroon in the `macaroon` header:
 
+```text
+macaroon: <hex-encoded-request-macaroon>
 ```
-x-auth: HMAC <unix_timestamp>:<hmac_hex>
+
+Keep your original macaroon private. The client uses it to make a token for each request,
+as described below. All requests use TLS.
+
+You can add caveats to make a restricted copy of your macaroon without contacting the server.
+A caveat limits its permissions, allowed methods, or expiry time. Added caveats can only reduce
+access. See [Restrictions](#restrictions) for examples.
+
+### Request binding
+
+The Rust client, CLI, and MCP handle request binding automatically. They keep your macaroon
+private and send a copy tied to the request's method, body, and time.
+
+Custom clients must add one final caveat:
+
+```text
+request = <unix-seconds> <RpcMethod> <body-sha256>
 ```
 
-Where:
+Use Unix time in seconds, a method name such as `OnchainSend`, and the lowercase SHA-256 hash
+of the exact gRPC body, including its five-byte frame header. Rust clients can use
+`macaroon::bind_macaroon_to_request`.
 
-- `unix_timestamp` is the current time in seconds since the Unix epoch
-- `hmac_hex` is the hex-encoded result of
-  `HMAC-SHA256(api_key_bytes, timestamp_be_bytes || grpc_request_body_bytes)`
-    - `api_key_bytes` is the API key string encoded as UTF-8 bytes
-    - `timestamp_be_bytes` is the timestamp as a big-endian 8-byte unsigned integer
-    - `grpc_request_body_bytes` is the raw gRPC request body sent over HTTP/2, including
-      the 5-byte gRPC message frame
+Client and server clocks must be within 60 seconds. The token cannot authorize a different
+request, but the same request can still be replayed while the token is valid.
 
-The server rejects requests where the timestamp differs from the server's clock by more than
-**60 seconds**.
+See [Request proof format](request-binding.md) for exact encoding rules and an example.
+
+### Restrictions
+
+A caveat is a condition that limits what a macaroon can do. All caveats must pass:
+
+| Caveat | Meaning |
+|--------|---------|
+| `permissions = node:read,payments:read` | Allow only these permissions |
+| `method = GetNodeInfo` | Allow only this RPC method |
+| `time-before = 1800000000` | Expire at this Unix time in seconds |
+
+Added caveats can only reduce access. They cannot restore permissions or extend the expiry time.
+
+Derive a restricted copy without contacting the server:
+
+```bash
+ldk-server-cli derive-macaroon "$MACAROON" \
+  --caveat 'permissions = node:read' \
+  --caveat 'method = GetNodeInfo' \
+  --caveat "time-before = $EXPIRY_UNIX_SECONDS"
+```
+
+The command prints a hex token. Rust clients can use `macaroon::derive_macaroon`.
+Give the copy to the application and keep the original private.
+
+### Create and revoke tokens
+
+Use `CreateMacaroon` to give each client a token you can revoke separately. New tokens keep
+all the caller's restrictions. Revoking the caller's token does not revoke these new tokens.
+
+Copies made with `derive-macaroon` share the original token's ID. Revoking that ID blocks
+all those copies. The server cannot list copies made locally.
+
+Revocation and expiry block new requests. Existing event streams stay open until the client
+disconnects or the server stops. Reconnecting requires a valid token.
+
+See [Macaroon Management](#macaroon-management) for the RPCs and
+[Operations](operations.md#macaroons) for storage and recovery.
+
+### Macaroon Permissions
+
+Choose the permissions each client needs, or use `admin` by itself for full access.
+The CLI also has `readonly`, `invoice`, and `admin` presets.
+RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
+
+| Permission | Access |
+| ---------- | ------ |
+| `node:read` | Node information, balances, and pathfinding scores |
+| `onchain:receive` | Create on-chain receive addresses |
+| `onchain:send` | Send on-chain funds |
+| `invoices:create` | Create BOLT11/BOLT12 invoices and incoming refund requests |
+| `payments:read` | Read payments and forwarded payments |
+| `payments:claim` | Claim or fail held BOLT11 payments |
+| `payments:send` | Send BOLT11, BOLT12, spontaneous, unified, and refund payments |
+| `channels:read` | List channels |
+| `channels:manage` | Open, configure, or cooperatively close channels |
+| `channels:splice` | Splice funds in or out, including to an external address |
+| `channels:force_close` | Force-close channels |
+| `peers:read` | List peers |
+| `peers:manage` | Connect or disconnect peers |
+| `messages:sign` | Sign messages and create BOLT12 payer proofs |
+| `messages:verify` | Verify message signatures |
+| `graph:read` | Read network graph data |
+| `utilities:read` | Decode invoices and offers |
+| `events:read` | Subscribe to the event stream |
+| `macaroons:manage` | Create, list, and revoke macaroons within your permissions |
+
+MCP provides token management through `create_macaroon`, `list_macaroons`, `revoke_macaroon`,
+and `get_permissions`.
 
 ## TLS
 
@@ -67,9 +150,10 @@ Errors are returned as standard gRPC status codes:
 | gRPC Code                 | Meaning                                                          |
 |---------------------------|------------------------------------------------------------------|
 | `INVALID_ARGUMENT` (3)    | Malformed request or invalid parameters                          |
+| `PERMISSION_DENIED` (7)   | Missing permission or a caveat that does not pass                    |
 | `FAILED_PRECONDITION` (9) | Lightning operation error (e.g., insufficient balance, no route) |
 | `INTERNAL` (13)           | Server-side bug                                                  |
-| `UNAUTHENTICATED` (16)    | Missing or invalid `x-auth` header                               |
+| `UNAUTHENTICATED` (16)    | Missing, invalid, or revoked macaroon                               |
 
 The `grpc-message` trailer contains a human-readable error description.
 
@@ -231,6 +315,18 @@ queue can continue processing.
 Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
 `GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
 cannot be recovered through these APIs.
+
+### Macaroon Management
+
+| RPC | Description |
+|-----|-------------|
+| `CreateMacaroon` | Create a macaroon and return its private hex token in `token` |
+| `ListMacaroons` | List IDs, names, permissions, and caveats, without secrets |
+| `RevokeMacaroon` | Revoke a macaroon by ID |
+| `GetPermissions` | Show the caller's ID, name, usable permissions, and caveats |
+
+The first three RPCs require `macaroons:manage` or `admin`. You can only create or revoke
+tokens whose permissions you have. The last unrestricted admin token cannot be revoked.
 
 ### Metrics
 

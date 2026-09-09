@@ -8,10 +8,7 @@
 // licenses.
 
 use std::io::Cursor;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use bitcoin_hashes::hmac::{Hmac, HmacEngine};
-use bitcoin_hashes::{sha256, Hash, HashEngine};
 use hyper::body::HttpBody as _;
 use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -25,18 +22,20 @@ use ldk_server_grpc::api::{
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
 	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
-	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
-	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	ConnectPeerRequest, ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
+	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
+	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListMacaroonsRequest,
+	ListMacaroonsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest,
+	RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
 	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
 	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
 	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
@@ -48,12 +47,13 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
-	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
+	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX,
+	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH,
+	LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
+	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
 	VERIFY_SIGNATURE_PATH,
 };
@@ -61,7 +61,7 @@ use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
 	decode_grpc_body, encode_grpc_frame, percent_decode, GRPC_STATUS_FAILED_PRECONDITION,
 	GRPC_STATUS_INTERNAL, GRPC_STATUS_INVALID_ARGUMENT, GRPC_STATUS_OK,
-	GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
+	GRPC_STATUS_PERMISSION_DENIED, GRPC_STATUS_UNAUTHENTICATED, GRPC_STATUS_UNAVAILABLE,
 };
 use prost::Message;
 use reqwest::header::HeaderMap;
@@ -71,7 +71,8 @@ use rustls_pemfile::certs;
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
+	LightningError,
 };
 
 type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
@@ -96,17 +97,19 @@ pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
 	streaming_client: StreamingClient,
-	api_key: String,
+	macaroon: String,
 }
 
 impl LdkServerClient {
 	/// Constructs a [`LdkServerClient`] using `base_url` as the ldk-server endpoint.
 	///
 	/// `base_url` should not include the scheme, e.g., `localhost:3000`.
-	/// `api_key` is used for HMAC-based authentication.
+	/// Pass a private hex-encoded v2 `macaroon`. The client sends a copy tied to each
+	/// request's method, body, and time.
 	/// `server_cert_pem` is the server's TLS certificate in PEM format. This can be
 	/// found at `<server_storage_dir>/tls.crt` after the server starts.
-	pub fn new(base_url: String, api_key: String, server_cert_pem: &[u8]) -> Result<Self, String> {
+	pub fn new(base_url: String, macaroon: String, server_cert_pem: &[u8]) -> Result<Self, String> {
+		crate::macaroon::parse_reusable_macaroon(&macaroon)?;
 		let cert = Certificate::from_pem(server_cert_pem)
 			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
 		let streaming_client = build_streaming_client(server_cert_pem)?;
@@ -116,24 +119,7 @@ impl LdkServerClient {
 			.build()
 			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, streaming_client, api_key })
-	}
-
-	/// Computes the HMAC-SHA256 authentication header value.
-	/// Format: "HMAC <timestamp>:<hmac_hex>"
-	/// The signature covers the timestamp and raw gRPC request body bytes.
-	fn compute_auth_header(&self, body: &[u8]) -> String {
-		let timestamp = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("System time should be after Unix epoch")
-			.as_secs();
-
-		let mut hmac_engine: HmacEngine<sha256::Hash> = HmacEngine::new(self.api_key.as_bytes());
-		hmac_engine.input(&timestamp.to_be_bytes());
-		hmac_engine.input(body);
-		let hmac_result = Hmac::<sha256::Hash>::from_engine(hmac_engine);
-
-		format!("HMAC {}:{}", timestamp, hmac_result)
+		Ok(Self { base_url, client, streaming_client, macaroon })
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
@@ -461,11 +447,44 @@ impl LdkServerClient {
 		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
 	}
 
+	/// Create a macaroon with the specified permissions.
+	pub async fn create_macaroon(
+		&self, request: CreateMacaroonRequest,
+	) -> Result<CreateMacaroonResponse, LdkServerError> {
+		self.grpc_unary(&request, CREATE_MACAROON_PATH).await
+	}
+
+	/// List macaroons without returning their secrets.
+	pub async fn list_macaroons(
+		&self, request: ListMacaroonsRequest,
+	) -> Result<ListMacaroonsResponse, LdkServerError> {
+		self.grpc_unary(&request, LIST_MACAROONS_PATH).await
+	}
+
+	/// Revoke a macaroon by ID.
+	pub async fn revoke_macaroon(
+		&self, request: RevokeMacaroonRequest,
+	) -> Result<RevokeMacaroonResponse, LdkServerError> {
+		self.grpc_unary(&request, REVOKE_MACAROON_PATH).await
+	}
+
+	/// Show the calling macaroon's ID, name, permissions, and caveats.
+	pub async fn get_permissions(
+		&self, request: GetPermissionsRequest,
+	) -> Result<GetPermissionsResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_PERMISSIONS_PATH).await
+	}
+
 	/// Subscribe to a stream of server events via server-streaming gRPC.
 	///
 	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
 	pub async fn subscribe_events(&self) -> Result<EventStream, LdkServerError> {
 		self.grpc_server_streaming(&SubscribeEventsRequest {}, SUBSCRIBE_EVENTS_PATH).await
+	}
+
+	fn request_macaroon(&self, method: &str, body: &[u8]) -> Result<String, LdkServerError> {
+		crate::macaroon::bind_macaroon_to_request(&self.macaroon, method, body)
+			.map_err(|message| LdkServerError::new(InternalError, message))
 	}
 
 	/// Send a unary gRPC request and decode the response.
@@ -476,7 +495,7 @@ impl LdkServerClient {
 		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header(&grpc_body);
+		let auth_header = self.request_macaroon(method, &grpc_body)?;
 
 		let response = self
 			.client
@@ -484,7 +503,7 @@ impl LdkServerClient {
 			.header("content-type", "application/grpc+proto")
 			.header("content-length", content_length)
 			.header("te", "trailers")
-			.header("x-auth", auth_header)
+			.header("macaroon", auth_header)
 			.body(grpc_body)
 			.send()
 			.await
@@ -518,7 +537,7 @@ impl LdkServerClient {
 		let content_length = grpc_body.len().to_string();
 
 		let url = format!("https://{}{}{}", self.base_url, GRPC_SERVICE_PREFIX, method);
-		let auth_header = self.compute_auth_header(&grpc_body);
+		let auth_header = self.request_macaroon(method, &grpc_body)?;
 
 		let response = self
 			.streaming_client
@@ -528,7 +547,7 @@ impl LdkServerClient {
 					.header("content-type", "application/grpc+proto")
 					.header("content-length", content_length)
 					.header("te", "trailers")
-					.header("x-auth", auth_header)
+					.header("macaroon", auth_header)
 					.body(HyperBody::from(grpc_body))
 					.map_err(|e| {
 						LdkServerError::new(
@@ -606,6 +625,7 @@ fn grpc_code_to_error(code: u32, message: String) -> LdkServerError {
 				format!("gRPC stream became unavailable: {message}")
 			},
 		),
+		GRPC_STATUS_PERMISSION_DENIED => LdkServerError::new(AuthorizationError, message),
 		GRPC_STATUS_UNAUTHENTICATED => LdkServerError::new(AuthError, message),
 		_ => LdkServerError::new(
 			InternalError,
@@ -887,6 +907,7 @@ mod tests {
 		let cases = [
 			(GRPC_STATUS_INVALID_ARGUMENT, InvalidRequestError, "msg"),
 			(GRPC_STATUS_UNAUTHENTICATED, AuthError, "msg"),
+			(GRPC_STATUS_PERMISSION_DENIED, AuthorizationError, "msg"),
 			(GRPC_STATUS_FAILED_PRECONDITION, LightningError, "msg"),
 			(GRPC_STATUS_INTERNAL, InternalServerError, "msg"),
 		];

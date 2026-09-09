@@ -9,13 +9,12 @@
 
 mod api;
 mod io;
+mod macaroons;
 mod service;
 mod util;
 
 use std::collections::HashSet;
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -49,16 +48,15 @@ use crate::io::persist::{
 	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
 	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
 };
+use crate::macaroons::MacaroonStore;
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
 use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
+use crate::util::systemd;
 use crate::util::tls::get_or_generate_tls_config;
-use crate::util::{create_dir_all_private, systemd, write_new};
 
-const API_KEY_FILE: &str = "api_key";
-const API_KEY_LEN: usize = 32;
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
@@ -145,10 +143,10 @@ fn main() {
 		},
 	};
 
-	let api_key = match load_or_generate_api_key(&network_dir) {
-		Ok(key) => key,
+	let macaroon_store = match MacaroonStore::load_or_create(&network_dir) {
+		Ok(store) => Arc::new(store),
 		Err(e) => {
-			eprintln!("Failed to load or generate API key: {e}");
+			eprintln!("Failed to load or create macaroons: {e}");
 			std::process::exit(-1);
 		},
 	};
@@ -709,7 +707,7 @@ fn main() {
 							let node_service = NodeService::new(
 								Arc::clone(&node),
 								Arc::clone(&paginated_store),
-								api_key.clone(),
+								Arc::clone(&macaroon_store),
 								metrics.clone(),
 								metrics_auth_header.clone(),
 								event_sender.clone(),
@@ -965,45 +963,6 @@ fn closure_reason_details(
 	}
 }
 
-/// Loads the API key from a file, or generates a new one if it doesn't exist.
-/// The API key file is stored with 0400 permissions (read-only for owner).
-fn load_or_generate_api_key(storage_dir: &Path) -> std::io::Result<String> {
-	let api_key_path = storage_dir.join(API_KEY_FILE);
-
-	let file = match fs::File::open(&api_key_path) {
-		Ok(file) => Some(file),
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-		Err(e) => return Err(e),
-	};
-
-	if let Some(file) = file {
-		let mut key_bytes = Vec::with_capacity(API_KEY_LEN + 1);
-		file.take((API_KEY_LEN + 1) as u64).read_to_end(&mut key_bytes)?;
-		if key_bytes.len() != API_KEY_LEN {
-			return Err(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				format!(
-					"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
-					api_key_path.display()
-				),
-			));
-		}
-		Ok(key_bytes.to_lower_hex_string())
-	} else {
-		// Ensure the storage directory exists
-		create_dir_all_private(storage_dir)?;
-
-		// Generate a 32-byte random API key
-		let mut key_bytes = [0u8; API_KEY_LEN];
-		getrandom::getrandom(&mut key_bytes).map_err(std::io::Error::other)?;
-
-		write_new(&api_key_path, &key_bytes, 0o400)?;
-
-		debug!("Generated new API key at {}", api_key_path.display());
-		Ok(key_bytes.to_lower_hex_string())
-	}
-}
-
 fn build_payment_claimable_proto(
 	payment: Payment, custom_records: &[CustomTlvRecord], claim_deadline: Option<u32>,
 	claimable_amount_msat: u64, payment_id: String,
@@ -1024,23 +983,6 @@ mod tests {
 	use ldk_server_grpc::events::channel_state_change_reason::Details;
 
 	use super::*;
-
-	#[test]
-	fn load_api_key_rejects_invalid_lengths() {
-		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-		let dir = std::env::temp_dir()
-			.join(format!("ldk-server-api-key-length-{}-{nonce}", std::process::id()));
-		fs::create_dir_all(&dir).unwrap();
-		let path = dir.join(API_KEY_FILE);
-
-		for len in [0, 1, API_KEY_LEN - 1, API_KEY_LEN + 1] {
-			fs::write(&path, vec![0x42; len]).unwrap();
-			let error = load_or_generate_api_key(&dir).unwrap_err();
-			assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
-		}
-
-		fs::remove_dir_all(dir).unwrap();
-	}
 
 	#[test]
 	fn test_is_channel_open_failure_classification() {

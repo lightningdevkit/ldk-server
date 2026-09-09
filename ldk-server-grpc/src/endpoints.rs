@@ -54,3 +54,7 @@ pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
 pub const DECODE_OFFER_PATH: &str = "DecodeOffer";
 pub const GET_METRICS_PATH: &str = "metrics";
 pub const SUBSCRIBE_EVENTS_PATH: &str = "SubscribeEvents";
+pub const CREATE_MACAROON_PATH: &str = "CreateMacaroon";
+pub const LIST_MACAROONS_PATH: &str = "ListMacaroons";
+pub const REVOKE_MACAROON_PATH: &str = "RevokeMacaroon";
+pub const GET_PERMISSIONS_PATH: &str = "GetPermissions";

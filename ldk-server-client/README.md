@@ -10,14 +10,14 @@ subscriptions).
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::GetNodeInfoRequest;
 
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
-let api_key = "your_hex_api_key".to_string();
+let macaroon = "your_hex_macaroon".to_string();
 
 let client = LdkServerClient::new(
     "localhost:3536".to_string(),
-    api_key,
+    macaroon,
     &cert_pem,
 ).unwrap();
 
@@ -28,10 +28,16 @@ println!("Node ID: {}", info.node_id);
 
 ## Authentication
 
-The client handles HMAC-SHA256 authentication automatically. Pass the hex-encoded API key
-(found at `<storage_dir>/<network>/api_key`) and the server's TLS certificate (found at
-`<storage_dir>/tls.crt`). Each request signature covers both the timestamp and the raw gRPC
-request body bytes.
+Pass your hex macaroon and the server's TLS certificate to `LdkServerClient::new`.
+The default files are `<storage_dir>/<network>/macaroons/admin.macaroon` and
+`<storage_dir>/tls.crt`.
+
+The client keeps your macaroon private and sends a copy tied to each request's method, body,
+and time. Keep client and server clocks within 60 seconds. The same request can still be
+replayed while its token is valid.
+
+For custom transports, use `macaroon::bind_macaroon_to_request`.
+See [Request binding](../docs/api-guide.md#request-binding) for the required body format.
 
 ## Event Streaming
 
@@ -39,7 +45,7 @@ Subscribe to real-time payment and channel events:
 
 ```rust,no_run
 # use ldk_server_client::client::LdkServerClient;
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 # let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
 # let client = LdkServerClient::new("localhost:3536".to_string(), "key".to_string(), &cert_pem).unwrap();
@@ -58,7 +64,7 @@ Pattern-match channel state changes:
 ```rust,no_run
 # use ldk_server_client::client::LdkServerClient;
 # use ldk_server_client::ldk_server_grpc::events::{event_envelope, ChannelState};
-# #[tokio::main]
+# #[tokio::main(flavor = "current_thread")]
 # async fn main() {
 # let cert_pem = std::fs::read("/path/to/tls.crt").unwrap();
 # let client = LdkServerClient::new("localhost:3536".to_string(), "key".to_string(), &cert_pem).unwrap();
@@ -101,6 +107,7 @@ All methods return `Result<T, LdkServerError>`. Error codes map to gRPC status c
 | `LightningError`      | FAILED_PRECONDITION (9) | Lightning operation error |
 | `InternalServerError` | INTERNAL (13)           | Server bug                |
 | `AuthError`           | UNAUTHENTICATED (16)    | Invalid credentials       |
+| `AuthorizationError`  | PERMISSION_DENIED (7)   | Missing permission        |
 
 ## Documentation
 

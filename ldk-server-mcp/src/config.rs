@@ -10,22 +10,22 @@
 use std::path::PathBuf;
 
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
-	resolve_cert_path,
+	get_default_config_path, load_config, read_tls_certificate, resolve_base_url,
+	resolve_cert_path, resolve_macaroon,
 };
 
 pub struct ResolvedConfig {
 	pub base_url: String,
-	pub api_key: String,
+	pub macaroon: String,
 	pub tls_cert_pem: Vec<u8>,
 }
 
 pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, String> {
 	let env_base_url = std::env::var("LDK_BASE_URL").ok();
-	let env_api_key = std::env::var("LDK_API_KEY").ok();
+	let env_macaroon = std::env::var("LDK_MACAROON").ok();
 	let env_tls_cert_path = std::env::var("LDK_TLS_CERT_PATH").ok().map(PathBuf::from);
 	let env_overrides_complete =
-		env_base_url.is_some() && env_api_key.is_some() && env_tls_cert_path.is_some();
+		env_base_url.is_some() && env_macaroon.is_some() && env_tls_cert_path.is_some();
 
 	let explicit_config_path = config_path.map(PathBuf::from);
 	let config_path = explicit_config_path.clone().or_else(get_default_config_path);
@@ -40,8 +40,8 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 
 	let base_url = resolve_base_url(env_base_url, config.as_ref());
 
-	let api_key = resolve_api_key(env_api_key, config.as_ref())?.ok_or_else(
-		|| "API key not provided. Set LDK_API_KEY or ensure the api_key file exists at ~/.ldk-server/[network]/api_key".to_string()
+	let macaroon = resolve_macaroon(env_macaroon, config.as_ref())?.ok_or_else(
+		|| "macaroon not provided. Set LDK_MACAROON or ensure the admin key exists at ~/.ldk-server/[network]/macaroons/admin.macaroon".to_string()
 	)?;
 
 	let tls_cert_path = resolve_cert_path(env_tls_cert_path, config.as_ref()).ok_or_else(|| {
@@ -51,7 +51,7 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 
 	let tls_cert_pem = read_tls_certificate(&tls_cert_path)?;
 
-	Ok(ResolvedConfig { base_url, api_key, tls_cert_pem })
+	Ok(ResolvedConfig { base_url, macaroon, tls_cert_pem })
 }
 
 #[cfg(test)]
@@ -115,15 +115,15 @@ mod tests {
 		)
 		.unwrap();
 
-		std::env::set_var("LDK_API_KEY", "deadbeef");
+		std::env::set_var("LDK_MACAROON", "deadbeef");
 		std::env::set_var("LDK_TLS_CERT_PATH", &cert_path);
 		std::env::remove_var("LDK_BASE_URL");
 		let resolved = resolve_config(Some(config_path.display().to_string())).unwrap();
-		std::env::remove_var("LDK_API_KEY");
+		std::env::remove_var("LDK_MACAROON");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
 
 		assert_eq!(resolved.base_url, "127.0.0.1:4242");
-		assert_eq!(resolved.api_key, "deadbeef");
+		assert_eq!(resolved.macaroon, "deadbeef");
 		assert_eq!(resolved.tls_cert_pem, b"test-cert");
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
@@ -138,15 +138,15 @@ mod tests {
 		std::fs::create_dir_all(&temp_dir).unwrap();
 
 		let cert_path = temp_dir.join("tls.crt");
-		std::fs::write(&cert_path, b"test-cert").unwrap();
+		std::fs::write(&cert_path, b"storage-cert").unwrap();
 
 		// No config file, no LDK_BASE_URL — should fall back to default
-		std::env::set_var("LDK_API_KEY", "deadbeef");
+		std::env::set_var("LDK_MACAROON", "deadbeef");
 		std::env::set_var("LDK_TLS_CERT_PATH", &cert_path);
 		std::env::remove_var("LDK_BASE_URL");
 		let resolved =
 			resolve_config(Some(temp_dir.join("nonexistent.toml").display().to_string())).unwrap();
-		std::env::remove_var("LDK_API_KEY");
+		std::env::remove_var("LDK_MACAROON");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
 
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
@@ -171,18 +171,18 @@ mod tests {
 		std::fs::write(&cert_path, b"env-cert").unwrap();
 
 		std::env::set_var("LDK_BASE_URL", "127.0.0.1:4242");
-		std::env::set_var("LDK_API_KEY", "deadbeef");
+		std::env::set_var("LDK_MACAROON", "deadbeef");
 		std::env::set_var("LDK_TLS_CERT_PATH", &cert_path);
 
 		let resolved = resolve_config(None).unwrap();
 
 		std::env::remove_var("LDK_BASE_URL");
-		std::env::remove_var("LDK_API_KEY");
+		std::env::remove_var("LDK_MACAROON");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
 		restore_env_var(&default_dir_env_var, old_default_dir);
 
 		assert_eq!(resolved.base_url, "127.0.0.1:4242");
-		assert_eq!(resolved.api_key, "deadbeef");
+		assert_eq!(resolved.macaroon, "deadbeef");
 		assert_eq!(resolved.tls_cert_pem, b"env-cert");
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
@@ -198,11 +198,12 @@ mod tests {
 
 		let config_path = temp_dir.join("config.toml");
 		let custom_storage = temp_dir.join("custom-storage");
-		std::fs::create_dir_all(custom_storage.join("regtest")).unwrap();
+		let macaroons_dir = custom_storage.join("regtest").join("macaroons");
+		std::fs::create_dir_all(&macaroons_dir).unwrap();
 
 		let cert_path = custom_storage.join("tls.crt");
 		std::fs::write(&cert_path, b"storage-cert").unwrap();
-		std::fs::write(custom_storage.join("regtest").join("api_key"), [0xAB; 32]).unwrap();
+		std::fs::write(macaroons_dir.join("admin.macaroon"), "0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429").unwrap();
 
 		std::fs::write(
 			&config_path,
@@ -219,13 +220,13 @@ mod tests {
 		)
 		.unwrap();
 
-		std::env::remove_var("LDK_API_KEY");
+		std::env::remove_var("LDK_MACAROON");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
 		std::env::remove_var("LDK_BASE_URL");
 		let resolved = resolve_config(Some(config_path.display().to_string())).unwrap();
 
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
-		assert_eq!(resolved.api_key, "ab".repeat(32));
+		assert_eq!(resolved.macaroon, "0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429");
 		assert_eq!(resolved.tls_cert_pem, b"storage-cert");
 
 		std::fs::remove_dir_all(temp_dir).unwrap();

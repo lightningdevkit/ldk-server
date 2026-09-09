@@ -1331,11 +1331,10 @@ dependencies = [
 name = "ldk-server-client"
 version = "0.1.0"
 dependencies = [
- "bitcoin_hashes",
- "hex-conservative",
  "hyper 0.14.32",
  "hyper-rustls 0.24.2",
  "ldk-server-grpc",
+ "ldk-server-macaroons",
  "prost",
  "reqwest 0.11.27",
  "rustls 0.21.12",
@@ -1353,6 +1352,14 @@ dependencies = [
  "prost-build",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "ldk-server-macaroons"
+version = "0.1.0"
+dependencies = [
+ "hex-conservative",
+ "ring",
 ]
 
 [[package]]
