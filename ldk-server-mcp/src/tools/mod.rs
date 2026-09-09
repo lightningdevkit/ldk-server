@@ -88,6 +88,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_onchain_receive(client, args)),
 		),
 		tool_spec(
+			"onchain_bump_fee",
+			"Replace an unconfirmed outbound on-chain payment using RBF. Funding payments are not eligible. Returns the replacement transaction ID",
+			schema::onchain_bump_fee_schema,
+			|client, args| Box::pin(handlers::handle_onchain_bump_fee(client, args)),
+		),
+		tool_spec(
 			"onchain_send",
 			"Send an on-chain Bitcoin payment to an address",
 			schema::onchain_send_schema,

@@ -97,6 +97,8 @@ All unary LDK Server RPCs are exposed as MCP tools. Use `tools/list` to discover
 
 Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `metrics` are not exposed as tools.
 
+See the [API Guide](../docs/api-guide.md#endpoint-reference) for the available operations.
+
 ## MCP Protocol
 
 - **Protocol version**: `2025-11-25`

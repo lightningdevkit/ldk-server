@@ -30,10 +30,10 @@ use ldk_server_grpc::endpoints::{
 	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
 	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -83,6 +83,7 @@ use crate::api::list_channels::handle_list_channels_request;
 use crate::api::list_forwarded_payments::handle_list_forwarded_payments_request;
 use crate::api::list_payments::handle_list_payments_request;
 use crate::api::list_peers::handle_list_peers_request;
+use crate::api::onchain_bump_fee::handle_onchain_bump_fee_request;
 use crate::api::onchain_receive::handle_onchain_receive_request;
 use crate::api::onchain_send::handle_onchain_send_request;
 use crate::api::open_channel::handle_open_channel;
@@ -290,6 +291,9 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				ONCHAIN_RECEIVE_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_onchain_receive_request).await
+				},
+				ONCHAIN_BUMP_FEE_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_onchain_bump_fee_request).await
 				},
 				ONCHAIN_SEND_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_onchain_send_request).await
