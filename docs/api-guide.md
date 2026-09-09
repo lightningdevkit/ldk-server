@@ -97,7 +97,7 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | ---------- | ------ |
 | `node:read` | Node information, balances, and pathfinding scores |
 | `onchain:receive` | Create on-chain receive addresses |
-| `onchain:send` | Send on-chain funds |
+| `onchain:send` | Send on-chain funds or bump an on-chain payment fee |
 | `invoices:create` | Create BOLT11/BOLT12 invoices and incoming refund requests |
 | `payments:read` | Read payments, forwarded payments, and forwarding statistics |
 | `payments:claim` | Claim or fail held BOLT11 payments |
@@ -174,6 +174,12 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 |------------------|----------------------------------------------------------------------|
 | `OnchainReceive` | Generate a new on-chain funding address                              |
 | `OnchainSend`    | Send to a Bitcoin address (with optional fee rate and send-all mode) |
+| `OnchainBumpFee` | Raise the fee of an unconfirmed outbound on-chain payment using RBF  |
+
+`OnchainBumpFee` replaces a payment's transaction while preserving its payment ID and recipient
+amount. Use the `payment_id` from `ListPayments`. The optional `fee_rate_sat_per_vb` sets the new
+total fee rate in sat/vB; omit it to use an automatic rate. The response contains the replacement
+`txid`. Confirmed, inbound, Lightning, and channel funding payments are not eligible.
 
 ### BOLT11 Payments
 

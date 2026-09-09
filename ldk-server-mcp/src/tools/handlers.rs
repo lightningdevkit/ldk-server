@@ -22,10 +22,10 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest, GraphListChannelsRequest,
 	GraphListNodesRequest, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListForwardedPaymentsRequest,
-	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
-	OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest, SignMessageRequest,
-	SpliceInRequest, SpliceOutRequest, SpontaneousSendRequest, UnifiedSendRequest,
-	UpdateChannelConfigRequest, VerifySignatureRequest,
+	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, OnchainBumpFeeRequest,
+	OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest,
+	SignMessageRequest, SpliceInRequest, SpliceOutRequest, SpontaneousSendRequest,
+	UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
 };
 use ldk_server_client::ldk_server_grpc::types::RouteParametersConfig;
 use ldk_server_client::{
@@ -175,6 +175,14 @@ pub async fn handle_onchain_receive(
 ) -> Result<Value, McpError> {
 	let response =
 		client.onchain_receive(OnchainReceiveRequest {}).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_onchain_bump_fee(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: OnchainBumpFeeRequest = parse_request(args)?;
+	let response = client.onchain_bump_fee(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 
@@ -578,6 +586,26 @@ mod tests {
 		)
 		.is_err());
 		assert!(parse_request::<RevokeMacaroonRequest>(json!({"id": 123})).is_err());
+	}
+
+	#[test]
+	fn onchain_bump_fee_argument_mapping() {
+		let id = "ab".repeat(32);
+		for rate in [None, Some(12)] {
+			let mut args = json!({"payment_id": id});
+			if let Some(rate) = rate {
+				args["fee_rate_sat_per_vb"] = json!(rate);
+			}
+			let request: OnchainBumpFeeRequest = parse_request(args).unwrap();
+			assert_eq!(request.payment_id, id);
+			assert_eq!(request.fee_rate_sat_per_vb, rate);
+		}
+		for rate in [json!(-1), json!(1.5), json!("10")] {
+			assert!(parse_request::<OnchainBumpFeeRequest>(json!({
+				"payment_id": id, "fee_rate_sat_per_vb": rate
+			}))
+			.is_err());
+		}
 	}
 
 	#[test]

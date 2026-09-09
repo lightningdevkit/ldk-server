@@ -8,6 +8,7 @@
 // licenses.
 
 use hex::FromHex;
+use ldk_node::bitcoin::FeeRate;
 use ldk_node::config::{ChannelConfig, MaxDustHTLCExposure};
 use ldk_node::lightning::ln::channelmanager::PaymentId;
 use ldk_node::lightning::routing::router::RouteParametersConfig;
@@ -52,6 +53,7 @@ pub(crate) mod list_forwarded_payments;
 pub(crate) mod list_payments;
 pub(crate) mod list_peers;
 pub(crate) mod macaroons;
+pub(crate) mod onchain_bump_fee;
 pub(crate) mod onchain_receive;
 pub(crate) mod onchain_send;
 pub(crate) mod open_channel;
@@ -69,6 +71,16 @@ pub(crate) fn require_amount<T>(amount: Option<T>) -> Result<T, LdkServerError> 
 			"Must specify either an exact amount or all available funds",
 		)
 	})
+}
+
+pub(crate) fn parse_fee_rate(rate: Option<u64>) -> Result<Option<FeeRate>, LdkServerError> {
+	rate.map(|rate| {
+		if rate == 0 {
+			return Err(ldk_node::NodeError::InvalidFeeRate.into());
+		}
+		FeeRate::from_sat_per_vb(rate).ok_or_else(|| ldk_node::NodeError::InvalidFeeRate.into())
+	})
+	.transpose()
 }
 
 pub(crate) fn parse_payment_id(payment_id: &str) -> Result<PaymentId, LdkServerError> {
@@ -173,6 +185,16 @@ mod tests {
 	fn amount_is_required() {
 		assert_eq!(require_amount(Some(42)).unwrap(), 42);
 		assert!(require_amount::<u64>(None).is_err());
+	}
+
+	#[test]
+	fn fee_rate_is_optional_and_checked() {
+		assert_eq!(parse_fee_rate(None).unwrap(), None);
+		assert_eq!(parse_fee_rate(Some(2)).unwrap().unwrap().to_sat_per_kwu(), 500);
+		assert!(parse_fee_rate(Some(u64::MAX / 250)).is_ok());
+		for rate in [0, u64::MAX / 250 + 1, u64::MAX] {
+			assert_eq!(parse_fee_rate(Some(rate)).unwrap_err().error_code, InvalidRequestError);
+		}
 	}
 
 	#[test]

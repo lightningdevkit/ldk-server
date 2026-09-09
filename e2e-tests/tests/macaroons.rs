@@ -102,6 +102,27 @@ async fn test_scoped_macaroon_lifecycle() {
 }
 
 #[tokio::test]
+async fn test_macaroon_onchain_fee_bump_permissions() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	// An invalid payment ID distinguishes reaching the handler from an auth rejection.
+	for (name, permission, expected_error) in [
+		("onchain-sender", "onchain:send", InvalidRequestError),
+		("lightning-sender", "payments:send", AuthorizationError),
+		("reader", "payments:read", AuthorizationError),
+		("full-admin", "admin", InvalidRequestError),
+	] {
+		let created = run_cli(&server, &["create-macaroon", name, "--permissions", permission]);
+		let scoped_client =
+			client_with_macaroon(&server, created["token"].as_str().unwrap().to_string());
+		assert_eq!(
+			scoped_client.onchain_bump_fee(Default::default()).await.unwrap_err().error_code,
+			expected_error
+		);
+	}
+}
+
+#[tokio::test]
 async fn test_macaroon_splice_permissions() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;
