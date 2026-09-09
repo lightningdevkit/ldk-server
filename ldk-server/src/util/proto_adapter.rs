@@ -145,6 +145,7 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 			.map(|s| channel_shutdown_state_to_proto(s) as i32),
 		reserve_type: channel.reserve_type.as_ref().map(|r| reserve_type_to_proto(r) as i32),
 		channel_type,
+		funding_redeem_script: channel.funding_redeem_script.map(|script| script.to_hex_string()),
 	}
 }
 
