@@ -15,7 +15,8 @@ use ldk_node::bitcoin::Address;
 use ldk_node::UserChannelId;
 use ldk_server_grpc::api::splice_in_request::Amount;
 use ldk_server_grpc::api::{
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	BumpChannelFundingFeeRequest, BumpChannelFundingFeeResponse, SpliceInRequest, SpliceInResponse,
+	SpliceOutRequest, SpliceOutResponse,
 };
 
 use crate::api::error::LdkServerError;
@@ -70,6 +71,15 @@ pub(crate) async fn handle_splice_out_request(
 	)?;
 
 	Ok(SpliceOutResponse { address: address.to_string() })
+}
+
+pub(crate) async fn handle_bump_channel_funding_fee_request(
+	context: Arc<Context>, request: BumpChannelFundingFeeRequest,
+) -> Result<BumpChannelFundingFeeResponse, LdkServerError> {
+	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
+	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
+	context.node.bump_channel_funding_fee(&user_channel_id, counterparty_node_id)?;
+	Ok(BumpChannelFundingFeeResponse {})
 }
 
 fn parse_user_channel_id(id: &str) -> Result<UserChannelId, LdkServerError> {

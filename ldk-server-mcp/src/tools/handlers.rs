@@ -14,8 +14,8 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
 	Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest, Bolt12ReceiveRequest,
-	Bolt12SendRefundRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
-	DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
+	Bolt12SendRefundRequest, Bolt12SendRequest, BumpChannelFundingFeeRequest, CloseChannelRequest,
+	ConnectPeerRequest, DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, GetBalancesRequest,
 	GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
 	GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
@@ -325,6 +325,14 @@ pub async fn handle_splice_out(client: &LdkServerClient, args: Value) -> Result<
 	serialize_response(response)
 }
 
+pub async fn handle_bump_channel_funding_fee(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: BumpChannelFundingFeeRequest = parse_request(args)?;
+	let response = client.bump_channel_funding_fee(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
 pub async fn handle_close_channel(
 	client: &LdkServerClient, args: Value,
 ) -> Result<Value, McpError> {
@@ -515,6 +523,17 @@ mod tests {
 			}))
 			.is_err());
 		}
+	}
+
+	#[test]
+	fn bump_channel_funding_fee_argument_mapping() {
+		let args = json!({
+			"user_channel_id": "340282366920938463463374607431768211455",
+			"counterparty_node_id": "peer"
+		});
+		let request: BumpChannelFundingFeeRequest = parse_request(args).unwrap();
+		assert_eq!(request.user_channel_id, u128::MAX.to_string());
+		assert_eq!(request.counterparty_node_id, "peer");
 	}
 
 	#[test]

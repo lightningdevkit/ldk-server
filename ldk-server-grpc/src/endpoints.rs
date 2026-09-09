@@ -32,6 +32,7 @@ pub const BOLT12_CREATE_PAYER_PROOF_PATH: &str = "Bolt12CreatePayerProof";
 pub const OPEN_CHANNEL_PATH: &str = "OpenChannel";
 pub const SPLICE_IN_PATH: &str = "SpliceIn";
 pub const SPLICE_OUT_PATH: &str = "SpliceOut";
+pub const BUMP_CHANNEL_FUNDING_FEE_PATH: &str = "BumpChannelFundingFee";
 pub const CLOSE_CHANNEL_PATH: &str = "CloseChannel";
 pub const FORCE_CLOSE_CHANNEL_PATH: &str = "ForceCloseChannel";
 pub const LIST_CHANNELS_PATH: &str = "ListChannels";

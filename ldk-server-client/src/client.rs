@@ -24,9 +24,10 @@ use ldk_server_grpc::api::{
 	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
-	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	Bolt12SendRequest, Bolt12SendResponse, BumpChannelFundingFeeRequest,
+	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest,
+	DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
 	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
 	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
 	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
@@ -47,10 +48,10 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
-	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH,
+	CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
@@ -321,6 +322,15 @@ impl LdkServerClient {
 		&self, request: SpliceOutRequest,
 	) -> Result<SpliceOutResponse, LdkServerError> {
 		self.grpc_unary(&request, SPLICE_OUT_PATH).await
+	}
+
+	/// Initiate a fee bump for a pending splice, preserving its amount and destination.
+	/// This does not support general channel-opening fee bumping or a caller-selected fee rate.
+	/// Returns an error if the channel has no pending splice.
+	pub async fn bump_channel_funding_fee(
+		&self, request: BumpChannelFundingFeeRequest,
+	) -> Result<BumpChannelFundingFeeResponse, LdkServerError> {
+		self.grpc_unary(&request, BUMP_CHANNEL_FUNDING_FEE_PATH).await
 	}
 
 	/// Closes the channel specified by given request.

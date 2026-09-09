@@ -595,6 +595,21 @@ message SpliceOutResponse {
   string address = 1;
 }
 
+// Replace a pending splice transaction with a higher-fee transaction.
+// This does not support general channel-opening fee bumping.
+// LDK Node selects the fee rate; callers cannot set it.
+message BumpChannelFundingFeeRequest {
+  // The local user channel ID as a decimal u128 string.
+  string user_channel_id = 1;
+
+  // The hex-encoded public key of the channel's peer.
+  string counterparty_node_id = 2;
+}
+
+// The pending splice fee bump was initiated. Confirmation is asynchronous.
+// On failure, a gRPC error status is returned, including when no splice is pending.
+message BumpChannelFundingFeeResponse {}
+
 // Update the config for a previously opened channel.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config
 message UpdateChannelConfigRequest {
@@ -1097,6 +1112,8 @@ service LightningNode {
   rpc SpliceIn(SpliceInRequest) returns (SpliceInResponse);
   // Splice funds out of a channel.
   rpc SpliceOut(SpliceOutRequest) returns (SpliceOutResponse);
+  // Replace only a pending splice; no channel-opening support or caller-selected fee rate.
+  rpc BumpChannelFundingFee(BumpChannelFundingFeeRequest) returns (BumpChannelFundingFeeResponse);
   // Update the config for a channel.
   rpc UpdateChannelConfig(UpdateChannelConfigRequest) returns (UpdateChannelConfigResponse);
   // Close a channel cooperatively.

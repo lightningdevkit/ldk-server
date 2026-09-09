@@ -32,9 +32,10 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
-	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	Bolt12SendRequest, Bolt12SendResponse, BumpChannelFundingFeeRequest,
+	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest,
+	DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
 	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
 	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
@@ -541,6 +542,15 @@ enum Commands {
 			help = "Bitcoin address to send the spliced-out funds. If not set, uses the node's on-chain wallet"
 		)]
 		address: Option<String>,
+	},
+	#[command(
+		about = "Bump a pending splice fee. Does not support general channel-opening fee bumping. LDK Node selects the fee rate; callers cannot set it"
+	)]
+	BumpChannelFundingFee {
+		#[arg(help = "The local user channel ID as a decimal u128 string")]
+		user_channel_id: String,
+		#[arg(help = "The hex-encoded public key of the channel's peer")]
+		counterparty_node_id: String,
 	},
 	#[command(about = "Return a list of known channels")]
 	ListChannels,
@@ -1187,6 +1197,16 @@ async fn main() {
 					.await,
 			);
 		},
+		Commands::BumpChannelFundingFee { user_channel_id, counterparty_node_id } => {
+			handle_response_result::<_, BumpChannelFundingFeeResponse>(
+				client
+					.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+						user_channel_id,
+						counterparty_node_id,
+					})
+					.await,
+			);
+		},
 		Commands::ListChannels => {
 			handle_response_result::<_, ListChannelsResponse>(
 				client.list_channels(ListChannelsRequest {}).await,
@@ -1518,6 +1538,28 @@ mod tests {
 			])
 			.is_err());
 		}
+	}
+
+	#[test]
+	fn bump_channel_funding_fee_arguments() {
+		let cli = Cli::try_parse_from(["ldk-server-cli", "bump-channel-funding-fee", "42", "peer"])
+			.unwrap();
+		match cli.command {
+			Commands::BumpChannelFundingFee { user_channel_id, counterparty_node_id } => {
+				assert_eq!(user_channel_id, "42");
+				assert_eq!(counterparty_node_id, "peer");
+			},
+			_ => panic!("wrong command"),
+		}
+		assert!(Cli::try_parse_from([
+			"ldk-server-cli",
+			"bump-channel-funding-fee",
+			"42",
+			"peer",
+			"--fee-rate-sat-per-vb",
+			"10"
+		])
+		.is_err());
 	}
 
 	#[tokio::test]

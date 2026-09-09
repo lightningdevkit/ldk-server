@@ -11,13 +11,14 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use e2e_tests::{
-	assert_replacement, mine_and_sync, payment_for_tx, setup_funded_channel, wait_for_event,
-	wait_for_onchain_balance, wait_for_transaction, wait_for_wallet_sync, LdkServerHandle,
-	McpHandle, TestBitcoind,
+	assert_replacement, mine_and_sync, payment_for_tx, setup_funded_channel, splice_txid,
+	wait_for_event, wait_for_onchain_balance, wait_for_transaction, wait_for_wallet_sync,
+	LdkServerHandle, McpHandle, TestBitcoind,
 };
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_server_client::ldk_server_grpc::api::{
-	onchain_send_request, Bolt11ReceiveRequest, OnchainReceiveRequest, OnchainSendRequest,
+	onchain_send_request, splice_in_request, Bolt11ReceiveRequest, OnchainReceiveRequest,
+	OnchainSendRequest, SpliceInRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::types::{
@@ -200,4 +201,53 @@ async fn test_mcp_onchain_fee_bump() {
 			wait_for_wallet_sync(&server).await;
 		}
 	}
+}
+
+#[tokio::test]
+async fn test_mcp_pending_splice_fee_bump() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let peer = LdkServerHandle::start(&bitcoind).await;
+	let channel = setup_funded_channel(&bitcoind, &server, &peer, 100_000).await;
+	let mut events = server.client().subscribe_events().await.unwrap();
+	server
+		.client()
+		.splice_in(SpliceInRequest {
+			user_channel_id: channel.clone(),
+			counterparty_node_id: peer.node_id().into(),
+			amount: Some(splice_in_request::Amount::SpliceAmountSats(50_000)),
+		})
+		.await
+		.unwrap();
+	let original = splice_txid(&mut events).await;
+	let original_tx = wait_for_transaction(&bitcoind, &original).await;
+	let funding_output = original_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["type"] == "witness_v0_scripthash")
+		.unwrap();
+	let mut mcp = McpHandle::start(&server);
+	let response = mcp.call(
+		1,
+		"tools/call",
+		json!({
+			"name": "bump_channel_funding_fee",
+			"arguments": {"user_channel_id": channel, "counterparty_node_id": peer.node_id()}
+		}),
+	);
+	assert_ne!(response["result"]["isError"], true, "{response}");
+	assert_eq!(tool_result_json(&response), json!({}));
+	let replacement = splice_txid(&mut events).await;
+	assert_ne!(original, replacement);
+	let replacement_tx = wait_for_transaction(&bitcoind, &replacement).await;
+	let replacement_output = replacement_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"] == funding_output["scriptPubKey"])
+		.unwrap();
+	assert_eq!(replacement_output["value"], funding_output["value"]);
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	assert!(!mempool.contains(&original));
 }

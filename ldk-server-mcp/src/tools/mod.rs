@@ -212,6 +212,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_splice_out(client, args)),
 		),
 		tool_spec(
+			"bump_channel_funding_fee",
+			"Bump a pending splice fee, preserving its amount and destination. No general channel-opening fee bumping or caller-selected fee rate. Returns empty success when initiated",
+			schema::bump_channel_funding_fee_schema,
+			|client, args| Box::pin(handlers::handle_bump_channel_funding_fee(client, args)),
+		),
+		tool_spec(
 			"close_channel",
 			"Cooperatively close a Lightning channel",
 			schema::close_channel_schema,

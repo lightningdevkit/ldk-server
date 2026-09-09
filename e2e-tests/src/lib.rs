@@ -41,9 +41,12 @@ impl Default for TestBitcoind {
 
 impl TestBitcoind {
 	pub fn new() -> Self {
+		let mut conf = corepc_node::Conf::default();
+		// Match the pinned LDK Node splice fixtures' 0.1 sat/vB relay fee increase.
+		conf.args.push("-incrementalrelayfee=0.00000100");
 		let bitcoind = match std::env::var("BITCOIND_EXE") {
-			Ok(path) => Node::new(path).unwrap(),
-			Err(_) => Node::from_downloaded().unwrap(),
+			Ok(path) => Node::with_conf(path, &conf).unwrap(),
+			Err(_) => Node::from_downloaded_with_conf(&conf).unwrap(),
 		};
 		// Generate initial blocks to make coins spendable
 		let address = bitcoind.client.new_address().unwrap();
@@ -506,6 +509,17 @@ pub async fn wait_for_event(
 	})
 	.await
 	.expect("Timed out waiting for event")
+}
+
+/// Wait for a negotiated splice and return its funding transaction ID.
+pub async fn splice_txid(events: &mut EventStream) -> String {
+	let event = wait_for_event(events, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	match event.event.unwrap() {
+		Event::SpliceNegotiated(splice) => {
+			splice.new_funding_txo.split(':').next().unwrap().to_string()
+		},
+		_ => unreachable!(),
+	}
 }
 
 /// Poll get_node_info until the server responds successfully.

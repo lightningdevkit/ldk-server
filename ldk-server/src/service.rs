@@ -23,10 +23,10 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
-	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH,
+	CONNECT_PEER_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH,
 	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
@@ -81,7 +81,9 @@ use crate::api::onchain_receive::handle_onchain_receive_request;
 use crate::api::onchain_send::handle_onchain_send_request;
 use crate::api::open_channel::handle_open_channel;
 use crate::api::sign_message::handle_sign_message_request;
-use crate::api::splice_channel::{handle_splice_in_request, handle_splice_out_request};
+use crate::api::splice_channel::{
+	handle_bump_channel_funding_fee_request, handle_splice_in_request, handle_splice_out_request,
+};
 use crate::api::spontaneous_send::handle_spontaneous_send_request;
 use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
@@ -355,6 +357,10 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				SPLICE_OUT_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_splice_out_request).await
+				},
+				BUMP_CHANNEL_FUNDING_FEE_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_bump_channel_funding_fee_request)
+						.await
 				},
 				CLOSE_CHANNEL_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_close_channel_request).await
