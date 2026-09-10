@@ -679,6 +679,13 @@ pub struct Channel {
 	/// This map is empty until channel negotiation determines the channel type.
 	#[prost(btree_map = "uint32, message", tag = "33")]
 	pub channel_type: ::prost::alloc::collections::BTreeMap<u32, Feature>,
+	/// The features our counterparty provided upon last connection, keyed by the signaled BOLT
+	/// feature bit.
+	///
+	/// Useful for routing, as it is the most up-to-date copy of the counterparty's features and
+	/// many routing-relevant features are present in the init context.
+	#[prost(btree_map = "uint32, message", tag = "34")]
+	pub counterparty_features: ::prost::alloc::collections::BTreeMap<u32, Feature>,
 }
 /// ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
 /// See more: <https://docs.rs/lightning/latest/lightning/util/config/struct.ChannelConfig.html>

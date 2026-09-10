@@ -41,6 +41,7 @@ fn generate_protos() {
 			"api.DecodeInvoiceResponse.features",
 			"api.DecodeOfferResponse.features",
 			"types.Channel.channel_type",
+			"types.Channel.counterparty_features",
 			"types.GraphNodeAnnouncement.features",
 		])
 		.type_attribute(
