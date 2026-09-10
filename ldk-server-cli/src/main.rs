@@ -15,8 +15,9 @@ use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
-	resolve_cert_path, DEFAULT_GRPC_SERVICE_ADDRESS,
+	get_default_config_path, load_config, read_tls_certificate, resolve_api_key,
+	resolve_api_key_path, resolve_base_url, resolve_cert_path, Config,
+	DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
@@ -657,29 +658,27 @@ async fn main() {
 		return;
 	}
 
-	let config_path = cli.config.map(PathBuf::from).or_else(get_default_config_path);
-	let config = match config_path.as_ref() {
-		None => None,
-		Some(path) => {
-			if path.is_file() {
-				let cfg = load_config(path).unwrap_or_else(|e| {
-					eprintln!("Failed to load config file '{}': {}", path.display(), e);
-					std::process::exit(1);
-				});
-				Some(cfg)
-			} else {
-				None
-			}
-		},
-	};
+	let config = load_client_config(cli.config.map(PathBuf::from)).unwrap_or_else(|e| {
+		eprintln!("{e}");
+		std::process::exit(1);
+	});
 
+	let api_key_path = resolve_api_key_path(config.as_ref());
 	let api_key = resolve_api_key(cli.api_key, config.as_ref())
 		.unwrap_or_else(|e| {
 			eprintln!("Failed to resolve API key: {e}");
 			std::process::exit(1);
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+			match api_key_path {
+				Some(path) => eprintln!(
+					"API key not provided. Use --api-key or ensure the api_key file exists at '{}'",
+					path.display()
+				),
+				None => eprintln!(
+					"API key not provided. Use --api-key; no API key file path could be resolved from the configuration"
+				),
+			}
 			std::process::exit(1);
 		});
 
@@ -1305,6 +1304,17 @@ async fn main() {
 	}
 }
 
+fn load_client_config(explicit_path: Option<PathBuf>) -> Result<Option<Config>, String> {
+	let config_path = explicit_path.clone().or_else(get_default_config_path);
+	match config_path {
+		Some(path) if path.is_file() => load_config(&path).map(Some),
+		Some(path) if explicit_path.is_some() => {
+			Err(format!("Config file '{}' does not exist or is not a file", path.display()))
+		},
+		_ => Ok(None),
+	}
+}
+
 fn build_open_channel_config(
 	forwarding_fee_proportional_millionths: Option<u32>, forwarding_fee_base_msat: Option<u32>,
 	cltv_expiry_delta: Option<u32>,
@@ -1496,6 +1506,18 @@ mod tests {
 
 		assert_eq!(response.list, vec![1, 2, 3]);
 		assert!(response.next_page_token.is_none());
+	}
+
+	#[test]
+	fn load_client_config_rejects_missing_explicit_path() {
+		let nonce =
+			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+		let path = std::env::temp_dir()
+			.join(format!("ldk-server-cli-missing-config-{}-{nonce}.toml", std::process::id()));
+
+		let error = load_client_config(Some(path.clone())).unwrap_err();
+
+		assert!(error.contains(&path.display().to_string()));
 	}
 
 	#[test]
