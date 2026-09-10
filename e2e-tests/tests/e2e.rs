@@ -828,6 +828,7 @@ async fn test_cli_list_channels() {
 	// configured, so the reserve type is deterministically Adaptive.
 	assert_eq!(channel["reserve_type"].as_i64(), Some(ReserveType::Adaptive as i64));
 	assert!(!channel["channel_type"].as_object().unwrap().is_empty());
+	assert!(!channel["counterparty_features"].as_object().unwrap().is_empty());
 }
 
 #[tokio::test]

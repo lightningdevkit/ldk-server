@@ -19,7 +19,7 @@ use ldk_node::lightning::routing::gossip::{
 	ChannelInfo, ChannelUpdateInfo, NodeAnnouncementInfo, NodeInfo, RoutingFees,
 };
 use ldk_node::lightning_invoice::{Bolt11InvoiceDescription, Description, Sha256};
-use ldk_node::lightning_types::features::{ChannelTypeFeatures, NodeFeatures};
+use ldk_node::lightning_types::features::{ChannelTypeFeatures, InitFeatures, NodeFeatures};
 use ldk_node::payment::{
 	Channel as LdkTransactionChannel, ConfirmationStatus, PaymentDetails, PaymentDirection,
 	PaymentKind, PaymentStatus, TransactionType as LdkTransactionType,
@@ -96,6 +96,9 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 		})
 		.unwrap_or_default();
 	let counterparty = channel.counterparty;
+	let counterparty_features = features_to_proto(counterparty.features.le_flags(), |bytes| {
+		InitFeatures::from_le_bytes(bytes).to_string()
+	});
 
 	Channel {
 		channel_id: channel.channel_id.0.to_lower_hex_string(),
@@ -145,6 +148,7 @@ pub(crate) fn channel_to_proto(channel: ChannelDetails) -> Channel {
 			.map(|s| channel_shutdown_state_to_proto(s) as i32),
 		reserve_type: channel.reserve_type.as_ref().map(|r| reserve_type_to_proto(r) as i32),
 		channel_type,
+		counterparty_features,
 	}
 }
 

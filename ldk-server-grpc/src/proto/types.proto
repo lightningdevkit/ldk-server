@@ -568,6 +568,13 @@ message Channel {
   // The negotiated channel-type features, keyed by the signaled BOLT feature bit.
   // This map is empty until channel negotiation determines the channel type.
   map<uint32, Feature> channel_type = 33;
+
+  // The features our counterparty provided upon last connection, keyed by the signaled BOLT
+  // feature bit.
+  //
+  // Useful for routing, as it is the most up-to-date copy of the counterparty's features and
+  // many routing-relevant features are present in the init context.
+  map<uint32, Feature> counterparty_features = 34;
 }
 
 // ChannelConfig represents the configuration settings for a channel in a Lightning Network node.
