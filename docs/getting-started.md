@@ -58,7 +58,8 @@ rpc_password = "pass"
 ```
 
 Everything else has sensible defaults. See [Configuration](configuration.md) for the full
-reference.
+reference. For a mainnet Bitcoin Core deployment that uses pruning, also review
+[Running with Pruned Bitcoin Core](pruned-bitcoind.md) before choosing its retention target.
 
 ## Start the Server
 
@@ -157,5 +158,6 @@ ldk-server-cli open-channel --help
 ## Next Steps
 
 - [Configuration](configuration.md): all config options, environment variables, and Bitcoin backend tradeoffs
+- [Pruned Bitcoin Core](pruned-bitcoind.md): mainnet retention, catch-up, rescan, and recovery guidance
 - [API Guide](api-guide.md): gRPC transport, authentication, and endpoint reference
 - [Operations](operations.md): production deployment, backups, and monitoring

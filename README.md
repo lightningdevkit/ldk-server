@@ -61,6 +61,7 @@ See [Getting Started](docs/getting-started.md) for a full walkthrough.
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Install, configure, and run your first node |
 | [Configuration](docs/configuration.md) | All config options, environment variables, and Bitcoin backend tradeoffs |
+| [Pruned Bitcoin Core](docs/pruned-bitcoind.md) | Operating and recovering LDK Server with a pruned mainnet Bitcoin Core backend |
 | [API Guide](docs/api-guide.md) | gRPC transport, authentication, and endpoint reference |
 | [Tor](docs/tor.md) | Connecting to and receiving connections over Tor |
 | [Operations](docs/operations.md) | Production deployment, backups, and monitoring |
