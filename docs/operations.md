@@ -60,7 +60,7 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 - Network graph data (re-synced from gossip or RGS)
 - Fee rate cache (re-fetched from the chain backend)
-- The API key (can be regenerated, but clients will need the new one)
+- Macaroon credentials (can be replaced, but clients will need new tokens)
 - The TLS certificate (can be regenerated, but clients will need the new one)
 
 > **Warning:** Do not restore a backup onto two running nodes simultaneously. Running the
@@ -69,13 +69,39 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 
 ## Security
 
-### API Key
+### Macaroons
 
-- Auto-generated as 32 random bytes on first startup
-- Stored at `<network_dir>/api_key` with `0400` permissions (read-only for owner)
-- The hex-encoded form of this key is used for HMAC authentication
-- Treat it as a secret: anyone with the API key and network access to the gRPC port can
-  control the node
+Keep `<network_dir>/macaroons/` private. It contains the default admin token in `admin.macaroon`
+and the server's root keys in `roots/`. Give clients tokens, never root keys.
+
+Use `create-macaroon` to give each client a token you can revoke separately. Use `derive-macaroon`
+to make a restricted copy. Give each client only the permissions it needs.
+See the [API guide](api-guide.md#authentication) for restrictions and request binding.
+
+To replace an admin token, create and save a new admin token, then revoke the old ID.
+Replace `admin.macaroon` with the new token or pass it with `--macaroon`.
+The API prevents revocation of the last unrestricted admin token.
+
+#### Recovery
+
+Back up `roots/` and `admin.macaroon` together. Old root files can restore revoked access.
+Deleting all roots invalidates every token; the server creates a new admin token on restart.
+
+At startup, the server repairs a missing or invalid `admin.macaroon` from `roots/admin.toml`
+and logs the change. It keeps valid tokens, even if restricted or expired. It warns if the
+file holds a request token; replace that file with a reusable token.
+
+If the original admin root is gone but other roots remain, the server warns instead of replacing
+it. Use another admin token to create a replacement and save it as `admin.macaroon`.
+
+Duplicate root names or IDs stop startup. Move conflicting files out of `roots/` and restart.
+Files ending in `.tmp` are ignored.
+
+Root-file caveat edits take effect after restart. `GetPermissions` shows them, and newly issued
+tokens inherit them. Tokens issued earlier have separate roots and do not change.
+
+The server logs successful token creation and revocation, including who made the change and
+which token it affects. Logs contain no tokens or root secrets.
 
 ### TLS
 
@@ -188,7 +214,7 @@ To allow clients to connect from other machines:
    (e.g., `0.0.0.0:3536`).
 3. **Distribute the TLS certificate:** Copy `<storage_dir>/tls.crt` to each client machine.
    Clients must pin this certificate since it is self-signed.
-4. **Share the API key:** Provide the hex-encoded API key to authorized clients.
+4. **Share the macaroon:** Provide the hex-encoded macaroon to authorized clients.
 
 If you regenerate the TLS certificate (by deleting `tls.crt` and `tls.key` and restarting),
 all clients will need the new certificate.

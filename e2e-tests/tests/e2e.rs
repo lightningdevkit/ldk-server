@@ -439,13 +439,7 @@ async fn open_channel_via_cli(channel_amount: &str) {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&[
-			"open-channel",
-			server_b.node_id(),
-			&addr,
-			channel_amount,
-			"--announce-channel",
-		],
+		&["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
 }
@@ -482,9 +476,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -512,7 +504,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -650,9 +645,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -680,7 +673,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -1273,14 +1269,11 @@ async fn splice_in_via_cli(splice_amount: &str) {
 
 	let mut events_a = server_a.client().subscribe_events().await.unwrap();
 
-	let output = run_cli(
-		&server_a,
-		&["splice-in", &user_channel_id, server_b.node_id(), splice_amount],
-	);
+	let output =
+		run_cli(&server_a, &["splice-in", &user_channel_id, server_b.node_id(), splice_amount]);
 	assert!(output.is_object());
 
-	let event_a =
-		wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
 	match &event_a.event {
 		Some(Event::SpliceNegotiated(splice_negotiated)) => {
 			assert_eq!(splice_negotiated.user_channel_id, user_channel_id);
@@ -1663,10 +1656,7 @@ async fn test_hodl_invoice_fail() {
 		panic!("expected PaymentFailed");
 	};
 	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
-	assert_eq!(
-		failed.reason,
-		Some(PaymentFailureReason::RecipientRejected as i32)
-	);
+	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
 }
 
 #[tokio::test]

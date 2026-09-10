@@ -10,17 +10,19 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use clap::builder::{PossibleValuesParser, TypedValueParser};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
-	resolve_cert_path, DEFAULT_GRPC_SERVICE_ADDRESS,
+	get_default_config_path, load_config, read_tls_certificate, resolve_base_url,
+	resolve_cert_path, resolve_macaroon, DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
+	LightningError,
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
@@ -33,21 +35,23 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
 	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
-	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
-	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
-	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ConnectPeerRequest, ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GetPermissionsRequest, GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse,
+	GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListMacaroonsResponse, ListPaymentsRequest,
+	ListPeersRequest, ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse,
+	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
+	RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
+use ldk_server_client::ldk_server_grpc::permissions::MacaroonPreset;
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, CustomTlvRecord,
 	PayerProofOptions, RouteParametersConfig,
@@ -92,8 +96,8 @@ struct Cli {
 	)]
 	base_url: Option<String>,
 
-	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_key"))]
-	api_key: Option<String>,
+	#[arg(short, long, help = format!("Hex macaroon. Defaults to the token in {DEFAULT_DIR}/[network]/macaroons/admin.macaroon"))]
+	macaroon: Option<String>,
 
 	#[arg(short, long, help = format!("Path to the server's TLS certificate file (PEM format). Defaults to {DEFAULT_DIR}/tls.crt"))]
 	tls_cert: Option<String>,
@@ -637,6 +641,48 @@ enum Commands {
 		#[arg(help = "The hex-encoded node ID to look up")]
 		node_id: String,
 	},
+	#[command(about = "Create a macaroon with chosen permissions")]
+	CreateMacaroon {
+		#[arg(help = "A unique name for the macaroon")]
+		name: String,
+		#[arg(
+			short,
+			long,
+			num_args = 1..,
+			conflicts_with = "preset",
+			required_unless_present = "preset",
+			help = "Permissions to grant, such as node:read or invoices:create"
+		)]
+		permissions: Vec<String>,
+		#[arg(
+            long,
+            value_parser = PossibleValuesParser::new(MacaroonPreset::ALL.map(MacaroonPreset::name))
+                .try_map(|value| value.parse::<MacaroonPreset>()),
+            conflicts_with = "permissions",
+            help = "Use a permission preset"
+        )]
+		preset: Option<MacaroonPreset>,
+	},
+	#[command(about = "Derive a restricted copy without contacting the server")]
+	DeriveMacaroon {
+		#[arg(help = "Hex-encoded macaroon to restrict")]
+		token: String,
+		#[arg(
+			long = "caveat",
+			required = true,
+			help = "Repeat for each condition, e.g. 'permissions = node:read' or 'time-before = 1800000000'"
+		)]
+		caveats: Vec<String>,
+	},
+	#[command(about = "List macaroons without their secrets")]
+	ListMacaroons,
+	#[command(about = "Revoke a macaroon")]
+	RevokeMacaroon {
+		#[arg(help = "The hex-encoded macaroon ID")]
+		id: String,
+	},
+	#[command(about = "Show permissions for the current macaroon")]
+	GetPermissions,
 	#[command(about = "Generate shell completions for the CLI")]
 	Completions {
 		#[arg(
@@ -650,6 +696,16 @@ enum Commands {
 #[tokio::main]
 async fn main() {
 	let cli = Cli::parse();
+	if let Commands::DeriveMacaroon { token, caveats } = &cli.command {
+		match ldk_server_client::macaroon::derive_macaroon(token, caveats) {
+			Ok(token) => println!("{token}"),
+			Err(error) => {
+				eprintln!("{error}");
+				std::process::exit(1);
+			},
+		}
+		return;
+	}
 
 	// short-circuit if generating completions
 	if let Commands::Completions { shell } = cli.command {
@@ -673,13 +729,13 @@ async fn main() {
 		},
 	};
 
-	let api_key = resolve_api_key(cli.api_key, config.as_ref())
+	let macaroon = resolve_macaroon(cli.macaroon, config.as_ref())
 		.unwrap_or_else(|e| {
-			eprintln!("Failed to resolve API key: {e}");
+			eprintln!("Failed to resolve macaroon: {e}");
 			std::process::exit(1);
 		})
 		.unwrap_or_else(|| {
-			eprintln!("API key not provided. Use --api-key or ensure the api_key file exists at {DEFAULT_DIR}/[network]/api_key");
+			eprintln!("macaroon not provided. Use --macaroon or ensure the admin key exists at {DEFAULT_DIR}/[network]/macaroons/admin.macaroon");
 			std::process::exit(1);
 		});
 
@@ -696,7 +752,7 @@ async fn main() {
 		std::process::exit(1);
 	});
 
-	let client = LdkServerClient::new(base_url, api_key, &server_cert_pem).unwrap_or_else(|e| {
+	let client = LdkServerClient::new(base_url, macaroon, &server_cert_pem).unwrap_or_else(|e| {
 		eprintln!("Failed to create client: {e}");
 		std::process::exit(1);
 	});
@@ -1301,6 +1357,28 @@ async fn main() {
 				client.graph_get_node(GraphGetNodeRequest { node_id }).await,
 			);
 		},
+		Commands::CreateMacaroon { name, permissions, preset } => {
+			let permissions = preset.map(MacaroonPreset::permissions).unwrap_or(permissions);
+			handle_response_result::<_, CreateMacaroonResponse>(
+				client.create_macaroon(CreateMacaroonRequest { name, permissions }).await,
+			);
+		},
+		Commands::ListMacaroons => {
+			handle_response_result::<_, ListMacaroonsResponse>(
+				client.list_macaroons(ListMacaroonsRequest {}).await,
+			);
+		},
+		Commands::RevokeMacaroon { id } => {
+			handle_response_result::<_, RevokeMacaroonResponse>(
+				client.revoke_macaroon(RevokeMacaroonRequest { id }).await,
+			);
+		},
+		Commands::GetPermissions => {
+			handle_response_result::<_, GetPermissionsResponse>(
+				client.get_permissions(GetPermissionsRequest {}).await,
+			);
+		},
+		Commands::DeriveMacaroon { .. } => unreachable!("Handled before connecting"),
 		Commands::Completions { .. } => unreachable!("Handled above"),
 	}
 }
@@ -1461,6 +1539,7 @@ fn handle_error(e: LdkServerError) -> ! {
 	let error_type = match e.error_code {
 		InvalidRequestError => "Invalid Request",
 		AuthError => "Authentication Error",
+		AuthorizationError => "Permission Denied",
 		LightningError => "Lightning Error",
 		InternalServerError => "Internal Server Error",
 		InternalError => "Internal Error",
@@ -1472,6 +1551,41 @@ fn handle_error(e: LdkServerError) -> ! {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn macaroon_presets_parse_and_appear_in_help() {
+		for (name, expected) in [
+			("readonly", MacaroonPreset::Readonly),
+			("invoice", MacaroonPreset::Invoice),
+			("admin", MacaroonPreset::Admin),
+		] {
+			let cli = Cli::try_parse_from([
+				"ldk-server-cli",
+				"create-macaroon",
+				"test",
+				"--preset",
+				name,
+			])
+			.unwrap();
+			let Commands::CreateMacaroon { preset, .. } = cli.command else {
+				panic!("Expected CreateMacaroon");
+			};
+			assert_eq!(preset, Some(expected));
+		}
+		assert!(Cli::try_parse_from([
+			"ldk-server-cli",
+			"create-macaroon",
+			"test",
+			"--preset",
+			"unknown",
+		])
+		.is_err());
+		let help = Cli::try_parse_from(["ldk-server-cli", "create-macaroon", "--help"])
+			.err()
+			.unwrap()
+			.to_string();
+		assert!(help.contains("[possible values: readonly, invoice, admin]"));
+	}
 
 	#[tokio::test]
 	async fn fetch_paginated_collects_multiple_pages() {

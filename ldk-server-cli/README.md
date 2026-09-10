@@ -34,7 +34,7 @@ When using custom paths or connecting remotely:
 ```bash
 ldk-server-cli \
   --base-url localhost:3536 \
-  --api-key <hex_api_key> \
+  --macaroon <hex_macaroon> \
   --tls-cert /path/to/tls.crt \
   get-node-info
 ```

@@ -24,6 +24,44 @@ fn tool_result_json(response: &Value) -> Value {
 }
 
 #[tokio::test]
+async fn test_mcp_macaroon_lifecycle_and_error_categories() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let mut admin = McpHandle::start(&server);
+	let created = admin.call(1, "tools/call", json!({"name": "create_macaroon", "arguments": {"name": "mcp-reader", "permissions": ["node:read"]}}));
+	let created = tool_result_json(&created);
+	let id = created["macaroon"]["id"].as_str().unwrap();
+	let secret = created["token"].as_str().unwrap();
+	assert!(ldk_server_client::macaroon::derive_macaroon(secret, &[]).is_ok());
+	let listed = admin.call(2, "tools/call", json!({"name": "list_macaroons", "arguments": {}}));
+	let listed = tool_result_json(&listed);
+	assert!(listed["macaroons"].as_array().unwrap().iter().any(|key| key["id"] == id));
+	assert!(!listed.to_string().contains(secret));
+	let mut reader = McpHandle::start_with_macaroon(&server, secret);
+	let permissions =
+		reader.call(1, "tools/call", json!({"name": "get_permissions", "arguments": {}}));
+	let permissions = tool_result_json(&permissions);
+	assert_eq!(permissions["macaroon"]["id"], id);
+	assert_eq!(permissions["macaroon"]["permissions"], json!(["node:read"]));
+	let denied = reader.call(2, "tools/call", json!({"name": "list_macaroons", "arguments": {}}));
+	assert_eq!(denied["result"]["isError"], true);
+	assert!(denied["result"]["content"][0]["text"]
+		.as_str()
+		.unwrap()
+		.starts_with("Permission denied:"));
+	let revoked =
+		admin.call(3, "tools/call", json!({"name": "revoke_macaroon", "arguments": {"id": id}}));
+	assert_eq!(tool_result_json(&revoked), json!({}));
+	let rejected =
+		reader.call(3, "tools/call", json!({"name": "get_permissions", "arguments": {}}));
+	assert_eq!(rejected["result"]["isError"], true);
+	assert!(rejected["result"]["content"][0]["text"]
+		.as_str()
+		.unwrap()
+		.starts_with("Authentication error:"));
+}
+
+#[tokio::test]
 async fn test_mcp_initialize_and_list_tools() {
 	let bitcoind = TestBitcoind::new();
 	let server = LdkServerHandle::start(&bitcoind).await;
@@ -54,17 +92,25 @@ async fn test_mcp_live_tool_calls() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 	let mut mcp = McpHandle::start(&server);
 
-	let node_info = mcp.call(1, "tools/call", json!({
-		"name": "get_node_info",
-		"arguments": {}
-	}));
+	let node_info = mcp.call(
+		1,
+		"tools/call",
+		json!({
+			"name": "get_node_info",
+			"arguments": {}
+		}),
+	);
 	let node_info_json = tool_result_json(&node_info);
 	assert_eq!(node_info_json["node_id"], server.node_id());
 
-	let onchain_receive = mcp.call(2, "tools/call", json!({
-		"name": "onchain_receive",
-		"arguments": {}
-	}));
+	let onchain_receive = mcp.call(
+		2,
+		"tools/call",
+		json!({
+			"name": "onchain_receive",
+			"arguments": {}
+		}),
+	);
 	let onchain_receive_json = tool_result_json(&onchain_receive);
 	assert!(onchain_receive_json["address"].as_str().unwrap().starts_with("bcrt1"));
 
@@ -80,10 +126,14 @@ async fn test_mcp_live_tool_calls() {
 		.await
 		.unwrap();
 
-	let decode_invoice = mcp.call(3, "tools/call", json!({
-		"name": "decode_invoice",
-		"arguments": { "invoice": invoice.invoice }
-	}));
+	let decode_invoice = mcp.call(
+		3,
+		"tools/call",
+		json!({
+			"name": "decode_invoice",
+			"arguments": { "invoice": invoice.invoice }
+		}),
+	);
 	let decode_invoice_json = tool_result_json(&decode_invoice);
 	assert_eq!(decode_invoice_json["destination"], server.node_id());
 	assert_eq!(decode_invoice_json["description"], "mcp decode");

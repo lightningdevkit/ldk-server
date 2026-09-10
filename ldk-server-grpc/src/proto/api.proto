@@ -1032,6 +1032,57 @@ message DecodeOfferResponse {
 // Node automatically fails the HTLC backward at its claim_deadline.
 message SubscribeEventsRequest {}
 
+// Macaroon details, without the token or root key.
+message MacaroonInfo {
+  // The hex ID used to revoke this macaroon.
+  string id = 1;
+
+  // The name chosen when this macaroon was created.
+  string name = 2;
+
+  // Granted permissions. GetPermissions returns those the caller can use.
+  repeated string permissions = 3;
+
+  // Restrictions that must all pass.
+  repeated string caveats = 4;
+}
+
+// Create a macaroon with chosen permissions.
+message CreateMacaroonRequest {
+  // A unique name for the macaroon.
+  string name = 1;
+
+  // The permissions to grant. Use "admin" by itself for unrestricted access.
+  repeated string permissions = 2;
+}
+
+// The new macaroon details and its private hex-encoded v2 token.
+message CreateMacaroonResponse {
+  MacaroonInfo macaroon = 1;
+  string token = 2;
+}
+
+// List macaroons created by the server, without secrets.
+message ListMacaroonsRequest {}
+
+message ListMacaroonsResponse {
+  repeated MacaroonInfo macaroons = 1;
+}
+
+// Revoke a macaroon by ID.
+message RevokeMacaroonRequest {
+  string id = 1;
+}
+
+message RevokeMacaroonResponse {}
+
+// Show the calling macaroon's ID, name, permissions, and caveats.
+message GetPermissionsRequest {}
+
+message GetPermissionsResponse {
+  MacaroonInfo macaroon = 1;
+}
+
 service LightningNode {
   // Retrieve the latest node info.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
@@ -1118,4 +1169,12 @@ service LightningNode {
   rpc GraphGetNode(GraphGetNodeRequest) returns (GraphGetNodeResponse);
   // Subscribe to a stream of server events.
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream events.EventEnvelope);
+  // Create a macaroon. Requires macaroons:manage or admin permission.
+  rpc CreateMacaroon(CreateMacaroonRequest) returns (CreateMacaroonResponse);
+  // List macaroons. Requires macaroons:manage or admin permission.
+  rpc ListMacaroons(ListMacaroonsRequest) returns (ListMacaroonsResponse);
+  // Revoke a macaroon. Requires macaroons:manage or admin permission.
+  rpc RevokeMacaroon(RevokeMacaroonRequest) returns (RevokeMacaroonResponse);
+  // Show permissions for the calling macaroon.
+  rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
 }

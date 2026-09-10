@@ -215,7 +215,11 @@ Two resolution methods are supported via the `mode` field:
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
-    api_key                # API key
+    macaroons/
+      admin.macaroon       # Admin token (0400)
+      roots/               # Private root keys (0700)
+        admin.toml         # Admin root key and permissions (0400)
+        <id>.toml          # Root key and permissions from CreateMacaroon (0400)
     ldk-server.log         # Log file
     ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
     ldk_server_data.sqlite # Forwarded-payment history

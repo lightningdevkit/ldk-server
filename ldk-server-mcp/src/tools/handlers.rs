@@ -15,13 +15,14 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
 	Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest, Bolt12ReceiveRequest,
 	Bolt12SendRefundRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
-	DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
+	CreateMacaroonRequest, DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, GetBalancesRequest,
-	GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
-	GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
-	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
-	OnchainSendRequest, OpenChannelRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
-	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
+	GetNodeInfoRequest, GetPaymentDetailsRequest, GetPermissionsRequest, GraphGetChannelRequest,
+	GraphGetNodeRequest, GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
+	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest,
+	OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest,
+	SignMessageRequest, SpliceInRequest, SpliceOutRequest, SpontaneousSendRequest,
+	UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
 };
 use ldk_server_client::ldk_server_grpc::types::RouteParametersConfig;
 use ldk_server_client::{
@@ -118,6 +119,38 @@ where
 		}
 	}
 	Ok(request)
+}
+
+pub async fn handle_create_macaroon(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: CreateMacaroonRequest = parse_request(args)?;
+	let response = client.create_macaroon(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_list_macaroons(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: ListMacaroonsRequest = parse_request(args)?;
+	let response = client.list_macaroons(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_revoke_macaroon(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: RevokeMacaroonRequest = parse_request(args)?;
+	let response = client.revoke_macaroon(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_get_permissions(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: GetPermissionsRequest = parse_request(args)?;
+	let response = client.get_permissions(request).await.map_err(McpError::from)?;
+	serialize_response(response)
 }
 
 pub async fn handle_get_node_info(
@@ -481,12 +514,26 @@ pub async fn handle_graph_get_node(
 #[cfg(test)]
 mod tests {
 	use ldk_server_client::ldk_server_grpc::api::{
-		onchain_send_request, open_channel_request, splice_in_request,
+		onchain_send_request, open_channel_request, splice_in_request, CreateMacaroonRequest,
+		RevokeMacaroonRequest,
 	};
 
 	use super::*;
 
 	const NODE_PUBKEY: &str = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+	#[test]
+	fn parses_macaroon_management_arguments() {
+		let request: CreateMacaroonRequest =
+			parse_request(json!({"name": "reader", "permissions": ["node:read"]})).unwrap();
+		assert_eq!(request.name, "reader");
+		assert_eq!(request.permissions, vec!["node:read"]);
+		assert!(parse_request::<CreateMacaroonRequest>(
+			json!({"name": "reader", "permissions": "node:read"})
+		)
+		.is_err());
+		assert!(parse_request::<RevokeMacaroonRequest>(json!({"id": 123})).is_err());
+	}
 
 	#[test]
 	fn parse_request_with_amount_accepts_all() {

@@ -1317,7 +1317,8 @@ fn parse_host_port(addr: &str) -> io::Result<(String, u16)> {
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, str::FromStr};
+	use std::fs;
+	use std::str::FromStr;
 
 	use clap::Parser;
 	use ldk_node::bitcoin::secp256k1::PublicKey;

@@ -52,7 +52,7 @@ async fn main() {
 		},
 	};
 
-	let client = match LdkServerClient::new(cfg.base_url, cfg.api_key, &cfg.tls_cert_pem) {
+	let client = match LdkServerClient::new(cfg.base_url, cfg.macaroon, &cfg.tls_cert_pem) {
 		Ok(c) => c,
 		Err(e) => {
 			eprintln!("Error: Failed to create client: {e}");
