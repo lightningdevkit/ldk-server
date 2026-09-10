@@ -8,10 +8,18 @@
 // licenses.
 
 use std::str::FromStr;
+use std::time::Duration;
 
-use e2e_tests::{setup_funded_channel, wait_for_event, LdkServerHandle, McpHandle, TestBitcoind};
+use e2e_tests::{
+	assert_replacement, mine_and_sync, payment_for_tx, setup_funded_channel, splice_txid,
+	wait_for_event, wait_for_onchain_balance, wait_for_transaction, wait_for_wallet_sync,
+	LdkServerHandle, McpHandle, TestBitcoind,
+};
 use ldk_node::lightning::offers::refund::Refund;
-use ldk_server_client::ldk_server_grpc::api::Bolt11ReceiveRequest;
+use ldk_server_client::ldk_server_grpc::api::{
+	onchain_send_request, splice_in_request, Bolt11ReceiveRequest, OnchainReceiveRequest,
+	OnchainSendRequest, SpliceInRequest,
+};
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::types::{
 	bolt11_invoice_description, payment_kind, Bolt11InvoiceDescription,
@@ -143,4 +151,103 @@ async fn test_mcp_bolt12_refund() {
 	};
 	assert_eq!(refund.hash.as_deref(), Some(payment_hash));
 	wait_for_event(&mut events_b, |event| matches!(event, Event::PaymentSuccessful(_))).await;
+}
+
+#[tokio::test]
+async fn test_mcp_onchain_fee_bump() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let address = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&address, 1.0);
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
+	let destination = bitcoind.bitcoind.client.new_address().unwrap().to_string();
+	let original = server
+		.client()
+		.onchain_send(OnchainSendRequest {
+			address: destination.clone(),
+			amount: Some(onchain_send_request::Amount::AmountSats(50_000)),
+			fee_rate_sat_per_vb: Some(2),
+		})
+		.await
+		.unwrap()
+		.txid;
+	wait_for_transaction(&bitcoind, &original).await;
+	let payment = payment_for_tx(&server, &original).await;
+	let mut mcp = McpHandle::start(&server);
+	let mut previous = original;
+	for rate in [Some(5), None] {
+		let mut arguments = json!({"payment_id": payment.payment_id});
+		if let Some(rate) = rate {
+			arguments["fee_rate_sat_per_vb"] = json!(rate);
+		}
+		let response = mcp.call(
+			1,
+			"tools/call",
+			json!({
+				"name": "onchain_bump_fee", "arguments": arguments
+			}),
+		);
+		assert_ne!(response["result"]["isError"], true, "{response}");
+		let output = tool_result_json(&response);
+		let replacement = output["txid"].as_str().unwrap();
+		assert_replacement(&bitcoind, &previous, replacement, &destination).await;
+		let updated = payment_for_tx(&server, replacement).await;
+		assert_eq!(updated.payment_id, payment.payment_id);
+		assert_eq!(updated.amount_msat, Some(50_000_000));
+		assert!(updated.fee_paid_msat > payment.fee_paid_msat);
+		previous = replacement.to_string();
+		if rate.is_some() {
+			wait_for_wallet_sync(&server).await;
+		}
+	}
+}
+
+#[tokio::test]
+async fn test_mcp_pending_splice_fee_bump() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let peer = LdkServerHandle::start(&bitcoind).await;
+	let channel = setup_funded_channel(&bitcoind, &server, &peer, 100_000).await;
+	let mut events = server.client().subscribe_events().await.unwrap();
+	server
+		.client()
+		.splice_in(SpliceInRequest {
+			user_channel_id: channel.clone(),
+			counterparty_node_id: peer.node_id().into(),
+			amount: Some(splice_in_request::Amount::SpliceAmountSats(50_000)),
+		})
+		.await
+		.unwrap();
+	let original = splice_txid(&mut events).await;
+	let original_tx = wait_for_transaction(&bitcoind, &original).await;
+	let funding_output = original_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["type"] == "witness_v0_scripthash")
+		.unwrap();
+	let mut mcp = McpHandle::start(&server);
+	let response = mcp.call(
+		1,
+		"tools/call",
+		json!({
+			"name": "bump_channel_funding_fee",
+			"arguments": {"user_channel_id": channel, "counterparty_node_id": peer.node_id()}
+		}),
+	);
+	assert_ne!(response["result"]["isError"], true, "{response}");
+	assert_eq!(tool_result_json(&response), json!({}));
+	let replacement = splice_txid(&mut events).await;
+	assert_ne!(original, replacement);
+	let replacement_tx = wait_for_transaction(&bitcoind, &replacement).await;
+	let replacement_output = replacement_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"] == funding_output["scriptPubKey"])
+		.unwrap();
+	assert_eq!(replacement_output["value"], funding_output["value"]);
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	assert!(!mempool.contains(&original));
 }

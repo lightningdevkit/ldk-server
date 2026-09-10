@@ -12,8 +12,9 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use e2e_tests::{
-	find_available_port, mine_and_sync, run_cli, run_cli_raw, run_cli_with_config,
-	setup_funded_channel, wait_for_event, wait_for_onchain_balance, wait_for_usable_channel,
+	assert_replacement, find_available_port, mine_and_sync, payment_for_tx, run_cli, run_cli_raw,
+	run_cli_with_config, setup_funded_channel, splice_txid, wait_for_event,
+	wait_for_onchain_balance, wait_for_transaction, wait_for_usable_channel, wait_for_wallet_sync,
 	LdkServerConfig, LdkServerHandle, TestBitcoind,
 };
 use hex_conservative::{DisplayHex, FromHex};
@@ -22,19 +23,23 @@ use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::offers::offer::Offer;
 use ldk_node::lightning::offers::refund::Refund;
 use ldk_node::lightning_invoice::Bolt11Invoice;
-use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
+use ldk_server_client::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use ldk_server_client::ldk_server_grpc::api::{
-	open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveRequest,
-	Bolt12ReceiveRequest, GetBalancesRequest, OnchainReceiveRequest, OpenChannelRequest,
+	onchain_send_request, open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest,
+	Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest, BumpChannelFundingFeeRequest,
+	GetBalancesRequest, GetPaymentDetailsRequest, ListChannelsRequest, ListPaymentsRequest,
+	OnchainBumpFeeRequest, OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
 	ChannelClosureInitiator, ChannelState, ChannelStateChangeReasonKind, PaymentFailureReason,
 };
 use ldk_server_client::ldk_server_grpc::types::{
-	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelShutdownState, ReserveType,
+	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelShutdownState, PaymentDirection,
+	ReserveType,
 };
 use ldk_server_grpc::types::payment_kind;
+use serde_json::json;
 
 #[tokio::test]
 async fn test_cli_get_node_info() {
@@ -382,6 +387,176 @@ async fn test_cli_onchain_send_all() {
 
 	assert_eq!(balances.spendable_onchain_balance_sats, 0);
 	assert_eq!(balances.total_onchain_balance_sats, 0);
+}
+
+#[tokio::test]
+async fn test_onchain_fee_bump_client_cli() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let address = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&address, 1.0);
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
+	let destination = bitcoind.bitcoind.client.new_address().unwrap().to_string();
+	let original = server
+		.client()
+		.onchain_send(OnchainSendRequest {
+			address: destination.clone(),
+			amount: Some(onchain_send_request::Amount::AmountSats(50_000)),
+			fee_rate_sat_per_vb: Some(2),
+		})
+		.await
+		.unwrap()
+		.txid;
+	wait_for_transaction(&bitcoind, &original).await;
+	let payment = payment_for_tx(&server, &original).await;
+	assert_ne!(payment.payment_id, original, "payment IDs use a different byte order");
+
+	// A rate below the original must fail instead of selecting an automatic rate.
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: payment.payment_id.clone(),
+			fee_rate_sat_per_vb: Some(1),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
+
+	let replacement = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: payment.payment_id.clone(),
+			fee_rate_sat_per_vb: Some(5),
+		})
+		.await
+		.unwrap()
+		.txid;
+	assert_replacement(&bitcoind, &original, &replacement, &destination).await;
+	wait_for_wallet_sync(&server).await;
+	let cli =
+		run_cli(&server, &["onchain-bump-fee", &payment.payment_id, "--fee-rate-sat-per-vb", "10"]);
+	let cli_txid = cli["txid"].as_str().unwrap();
+	assert_replacement(&bitcoind, &replacement, cli_txid, &destination).await;
+	let updated = payment_for_tx(&server, cli_txid).await;
+	assert_eq!(updated.payment_id, payment.payment_id);
+	assert_eq!(updated.amount_msat, Some(50_000_000));
+	assert!(updated.fee_paid_msat > payment.fee_paid_msat);
+
+	mine_and_sync(&bitcoind, &[&server], 6).await;
+	// Wait for wallet confirmation, which can follow the Lightning tip update.
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let details = server
+				.client()
+				.get_payment_details(GetPaymentDetailsRequest {
+					payment_id: payment.payment_id.clone(),
+				})
+				.await
+				.unwrap()
+				.payment
+				.unwrap();
+			if let Some(payment_kind::Kind::Onchain(onchain)) =
+				details.kind.and_then(|kind| kind.kind)
+			{
+				if matches!(
+					onchain.status.and_then(|status| status.status),
+					Some(ldk_server_grpc::types::confirmation_status::Status::Confirmed(_))
+				) {
+					break;
+				}
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.unwrap();
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: payment.payment_id,
+			fee_rate_sat_per_vb: Some(20),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
+}
+
+#[tokio::test]
+async fn test_onchain_fee_bump_invalid_requests_and_ineligible_payments() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	for id in [String::new(), "ab".repeat(31), "ab".repeat(33), "zz".repeat(32), "00".repeat(32)] {
+		let error = server
+			.client()
+			.onchain_bump_fee(OnchainBumpFeeRequest { payment_id: id, fee_rate_sat_per_vb: None })
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+	}
+	for rate in [0, u64::MAX / 250 + 1, u64::MAX] {
+		let error = server
+			.client()
+			.onchain_bump_fee(OnchainBumpFeeRequest {
+				payment_id: "00".repeat(32),
+				fee_rate_sat_per_vb: Some(rate),
+			})
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+		assert_eq!(error.message, ldk_node::NodeError::InvalidFeeRate.to_string());
+	}
+
+	let peer = LdkServerHandle::start(&bitcoind).await;
+	let invoice = peer
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(100_000),
+			expiry_secs: 3600,
+			..Default::default()
+		})
+		.await
+		.unwrap()
+		.invoice;
+	// A failed send with no route still records an outbound Lightning payment.
+	let _ = server.client().bolt11_send(Bolt11SendRequest { invoice, ..Default::default() }).await;
+
+	let payments =
+		server.client().list_payments(ListPaymentsRequest::default()).await.unwrap().payments;
+	let lightning = payments
+		.iter()
+		.find(|p| {
+			matches!(
+				p.kind.as_ref().and_then(|k| k.kind.as_ref()),
+				Some(payment_kind::Kind::Bolt11(_))
+			)
+		})
+		.unwrap();
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: lightning.payment_id.clone(),
+			fee_rate_sat_per_vb: None,
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
+
+	let address = server.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	// Leave the incoming payment unconfirmed to exercise the direction guard.
+	let txid: String =
+		bitcoind.bitcoind.client.call("sendtoaddress", &[json!(address), json!(0.1)]).unwrap();
+	let incoming = payment_for_tx(&server, &txid).await;
+	assert_eq!(incoming.direction, PaymentDirection::Inbound as i32);
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: incoming.payment_id,
+			fee_rate_sat_per_vb: None,
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
 }
 
 #[tokio::test]
@@ -1312,6 +1487,132 @@ async fn test_cli_splice_out() {
 		run_cli(&server_a, &["splice-out", &user_channel_id, server_b.node_id(), "10000sat"]);
 	let address = output["address"].as_str().unwrap();
 	assert!(address.starts_with("bcrt1"), "Expected regtest address, got: {}", address);
+}
+
+#[tokio::test]
+async fn test_pending_splice_fee_bump_client_cli() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	let peer = LdkServerHandle::start(&bitcoind).await;
+	let channel = setup_funded_channel(&bitcoind, &server, &peer, 100_000).await;
+	let request = BumpChannelFundingFeeRequest {
+		user_channel_id: channel.clone(),
+		counterparty_node_id: peer.node_id().into(),
+	};
+	let error = server.client().bump_channel_funding_fee(request.clone()).await.unwrap_err();
+	assert_eq!(error.error_code, LightningError);
+	let mut wrong_peer = request.clone();
+	wrong_peer.counterparty_node_id = server.node_id().into();
+	assert_eq!(
+		server.client().bump_channel_funding_fee(wrong_peer).await.unwrap_err().error_code,
+		LightningError
+	);
+
+	let mut events = server.client().subscribe_events().await.unwrap();
+	// Use the same funded channel and splice-in operation as the existing splice fixtures.
+	run_cli(&server, &["splice-in", &channel, peer.node_id(), "50000sat"]);
+	let original = splice_txid(&mut events).await;
+	let original_tx = wait_for_transaction(&bitcoind, &original).await;
+	let funding_output = original_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["type"] == "witness_v0_scripthash")
+		.unwrap();
+	let expected_channel_value =
+		ldk_node::bitcoin::Amount::from_btc(funding_output["value"].as_f64().unwrap())
+			.unwrap()
+			.to_sat();
+	assert!(expected_channel_value >= 150_000);
+
+	let funding = payment_for_tx(&server, &original).await;
+	let error = server
+		.client()
+		.onchain_bump_fee(OnchainBumpFeeRequest {
+			payment_id: funding.payment_id,
+			fee_rate_sat_per_vb: Some(10),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
+
+	server.client().bump_channel_funding_fee(request.clone()).await.unwrap();
+	let replacement = splice_txid(&mut events).await;
+	assert_ne!(original, replacement);
+	wait_for_transaction(&bitcoind, &replacement).await;
+	let cli = run_cli(&server, &["bump-channel-funding-fee", &channel, peer.node_id()]);
+	assert_eq!(cli, json!({}));
+	let cli_txid = splice_txid(&mut events).await;
+	assert_ne!(replacement, cli_txid);
+	let replacement_tx = wait_for_transaction(&bitcoind, &cli_txid).await;
+	let replacement_output = replacement_tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"] == funding_output["scriptPubKey"])
+		.unwrap();
+	assert_eq!(replacement_output["value"], funding_output["value"]);
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	for old in [&original, &replacement] {
+		assert!(!mempool.contains(old));
+	}
+	mine_and_sync(&bitcoind, &[&server, &peer], 6).await;
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let channels = server.client().list_channels(ListChannelsRequest {}).await.unwrap();
+			if channels.channels.iter().any(|c| {
+				c.user_channel_id == channel
+					&& c.channel_value_sats == expected_channel_value
+					&& c.is_usable
+			}) {
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("replacement splice did not confirm with the original amount");
+	assert_eq!(
+		server.client().bump_channel_funding_fee(request).await.unwrap_err().error_code,
+		LightningError
+	);
+}
+
+#[tokio::test]
+async fn test_pending_splice_fee_bump_invalid_requests() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+	for id in ["", "-1", "xyz", "340282366920938463463374607431768211456"] {
+		let error = server
+			.client()
+			.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+				user_channel_id: id.into(),
+				counterparty_node_id: server.node_id().into(),
+			})
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+	}
+	for peer in ["", "invalid", &"00".repeat(33)] {
+		let error = server
+			.client()
+			.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+				user_channel_id: "1".into(),
+				counterparty_node_id: peer.into(),
+			})
+			.await
+			.unwrap_err();
+		assert_eq!(error.error_code, InvalidRequestError);
+	}
+	let error = server
+		.client()
+		.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+			user_channel_id: u128::MAX.to_string(),
+			counterparty_node_id: server.node_id().into(),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, LightningError);
 }
 
 #[tokio::test]

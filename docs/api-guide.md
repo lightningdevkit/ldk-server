@@ -87,9 +87,15 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 ### On-Chain
 
 | RPC              | Description                                                          |
-|------------------|----------------------------------------------------------------------|
+| ---------------- | -------------------------------------------------------------------- |
 | `OnchainReceive` | Generate a new on-chain funding address                              |
 | `OnchainSend`    | Send to a Bitcoin address (with optional fee rate and send-all mode) |
+| `OnchainBumpFee` | Raise the fee of an unconfirmed outbound on-chain payment using RBF  |
+
+`OnchainBumpFee` replaces a payment's transaction while preserving its payment ID and recipient
+amount. Use the `payment_id` from `ListPayments`. The optional `fee_rate_sat_per_vb` sets the new
+total fee rate in sat/vB; omit it to use an automatic rate. The response contains the replacement
+`txid`. Confirmed, inbound, Lightning, and channel funding payments are not eligible.
 
 ### BOLT11 Payments
 
@@ -145,15 +151,28 @@ a channel just-in-time when the invoice is paid.
 
 ### Channel Management
 
-| RPC                   | Description                                                            |
-|-----------------------|------------------------------------------------------------------------|
-| `OpenChannel`         | Open a new outbound channel (with optional push amount and fee config) |
-| `CloseChannel`        | Cooperatively close a channel                                          |
-| `ForceCloseChannel`   | Force-close a channel unilaterally                                     |
-| `SpliceIn`            | Add on-chain funds to an existing channel                              |
-| `SpliceOut`           | Remove funds from a channel back on-chain                              |
-| `UpdateChannelConfig` | Update forwarding fees and CLTV expiry delta                           |
-| `ListChannels`        | List all channels with balances and configuration                      |
+| RPC                     | Description                                                            |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `OpenChannel`           | Open a new outbound channel (with optional push amount and fee config) |
+| `CloseChannel`          | Cooperatively close a channel                                          |
+| `ForceCloseChannel`     | Force-close a channel unilaterally                                     |
+| `SpliceIn`              | Add on-chain funds to an existing channel                              |
+| `SpliceOut`             | Remove funds from a channel back on-chain                              |
+| `BumpChannelFundingFee` | Raise the fee of a pending splice transaction                          |
+| `UpdateChannelConfig`   | Update forwarding fees and CLTV expiry delta                           |
+| `ListChannels`          | List all channels with balances and configuration                      |
+
+> [!NOTE]
+> `BumpChannelFundingFee` supports pending splices only. It preserves the splice amount and
+> destination, and LDK Node selects the fee rate. General channel-opening fee bumps and
+> caller-selected splice fee rates are not supported.
+
+Call it on the node that contributed to the splice, using the channel's `user_channel_id` and
+`counterparty_node_id`. A channel with no pending splice returns an error. An empty response means
+the fee bump has started; use [channel events](#event-streaming) to follow its progress.
+
+The automatic increase can be below Bitcoin Core 29's minimum relay fee increase. Check that the
+replacement transaction reaches the mempool; a successful RPC does not guarantee relay or confirmation.
 
 ### Payment History
 
