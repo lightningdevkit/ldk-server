@@ -1437,3 +1437,94 @@ pub struct DecodeOfferResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeEventsRequest {}
+/// Public metadata for an API key. The secret is never included.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApiKey {
+	/// The stable, hex-encoded identifier used to look up the key.
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+	/// The human-readable name assigned when the key was created.
+	#[prost(string, tag = "2")]
+	pub name: ::prost::alloc::string::String,
+	/// The capabilities granted to the key.
+	#[prost(string, repeated, tag = "3")]
+	pub permissions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Create an API key with the specified capabilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateApiKeyRequest {
+	/// A unique human-readable name.
+	#[prost(string, tag = "1")]
+	pub name: ::prost::alloc::string::String,
+	/// The capabilities to grant. Use "admin" by itself for unrestricted access.
+	#[prost(string, repeated, tag = "2")]
+	pub permissions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// The created key and its secret. The secret is returned only once.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateApiKeyResponse {
+	#[prost(message, optional, tag = "1")]
+	pub api_key: ::core::option::Option<ApiKey>,
+	#[prost(string, tag = "2")]
+	pub secret: ::prost::alloc::string::String,
+}
+/// List API keys without returning their secrets.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListApiKeysRequest {}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListApiKeysResponse {
+	#[prost(message, repeated, tag = "1")]
+	pub api_keys: ::prost::alloc::vec::Vec<ApiKey>,
+}
+/// Revoke an API key by ID.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeApiKeyRequest {
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevokeApiKeyResponse {}
+/// Return metadata and permissions for the calling API key.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsRequest {}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetPermissionsResponse {
+	#[prost(message, optional, tag = "1")]
+	pub api_key: ::core::option::Option<ApiKey>,
+}

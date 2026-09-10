@@ -54,3 +54,7 @@ pub const DECODE_INVOICE_PATH: &str = "DecodeInvoice";
 pub const DECODE_OFFER_PATH: &str = "DecodeOffer";
 pub const GET_METRICS_PATH: &str = "metrics";
 pub const SUBSCRIBE_EVENTS_PATH: &str = "SubscribeEvents";
+pub const CREATE_API_KEY_PATH: &str = "CreateApiKey";
+pub const LIST_API_KEYS_PATH: &str = "ListApiKeys";
+pub const REVOKE_API_KEY_PATH: &str = "RevokeApiKey";
+pub const GET_PERMISSIONS_PATH: &str = "GetPermissions";

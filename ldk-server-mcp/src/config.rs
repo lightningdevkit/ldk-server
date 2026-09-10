@@ -41,7 +41,7 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 	let base_url = resolve_base_url(env_base_url, config.as_ref());
 
 	let api_key = resolve_api_key(env_api_key, config.as_ref())?.ok_or_else(
-		|| "API key not provided. Set LDK_API_KEY or ensure the api_key file exists at ~/.ldk-server/[network]/api_key".to_string()
+		|| "API key not provided. Set LDK_API_KEY or ensure the admin key exists at ~/.ldk-server/[network]/api_keys/admin.toml".to_string()
 	)?;
 
 	let tls_cert_path = resolve_cert_path(env_tls_cert_path, config.as_ref()).ok_or_else(|| {
@@ -198,11 +198,13 @@ mod tests {
 
 		let config_path = temp_dir.join("config.toml");
 		let custom_storage = temp_dir.join("custom-storage");
-		std::fs::create_dir_all(custom_storage.join("regtest")).unwrap();
+		let api_keys_dir = custom_storage.join("regtest").join("api_keys");
+		std::fs::create_dir_all(&api_keys_dir).unwrap();
 
 		let cert_path = custom_storage.join("tls.crt");
 		std::fs::write(&cert_path, b"storage-cert").unwrap();
-		std::fs::write(custom_storage.join("regtest").join("api_key"), [0xAB; 32]).unwrap();
+		std::fs::write(api_keys_dir.join("admin.toml"), format!("key = \"{}\"\n", "ab".repeat(32)))
+			.unwrap();
 
 		std::fs::write(
 			&config_path,

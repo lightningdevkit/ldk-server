@@ -10,10 +10,12 @@
 #![doc = include_str!("../README.md")]
 
 pub mod api;
+pub mod auth;
 pub mod endpoints;
 pub mod error;
 pub mod events;
 pub mod grpc;
+pub mod permissions;
 #[cfg(feature = "serde")]
 pub mod serde_utils;
 pub mod types;

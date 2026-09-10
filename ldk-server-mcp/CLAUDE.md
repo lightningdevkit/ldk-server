@@ -44,7 +44,7 @@ The server reads configuration in this precedence order (highest first):
 
 1. **Environment variables**: `LDK_BASE_URL`, `LDK_API_KEY`, `LDK_TLS_CERT_PATH`
 2. **CLI argument**: `--config <path>` pointing to a TOML file
-3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_key`
+3. **Default paths**: `~/.ldk-server/config.toml`, `~/.ldk-server/tls.crt`, `~/.ldk-server/{network}/api_keys/admin.toml`
 
 If no config path is provided explicitly, the crate uses the default `ldk-server` config location at
 `~/.ldk-server/config.toml`.

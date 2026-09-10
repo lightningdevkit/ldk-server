@@ -18,21 +18,58 @@ underlying LDK Node documentation.
 Every gRPC request must include an `x-auth` metadata header with an HMAC-SHA256 signature:
 
 ```
-x-auth: HMAC <unix_timestamp>:<hmac_hex>
+x-auth: HMAC <key_id>:<unix_timestamp>:<hmac_hex>
 ```
 
 Where:
 
+- `key_id` is the first 16 bytes of `SHA256(api_key_bytes)`, encoded as 32 lowercase hex characters
 - `unix_timestamp` is the current time in seconds since the Unix epoch
 - `hmac_hex` is the hex-encoded result of
-  `HMAC-SHA256(api_key_bytes, timestamp_be_bytes || grpc_request_body_bytes)`
+  `HMAC-SHA256(api_key_bytes, auth_domain || key_id || method_length || method || timestamp || body)`
     - `api_key_bytes` is the API key string encoded as UTF-8 bytes
-    - `timestamp_be_bytes` is the timestamp as a big-endian 8-byte unsigned integer
-    - `grpc_request_body_bytes` is the raw gRPC request body sent over HTTP/2, including
+    - `auth_domain` is the UTF-8 string `ldk-server-auth-v1`
+    - `method_length` is the byte length of the RPC method as a big-endian 8-byte unsigned integer
+    - `method` is the RPC method name encoded as UTF-8 bytes, such as `GetNodeInfo`
+    - `timestamp` is the timestamp as a big-endian 8-byte unsigned integer
+    - `body` is the raw gRPC request body sent over HTTP/2, including
       the 5-byte gRPC message frame
 
 The server rejects requests where the timestamp differs from the server's clock by more than
 **60 seconds**.
+
+### API Key Permissions
+
+Each API key has one or more capabilities. New RPCs are denied to scoped keys until they have an
+explicit capability mapping. The `admin` capability grants unrestricted access and must be used by
+itself.
+
+| Capability             | Access                                                        |
+|------------------------|---------------------------------------------------------------|
+| `node:read`            | Node information, balances, and pathfinding scores            |
+| `onchain:receive`      | Create on-chain receive addresses                              |
+| `onchain:send`         | Send on-chain funds                                            |
+| `invoices:create`      | Create BOLT11/BOLT12 invoices and incoming refund requests     |
+| `payments:read`        | Read payments and forwarded payments                           |
+| `payments:claim`       | Claim or fail held BOLT11 payments                             |
+| `payments:send`        | Send BOLT11, BOLT12, spontaneous, unified, and refund payments |
+| `channels:read`        | List channels                                                  |
+| `channels:manage`      | Open, configure, or cooperatively close channels       |
+| `channels:splice`      | Splice funds in or out, including to an external address       |
+| `channels:force_close` | Force-close channels                                           |
+| `peers:read`           | List peers                                                     |
+| `peers:manage`         | Connect or disconnect peers                                    |
+| `messages:sign`        | Sign messages and create BOLT12 payer proofs                   |
+| `messages:verify`      | Verify message signatures                                      |
+| `graph:read`           | Read network graph data                                        |
+| `utilities:read`       | Decode invoices and offers                                     |
+| `events:read`          | Subscribe to the event stream                                  |
+| `api_keys:manage`      | Create, list, and revoke keys without privilege escalation     |
+
+Use `CreateApiKey`, `ListApiKeys`, `RevokeApiKey`, and `GetPermissions` to manage keys. Key
+secrets are returned only by `CreateApiKey`. The CLI also provides `readonly`, `invoice`, and
+`admin` presets. MCP exposes the same operations as `create_api_key`, `list_api_keys`,
+`revoke_api_key`, and `get_permissions` tools.
 
 ## TLS
 
@@ -67,6 +104,7 @@ Errors are returned as standard gRPC status codes:
 | gRPC Code                 | Meaning                                                          |
 |---------------------------|------------------------------------------------------------------|
 | `INVALID_ARGUMENT` (3)    | Malformed request or invalid parameters                          |
+| `PERMISSION_DENIED` (7)   | Valid API key without the required capability                    |
 | `FAILED_PRECONDITION` (9) | Lightning operation error (e.g., insufficient balance, no route) |
 | `INTERNAL` (13)           | Server-side bug                                                  |
 | `UNAUTHENTICATED` (16)    | Missing or invalid `x-auth` header                               |
@@ -231,6 +269,21 @@ queue can continue processing.
 Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
 `GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
 cannot be recovered through these APIs.
+
+### API Key Management
+
+| RPC              | Description                                                   |
+|------------------|---------------------------------------------------------------|
+| `CreateApiKey`   | Create a scoped key and return its secret once                |
+| `ListApiKeys`     | List key IDs, names, and permissions without secrets          |
+| `RevokeApiKey`   | Revoke a key for new requests                                 |
+| `GetPermissions` | Return the calling key's ID, name, and permissions            |
+
+The first three RPCs require `api_keys:manage` or `admin`. A scoped key manager cannot create or
+revoke a key with permissions that it does not have. The final admin key cannot be revoked.
+Revoking a key blocks new requests, including new event subscriptions. Existing event streams
+remain open and continue to receive events until the client disconnects or the server stops.
+Authorization is checked only when a subscription starts.
 
 ### Metrics
 

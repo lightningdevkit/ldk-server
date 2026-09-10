@@ -73,22 +73,27 @@ gRPC service listening on 127.0.0.1:3536
 NODE_URI: <node_id>@<address>
 ```
 
-Two files are auto-generated on first run:
+The admin API key and TLS certificate are auto-generated on first run:
 
-| File            | Location                          | Purpose                                  |
-|-----------------|-----------------------------------|------------------------------------------|
-| API key         | `<storage_dir>/<network>/api_key` | 32-byte random key (stored as raw bytes) |
-| TLS certificate | `<storage_dir>/tls.crt`           | Self-signed ECDSA P-256 certificate      |
+| File            | Location                                          | Purpose                             |
+|-----------------|---------------------------------------------------|-------------------------------------|
+| Admin API key   | `<storage_dir>/<network>/api_keys/admin.toml`     | Unrestricted API credential         |
+| TLS certificate | `<storage_dir>/tls.crt`                           | Self-signed ECDSA P-256 certificate |
 
 The default storage directory is `~/.ldk-server/` on Linux and
 `~/Library/Application Support/ldk-server/` on macOS.
 
 ### Reading the API Key
 
-The API key file contains raw bytes. To get the hex string the CLI and client library expect:
+The CLI reads the admin API key automatically from the configured storage directory. No
+manual extraction is needed. To use the admin key with another client, open
+`<storage_dir>/<network>/api_keys/admin.toml` and copy the value of the `key` field.
+
+Create a restricted key for an application instead of copying the admin key:
 
 ```bash
-xxd -p -c 64 ~/.ldk-server/bitcoin/api_key
+ldk-server-cli create-api-key my-app --preset readonly
+ldk-server-cli create-api-key invoice-app --preset invoice
 ```
 
 ## First Commands

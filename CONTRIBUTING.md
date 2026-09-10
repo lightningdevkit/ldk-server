@@ -19,8 +19,14 @@ cargo run --bin ldk-server ./contrib/ldk-server-config.toml
 ## Testing
 
 ```bash
-cargo test                     # Run all tests
-cargo test --all-features      # Run tests with all features
+cargo test                     # Run workspace tests
+cargo test --all-features      # Run workspace tests with all features
+```
+
+The end-to-end tests use a separate workspace. Run them with:
+
+```bash
+cargo test --manifest-path e2e-tests/Cargo.toml -- --test-threads=4
 ```
 
 ## Code Quality
@@ -50,7 +56,16 @@ cargo fmt --all
 2. Regenerate protos (see above)
 3. Create handler in `ldk-server/src/api/` (follow existing patterns)
 4. Add route in `ldk-server/src/service.rs`
-5. Add CLI command in `ldk-server-cli/src/main.rs`
+5. Map the RPC to its required permission in `method_authorization` in `ldk-server/src/api_keys.rs`.
+   Unmapped methods return `UNIMPLEMENTED`, including requests made with an admin key.
+6. Add CLI command in `ldk-server-cli/src/main.rs`
+7. For a unary RPC, add its MCP schema, handler, and registry entry in `ldk-server-mcp/src/tools/`.
+   Update the expected tools in `ldk-server-mcp/tests/integration.rs` and add live coverage in
+   `e2e-tests/tests/mcp.rs` when applicable.
+8. Test requests with and without the required permission, including access with an admin key.
+
+If the RPC needs a new permission, add it to `ldk-server-grpc/src/permissions.rs` and
+`ALL_PERMISSIONS`. Update any relevant presets and document the permission in `docs/api-guide.md`.
 
 ## Configuration
 
