@@ -49,13 +49,23 @@ log_to_file = true                            # Enable logging to a file (defaul
 # For CA-signed certs, point cert_path/key_path to your ACME output files.
 #hosts = ["example.com"]                      # Allowed hosts for TLS, will always include "localhost" and "127.0.0.1"
 
-# Must set one of bitcoind, electrum, or esplora
+# Must set one of bitcoind, bitcoind_rest, electrum, or esplora
 
 # Bitcoin Core settings
 [bitcoind]
 rpc_address = "127.0.0.1:18444"               # RPC endpoint
 rpc_user = "polaruser"                        # RPC username
 rpc_password = "polarpass"                    # RPC password
+
+# Bitcoin Core REST settings
+# Sources block/header/tx data from Bitcoin Core's REST interface (unauthenticated by
+# default), falling back to RPC for calls REST does not support (e.g. broadcast). The
+# REST and RPC endpoints are normally the same host:port.
+#[bitcoind_rest]
+#rest_address = "127.0.0.1:18443"             # REST endpoint
+#rpc_address = "127.0.0.1:18443"              # RPC endpoint (used as fallback)
+#rpc_user = "polaruser"                       # RPC username
+#rpc_password = "polarpass"                   # RPC password
 
 # Electrum settings
 [electrum]

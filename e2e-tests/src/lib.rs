@@ -50,6 +50,21 @@ impl TestBitcoind {
 		Self { bitcoind }
 	}
 
+	/// Same as [`TestBitcoind::new`], but starts bitcoind with `-rest=1` so its REST interface
+	/// (disabled by default) is reachable, for exercising the `[bitcoind_rest]` chain source.
+	pub fn new_with_rest() -> Self {
+		let mut conf = corepc_node::Conf::default();
+		conf.args.push("-rest=1");
+
+		let bitcoind = match std::env::var("BITCOIND_EXE") {
+			Ok(path) => Node::with_conf(path, &conf).unwrap(),
+			Err(_) => Node::from_downloaded_with_conf(&conf).unwrap(),
+		};
+		let address = bitcoind.client.new_address().unwrap();
+		bitcoind.client.generate_to_address(101, &address).unwrap();
+		Self { bitcoind }
+	}
+
 	pub fn mine_blocks(&self, count: u64) {
 		let address = self.bitcoind.client.new_address().unwrap();
 		self.bitcoind.client.generate_to_address(count as usize, &address).unwrap();
@@ -121,6 +136,12 @@ pub struct TestServerParams {
 /// A chain source for the test config, mirroring the server's supported backends.
 pub enum ChainSource {
 	Bitcoind { rpc_address: String, rpc_user: String, rpc_password: String },
+	BitcoindRest {
+		rest_address: String,
+		rpc_address: String,
+		rpc_user: String,
+		rpc_password: String,
+	},
 	Electrum { server_url: String },
 	Esplora { server_url: String },
 }
@@ -133,6 +154,12 @@ impl ChainSource {
 				"[bitcoind]\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
 				rpc_address, rpc_user, rpc_password
 			),
+			ChainSource::BitcoindRest { rest_address, rpc_address, rpc_user, rpc_password } => {
+				format!(
+					"[bitcoind_rest]\nrest_address = \"{}\"\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
+					rest_address, rpc_address, rpc_user, rpc_password
+				)
+			},
 			ChainSource::Electrum { server_url } => {
 				format!("[electrum]\nserver_url = \"{}\"", server_url)
 			},

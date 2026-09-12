@@ -142,3 +142,21 @@ async fn test_config_chain_source_bitcoind_localhost() {
 	let info = server.client().get_node_info(GetNodeInfoRequest {}).await.unwrap();
 	assert!(info.current_best_block.is_some());
 }
+
+#[tokio::test]
+async fn test_config_chain_source_bitcoind_rest() {
+	let bitcoind = TestBitcoind::new_with_rest();
+	let server = LdkServerHandle::start_with_config(&bitcoind, |params| {
+		TestConfigBuilder::new(params)
+			.chain_source(ChainSource::BitcoindRest {
+				rest_address: params.rpc_address.clone(),
+				rpc_address: params.rpc_address.clone(),
+				rpc_user: params.rpc_user.clone(),
+				rpc_password: params.rpc_password.clone(),
+			})
+			.build()
+	})
+	.await;
+	let info = server.client().get_node_info(GetNodeInfoRequest {}).await.unwrap();
+	assert!(info.current_best_block.is_some());
+}

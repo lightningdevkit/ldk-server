@@ -190,6 +190,25 @@ fn main() {
 				wallet_rescan_from_height,
 			);
 		},
+		ChainSource::Rest {
+			rest_host,
+			rest_port,
+			rpc_host,
+			rpc_port,
+			rpc_user,
+			rpc_password,
+			wallet_rescan_from_height,
+		} => {
+			builder.set_chain_source_bitcoind_rest(
+				rest_host,
+				rest_port,
+				rpc_host,
+				rpc_port,
+				rpc_user,
+				rpc_password,
+				wallet_rescan_from_height,
+			);
+		},
 		ChainSource::Electrum { server_url, force_wallet_full_scan } => {
 			let sync_config = force_wallet_full_scan.then(|| ElectrumSyncConfig {
 				force_wallet_full_scan: true,
