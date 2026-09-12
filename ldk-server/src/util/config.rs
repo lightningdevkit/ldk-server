@@ -106,6 +106,18 @@ pub enum ChainSource {
 		rpc_password: String,
 		wallet_rescan_from_height: Option<u32>,
 	},
+	/// Sources block/header/tx data from Bitcoin Core's REST interface. Falls back to RPC for
+	/// operations REST does not support (e.g. transaction broadcast), so RPC credentials are
+	/// still required alongside the REST endpoint.
+	Rest {
+		rest_host: String,
+		rest_port: u16,
+		rpc_host: String,
+		rpc_port: u16,
+		rpc_user: String,
+		rpc_password: String,
+		wallet_rescan_from_height: Option<u32>,
+	},
 	Electrum {
 		server_url: String,
 		force_wallet_full_scan: bool,
@@ -136,6 +148,10 @@ struct ConfigBuilder {
 	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
+	bitcoind_rest_address: Option<String>,
+	bitcoind_rest_rpc_address: Option<String>,
+	bitcoind_rest_rpc_user: Option<String>,
+	bitcoind_rest_rpc_password: Option<String>,
 	rescan_from_height: Option<u32>,
 	force_wallet_full_scan: bool,
 	rgs_server_url: Option<String>,
@@ -188,6 +204,17 @@ impl ConfigBuilder {
 			self.bitcoind_rpc_user = bitcoind.rpc_user.or(self.bitcoind_rpc_user.clone());
 			self.bitcoind_rpc_password =
 				bitcoind.rpc_password.or(self.bitcoind_rpc_password.clone());
+		}
+
+		if let Some(bitcoind_rest) = toml.bitcoind_rest {
+			self.bitcoind_rest_address =
+				bitcoind_rest.rest_address.or(self.bitcoind_rest_address.clone());
+			self.bitcoind_rest_rpc_address =
+				bitcoind_rest.rpc_address.or(self.bitcoind_rest_rpc_address.clone());
+			self.bitcoind_rest_rpc_user =
+				bitcoind_rest.rpc_user.or(self.bitcoind_rest_rpc_user.clone());
+			self.bitcoind_rest_rpc_password =
+				bitcoind_rest.rpc_password.or(self.bitcoind_rest_rpc_password.clone());
 		}
 
 		if let Some(electrum) = toml.electrum {
@@ -421,13 +448,18 @@ impl ConfigBuilder {
 		let rpc_configured = self.bitcoind_rpc_address.is_some()
 			|| self.bitcoind_rpc_user.is_some()
 			|| self.bitcoind_rpc_password.is_some();
+		let rest_configured = self.bitcoind_rest_address.is_some()
+			|| self.bitcoind_rest_rpc_address.is_some()
+			|| self.bitcoind_rest_rpc_user.is_some()
+			|| self.bitcoind_rest_rpc_password.is_some();
 		let electrum_configured = self.electrum_url.is_some();
 		let esplora_configured = self.esplora_url.is_some();
 
-		let configured_sources_count = [rpc_configured, electrum_configured, esplora_configured]
-			.iter()
-			.filter(|&&is_configured| is_configured)
-			.count();
+		let configured_sources_count =
+			[rpc_configured, rest_configured, electrum_configured, esplora_configured]
+				.iter()
+				.filter(|&&is_configured| is_configured)
+				.count();
 
 		if configured_sources_count != 1 {
 			return Err(io::Error::new(
@@ -463,11 +495,46 @@ impl ConfigBuilder {
 				rpc_password,
 				wallet_rescan_from_height: self.rescan_from_height,
 			}
+		} else if rest_configured {
+			if self.force_wallet_full_scan {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					"`--force-wallet-full-scan` requires the Electrum or Esplora chain source.",
+				));
+			}
+
+			let rest_address = self
+				.bitcoind_rest_address
+				.ok_or_else(|| missing_field_err("bitcoind_rest_address"))?;
+			let (rest_host, rest_port) = parse_host_port(&rest_address)?;
+
+			let rpc_address = self
+				.bitcoind_rest_rpc_address
+				.ok_or_else(|| missing_field_err("bitcoind_rest_rpc_address"))?;
+			let (rpc_host, rpc_port) = parse_host_port(&rpc_address)?;
+
+			let rpc_user = self
+				.bitcoind_rest_rpc_user
+				.ok_or_else(|| missing_field_err("bitcoind_rest_rpc_user"))?;
+
+			let rpc_password = self
+				.bitcoind_rest_rpc_password
+				.ok_or_else(|| missing_field_err("bitcoind_rest_rpc_password"))?;
+
+			ChainSource::Rest {
+				rest_host,
+				rest_port,
+				rpc_host,
+				rpc_port,
+				rpc_user,
+				rpc_password,
+				wallet_rescan_from_height: self.rescan_from_height,
+			}
 		} else if let Some(url) = self.electrum_url {
 			if self.rescan_from_height.is_some() {
 				return Err(io::Error::new(
 					io::ErrorKind::InvalidInput,
-					"`--rescan-from-height` requires the bitcoind RPC chain source.",
+					"`--rescan-from-height` requires the bitcoind RPC or REST chain source.",
 				));
 			}
 			ChainSource::Electrum {
@@ -478,7 +545,7 @@ impl ConfigBuilder {
 			if self.rescan_from_height.is_some() {
 				return Err(io::Error::new(
 					io::ErrorKind::InvalidInput,
-					"`--rescan-from-height` requires the bitcoind RPC chain source.",
+					"`--rescan-from-height` requires the bitcoind RPC or REST chain source.",
 				));
 			}
 			ChainSource::Esplora {
@@ -486,7 +553,7 @@ impl ConfigBuilder {
 				force_wallet_full_scan: self.force_wallet_full_scan,
 			}
 		} else {
-			return Err(io::Error::new(io::ErrorKind::InvalidInput, "No valid Chain Source configured. Provide Bitcoind RPC, Electrum, or Esplora details."));
+			return Err(io::Error::new(io::ErrorKind::InvalidInput, "No valid Chain Source configured. Provide Bitcoind RPC, Bitcoind REST, Electrum, or Esplora details."));
 		};
 
 		let log_level = self
@@ -644,6 +711,7 @@ pub struct TomlConfig {
 	node: Option<NodeConfig>,
 	storage: Option<StorageConfig>,
 	bitcoind: Option<BitcoindConfig>,
+	bitcoind_rest: Option<BitcoindRestConfig>,
 	electrum: Option<ElectrumConfig>,
 	esplora: Option<EsploraConfig>,
 	liquidity: Option<LiquidityConfig>,
@@ -684,6 +752,15 @@ struct DiskConfig {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct BitcoindConfig {
+	rpc_address: Option<String>,
+	rpc_user: Option<String>,
+	rpc_password: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct BitcoindRestConfig {
+	rest_address: Option<String>,
 	rpc_address: Option<String>,
 	rpc_user: Option<String>,
 	rpc_password: Option<String>,
@@ -2998,7 +3075,9 @@ mod tests {
 			let force_wallet_full_scan = match config.chain_source {
 				ChainSource::Electrum { force_wallet_full_scan, .. }
 				| ChainSource::Esplora { force_wallet_full_scan, .. } => force_wallet_full_scan,
-				ChainSource::Rpc { .. } => panic!("unexpected chain source"),
+				ChainSource::Rpc { .. } | ChainSource::Rest { .. } => {
+					panic!("unexpected chain source")
+				},
 			};
 
 			assert!(force_wallet_full_scan);
@@ -3014,5 +3093,128 @@ mod tests {
 
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 		assert!(err.to_string().contains("--force-wallet-full-scan"));
+	}
+
+	fn bitcoind_rest_section() -> &'static str {
+		r#"
+		[bitcoind_rest]
+		rest_address = "127.0.0.1:18443"
+		rpc_address = "127.0.0.1:18443"
+		rpc_user = "bitcoind-testuser"
+		rpc_password = "bitcoind-testpassword"
+		"#
+	}
+
+	fn bitcoind_rest_toml_config() -> String {
+		format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			{}
+			"#,
+			bitcoind_rest_section()
+		)
+	}
+
+	#[test]
+	fn test_bitcoind_rest_chain_source() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_bitcoind_rest_chain_source.toml";
+		let toml_config =
+			format!("{}{}", bitcoind_rest_toml_config(), lsps2_service_config_for_feature());
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rest {
+			rest_host,
+			rest_port,
+			rpc_host,
+			rpc_port,
+			rpc_user,
+			rpc_password,
+			wallet_rescan_from_height,
+		} = config.chain_source
+		else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(rest_host, "127.0.0.1");
+		assert_eq!(rest_port, 18443);
+		assert_eq!(rpc_host, "127.0.0.1");
+		assert_eq!(rpc_port, 18443);
+		assert_eq!(rpc_user, "bitcoind-testuser");
+		assert_eq!(rpc_password, "bitcoind-testpassword");
+		assert_eq!(wallet_rescan_from_height, None);
+	}
+
+	#[test]
+	fn test_rescan_from_height_configures_bitcoind_rest() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rescan_from_height_bitcoind_rest.toml";
+		let toml_config =
+			format!("{}{}", bitcoind_rest_toml_config(), lsps2_service_config_for_feature());
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		args_config.rescan_from_height = Some(144);
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rest { wallet_rescan_from_height, .. } = config.chain_source else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(wallet_rescan_from_height, Some(144));
+	}
+
+	#[test]
+	fn test_force_wallet_full_scan_rejects_bitcoind_rest() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_force_wallet_full_scan_rejects_bitcoind_rest.toml";
+
+		fs::write(storage_path.join(config_file_name), bitcoind_rest_toml_config()).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		args_config.force_wallet_full_scan = true;
+
+		let err = load_config(&args_config).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("--force-wallet-full-scan"));
+	}
+
+	#[test]
+	fn test_multiple_chain_sources_bitcoind_and_bitcoind_rest_rejected() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_multiple_chain_sources_bitcoind_and_bitcoind_rest.toml";
+		let toml_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+
+			{}
+			"#,
+			bitcoind_rest_section()
+		);
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.to_string(), "Must set a single chain source, multiple were configured");
 	}
 }

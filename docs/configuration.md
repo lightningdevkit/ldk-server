@@ -138,6 +138,12 @@ You must configure **exactly one** of the following sections:
 
 - **`[bitcoind]`** - Bitcoin Core RPC. **Recommended.** Most reliable and private option.
   Required for production deployments.
+- **`[bitcoind_rest]`** - Bitcoin Core REST. Sources block/header/tx data from Bitcoin Core's
+  REST interface, which is unauthenticated by default and lighter weight than RPC for this
+  data. RPC credentials are still required alongside `rest_address`, since REST doesn't cover
+  every call the node needs (e.g. transaction broadcast) — RPC is used as a fallback for those.
+  `rest_address` and `rpc_address` are typically the same host:port, since Bitcoin Core serves
+  both over the same HTTP server.
 - **`[electrum]`** - Electrum server. Lighter weight, but relies on a trusted third-party
   server for chain data.
 - **`[esplora]`** - Esplora HTTP API. Convenient for quick testing with a public block
