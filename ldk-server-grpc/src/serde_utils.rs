@@ -18,7 +18,7 @@ use std::fmt::Write;
 use serde::Serializer;
 
 /// Generates a serde serializer that converts an `i32` proto enum field to its
-/// string name via `from_i32()` and `as_str_name()`.
+/// lowercased string name via `from_i32()` and `as_str_name()`.
 macro_rules! stringify_enum_serializer {
 	($fn_name:ident, $enum_type:ty) => {
 		pub fn $fn_name<S>(value: &i32, serializer: S) -> Result<S::Ok, S::Error>
@@ -27,9 +27,9 @@ macro_rules! stringify_enum_serializer {
 		{
 			let name = match <$enum_type>::from_i32(*value) {
 				Some(v) => v.as_str_name(),
-				None => "UNKNOWN",
+				None => "unknown",
 			};
-			serializer.serialize_str(name)
+			serializer.serialize_str(&name.to_ascii_lowercase())
 		}
 	};
 }
