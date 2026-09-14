@@ -104,6 +104,11 @@ pub enum ChainSource {
 		rpc_port: u16,
 		rpc_user: String,
 		rpc_password: String,
+		/// When set, block/header/tx data is sourced from Bitcoin Core's REST interface
+		/// instead of RPC. RPC is still used for calls REST doesn't support (e.g.
+		/// transaction broadcast).
+		rest_host: Option<String>,
+		rest_port: Option<u16>,
 		wallet_rescan_from_height: Option<u32>,
 	},
 	Electrum {
@@ -136,6 +141,7 @@ struct ConfigBuilder {
 	bitcoind_rpc_address: Option<String>,
 	bitcoind_rpc_user: Option<String>,
 	bitcoind_rpc_password: Option<String>,
+	bitcoind_rest_address: Option<String>,
 	rescan_from_height: Option<u32>,
 	force_wallet_full_scan: bool,
 	rgs_server_url: Option<String>,
@@ -188,6 +194,8 @@ impl ConfigBuilder {
 			self.bitcoind_rpc_user = bitcoind.rpc_user.or(self.bitcoind_rpc_user.clone());
 			self.bitcoind_rpc_password =
 				bitcoind.rpc_password.or(self.bitcoind_rpc_password.clone());
+			self.bitcoind_rest_address =
+				bitcoind.rest_address.or(self.bitcoind_rest_address.clone());
 		}
 
 		if let Some(electrum) = toml.electrum {
@@ -272,6 +280,10 @@ impl ConfigBuilder {
 
 		if let Some(bitcoind_rpc_password) = &args.bitcoind_rpc_password {
 			self.bitcoind_rpc_password = Some(bitcoind_rpc_password.clone());
+		}
+
+		if let Some(bitcoind_rest_address) = &args.bitcoind_rest_address {
+			self.bitcoind_rest_address = Some(bitcoind_rest_address.clone());
 		}
 
 		if let Some(rescan_from_height) = args.rescan_from_height {
@@ -420,7 +432,8 @@ impl ConfigBuilder {
 
 		let rpc_configured = self.bitcoind_rpc_address.is_some()
 			|| self.bitcoind_rpc_user.is_some()
-			|| self.bitcoind_rpc_password.is_some();
+			|| self.bitcoind_rpc_password.is_some()
+			|| self.bitcoind_rest_address.is_some();
 		let electrum_configured = self.electrum_url.is_some();
 		let esplora_configured = self.esplora_url.is_some();
 
@@ -456,11 +469,19 @@ impl ConfigBuilder {
 				.bitcoind_rpc_password
 				.ok_or_else(|| missing_field_err("bitcoind_rpc_password"))?;
 
+			let (rest_host, rest_port) = self
+				.bitcoind_rest_address
+				.map(|rest_address| parse_host_port(&rest_address))
+				.transpose()?
+				.unzip();
+
 			ChainSource::Rpc {
 				rpc_host,
 				rpc_port,
 				rpc_user,
 				rpc_password,
+				rest_host,
+				rest_port,
 				wallet_rescan_from_height: self.rescan_from_height,
 			}
 		} else if let Some(url) = self.electrum_url {
@@ -486,7 +507,10 @@ impl ConfigBuilder {
 				force_wallet_full_scan: self.force_wallet_full_scan,
 			}
 		} else {
-			return Err(io::Error::new(io::ErrorKind::InvalidInput, "No valid Chain Source configured. Provide Bitcoind RPC, Electrum, or Esplora details."));
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"No valid Chain Source configured. Provide Bitcoind, Electrum, or Esplora details.",
+			));
 		};
 
 		let log_level = self
@@ -687,6 +711,10 @@ struct BitcoindConfig {
 	rpc_address: Option<String>,
 	rpc_user: Option<String>,
 	rpc_password: Option<String>,
+	/// When set, block/header/tx data is sourced from Bitcoin Core's REST interface instead of
+	/// RPC (RPC is still used for calls REST doesn't support, e.g. transaction broadcast).
+	/// This is normally the same host:port as `rpc_address`.
+	rest_address: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -1116,6 +1144,13 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_BITCOIND_REST_ADDRESS",
+		help = "bitcoind REST address (host:port). Uses REST for chain data, RPC still handles the rest."
+	)]
+	bitcoind_rest_address: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_RESCAN_FROM_HEIGHT",
 		help = "Rescan the wallet from this block height on first startup. Only supported with the bitcoind RPC chain source."
 	)]
@@ -1390,6 +1425,7 @@ mod tests {
 			bitcoind_rpc_address: Some(String::from("127.0.1.9:18443")),
 			bitcoind_rpc_user: Some(String::from("bitcoind-testuser_cli")),
 			bitcoind_rpc_password: Some(String::from("bitcoind-testpassword_cli")),
+			bitcoind_rest_address: None,
 			rescan_from_height: None,
 			force_wallet_full_scan: false,
 			storage_dir_path: Some(String::from("/tmp_cli")),
@@ -1427,6 +1463,7 @@ mod tests {
 			bitcoind_rpc_address: None,
 			bitcoind_rpc_user: None,
 			bitcoind_rpc_password: None,
+			bitcoind_rest_address: None,
 			rescan_from_height: None,
 			force_wallet_full_scan: false,
 			storage_dir_path: None,
@@ -1514,6 +1551,8 @@ mod tests {
 				rpc_port: 8332,
 				rpc_user: "bitcoind-testuser".to_string(),
 				rpc_password: "bitcoind-testpassword".to_string(),
+				rest_host: None,
+				rest_port: None,
 				wallet_rescan_from_height: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
@@ -1687,6 +1726,8 @@ mod tests {
 			rpc_port,
 			rpc_user,
 			rpc_password,
+			rest_host,
+			rest_port,
 			wallet_rescan_from_height,
 		} = config.chain_source
 		else {
@@ -1697,6 +1738,8 @@ mod tests {
 		assert_eq!(rpc_port, 8332);
 		assert_eq!(rpc_user, "bitcoind-testuser");
 		assert_eq!(rpc_password, "bitcoind-testpassword");
+		assert_eq!(rest_host, None);
+		assert_eq!(rest_port, None);
 		assert_eq!(wallet_rescan_from_height, None);
 
 		// Test case where both bitcoind and esplora are set, resulting in an error
@@ -2196,6 +2239,8 @@ mod tests {
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 				wallet_rescan_from_height: None,
+				rest_host: None,
+				rest_port: None,
 			},
 			rgs_server_url: None,
 			lsps_client_config: None,
@@ -2299,6 +2344,8 @@ mod tests {
 				rpc_user: args_config.bitcoind_rpc_user.unwrap(),
 				rpc_password: args_config.bitcoind_rpc_password.unwrap(),
 				wallet_rescan_from_height: None,
+				rest_host: None,
+				rest_port: None,
 			},
 			rgs_server_url: Some("https://rapidsync.lightningdevkit.org/snapshot/v2/".to_string()),
 			lsps_client_config: Some(vec![LSPSClientConfig {
@@ -2998,7 +3045,9 @@ mod tests {
 			let force_wallet_full_scan = match config.chain_source {
 				ChainSource::Electrum { force_wallet_full_scan, .. }
 				| ChainSource::Esplora { force_wallet_full_scan, .. } => force_wallet_full_scan,
-				ChainSource::Rpc { .. } => panic!("unexpected chain source"),
+				ChainSource::Rpc { .. } => {
+					panic!("unexpected chain source")
+				},
 			};
 
 			assert!(force_wallet_full_scan);
@@ -3008,6 +3057,108 @@ mod tests {
 	#[test]
 	fn test_force_wallet_full_scan_rejects_bitcoind() {
 		let mut args_config = default_args_config();
+		args_config.force_wallet_full_scan = true;
+
+		let err = load_config(&args_config).unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("--force-wallet-full-scan"));
+	}
+
+	fn bitcoind_rest_toml_config() -> String {
+		r#"
+		[node]
+		network = "regtest"
+
+		[bitcoind]
+		rpc_address = "127.0.0.1:18443"
+		rpc_user = "bitcoind-testuser"
+		rpc_password = "bitcoind-testpassword"
+		rest_address = "127.0.0.1:18443"
+		"#
+		.to_string()
+	}
+
+	#[test]
+	fn test_bitcoind_rest_chain_source() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_bitcoind_rest_chain_source.toml";
+		let toml_config =
+			format!("{}{}", bitcoind_rest_toml_config(), lsps2_service_config_for_feature());
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rpc {
+			rpc_host,
+			rpc_port,
+			rpc_user,
+			rpc_password,
+			rest_host,
+			rest_port,
+			wallet_rescan_from_height,
+		} = config.chain_source
+		else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(rpc_host, "127.0.0.1");
+		assert_eq!(rpc_port, 18443);
+		assert_eq!(rpc_user, "bitcoind-testuser");
+		assert_eq!(rpc_password, "bitcoind-testpassword");
+		assert_eq!(rest_host, Some("127.0.0.1".to_string()));
+		assert_eq!(rest_port, Some(18443));
+		assert_eq!(wallet_rescan_from_height, None);
+	}
+
+	#[test]
+	#[cfg(not(feature = "experimental-lsps2-support"))]
+	fn test_bitcoind_rest_chain_source_via_cli() {
+		let mut args_config = default_args_config();
+		args_config.bitcoind_rest_address = Some(String::from("127.0.1.9:18443"));
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rpc { rest_host, rest_port, .. } = config.chain_source else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(rest_host, Some("127.0.1.9".to_string()));
+		assert_eq!(rest_port, Some(18443));
+	}
+
+	#[test]
+	fn test_rescan_from_height_configures_bitcoind_rest() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_rescan_from_height_bitcoind_rest.toml";
+		let toml_config =
+			format!("{}{}", bitcoind_rest_toml_config(), lsps2_service_config_for_feature());
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+		args_config.rescan_from_height = Some(144);
+
+		let config = load_config(&args_config).unwrap();
+		let ChainSource::Rpc { wallet_rescan_from_height, .. } = config.chain_source else {
+			panic!("unexpected chain source");
+		};
+
+		assert_eq!(wallet_rescan_from_height, Some(144));
+	}
+
+	#[test]
+	fn test_force_wallet_full_scan_rejects_bitcoind_rest() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_force_wallet_full_scan_rejects_bitcoind_rest.toml";
+
+		fs::write(storage_path.join(config_file_name), bitcoind_rest_toml_config()).unwrap();
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
 		args_config.force_wallet_full_scan = true;
 
 		let err = load_config(&args_config).unwrap_err();
