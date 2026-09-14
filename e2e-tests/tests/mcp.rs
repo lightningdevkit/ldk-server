@@ -46,6 +46,15 @@ async fn test_mcp_initialize_and_list_tools() {
 	assert!(tool_names.iter().any(|tool| tool["name"] == "get_node_info"));
 	assert!(tool_names.iter().any(|tool| tool["name"] == "onchain_receive"));
 	assert!(tool_names.iter().any(|tool| tool["name"] == "decode_invoice"));
+	for name in [
+		"get_forwarded_payment_details",
+		"get_forwarded_payment_tracking_mode",
+		"get_channel_forwarding_stats",
+		"list_channel_forwarding_stats",
+		"list_channel_pair_forwarding_stats",
+	] {
+		assert!(tool_names.iter().any(|tool| tool["name"] == name));
+	}
 }
 
 #[tokio::test]
@@ -54,17 +63,25 @@ async fn test_mcp_live_tool_calls() {
 	let server = LdkServerHandle::start(&bitcoind).await;
 	let mut mcp = McpHandle::start(&server);
 
-	let node_info = mcp.call(1, "tools/call", json!({
-		"name": "get_node_info",
-		"arguments": {}
-	}));
+	let node_info = mcp.call(
+		1,
+		"tools/call",
+		json!({
+			"name": "get_node_info",
+			"arguments": {}
+		}),
+	);
 	let node_info_json = tool_result_json(&node_info);
 	assert_eq!(node_info_json["node_id"], server.node_id());
 
-	let onchain_receive = mcp.call(2, "tools/call", json!({
-		"name": "onchain_receive",
-		"arguments": {}
-	}));
+	let onchain_receive = mcp.call(
+		2,
+		"tools/call",
+		json!({
+			"name": "onchain_receive",
+			"arguments": {}
+		}),
+	);
 	let onchain_receive_json = tool_result_json(&onchain_receive);
 	assert!(onchain_receive_json["address"].as_str().unwrap().starts_with("bcrt1"));
 
@@ -80,14 +97,47 @@ async fn test_mcp_live_tool_calls() {
 		.await
 		.unwrap();
 
-	let decode_invoice = mcp.call(3, "tools/call", json!({
-		"name": "decode_invoice",
-		"arguments": { "invoice": invoice.invoice }
-	}));
+	let decode_invoice = mcp.call(
+		3,
+		"tools/call",
+		json!({
+			"name": "decode_invoice",
+			"arguments": { "invoice": invoice.invoice }
+		}),
+	);
 	let decode_invoice_json = tool_result_json(&decode_invoice);
 	assert_eq!(decode_invoice_json["destination"], server.node_id());
 	assert_eq!(decode_invoice_json["description"], "mcp decode");
 	assert_eq!(decode_invoice_json["amount_msat"], 50_000_000u64);
+	let cases = [
+		(
+			"get_forwarded_payment_details",
+			json!({"forwarded_payment_id": "00".repeat(32)}),
+			"payment",
+			Value::Null,
+		),
+		(
+			"get_forwarded_payment_tracking_mode",
+			json!({}),
+			"mode",
+			json!("FORWARDED_PAYMENT_TRACKING_MODE_STATS"),
+		),
+		(
+			"get_channel_forwarding_stats",
+			json!({"channel_id": "00".repeat(32)}),
+			"stats",
+			Value::Null,
+		),
+		("list_channel_forwarding_stats", json!({}), "stats", json!([])),
+		("list_channel_pair_forwarding_stats", json!({}), "stats", json!([])),
+	];
+	for (i, (name, arguments, field, expected)) in cases.into_iter().enumerate() {
+		let response =
+			mcp.call(10 + i as u64, "tools/call", json!({"name": name, "arguments": arguments}));
+		assert_ne!(response["result"]["isError"], true, "{response}");
+		let result = tool_result_json(&response);
+		assert_eq!(result[field], expected);
+	}
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

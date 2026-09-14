@@ -270,15 +270,44 @@ pub struct PaymentClaimable {
 	#[prost(uint64, tag = "5")]
 	pub claimable_amount_msat: u64,
 }
-/// PaymentForwarded indicates a payment was forwarded through the node.
+/// A payment was forwarded through the node.
+/// Events can contain multiple HTLCs and do not always have a stored history record.
+/// LDK Node does not supply a history record ID with the event.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PaymentForwarded {
-	#[prost(message, optional, tag = "1")]
-	pub forwarded_payment: ::core::option::Option<super::types::ForwardedPayment>,
+	/// The incoming HTLCs. May contain multiple entries for trampoline payments.
+	/// Indices do not imply pairwise correspondence with next_htlcs.
+	#[prost(message, repeated, tag = "1")]
+	pub prev_htlcs: ::prost::alloc::vec::Vec<super::types::HtlcLocator>,
+	/// The outgoing HTLCs. May contain multiple entries for trampoline payments.
+	#[prost(message, repeated, tag = "2")]
+	pub next_htlcs: ::prost::alloc::vec::Vec<super::types::HtlcLocator>,
+	/// The total fee earned, in millisatoshis, if known.
+	/// An on-chain claim by the next hop rounds its amount down to whole satoshis,
+	/// which can increase this fee. In that case claim_from_onchain_tx is true.
+	/// If the incoming channel was force-closed, the fee is unknown until the
+	/// on-chain transaction fees are known.
+	#[prost(uint64, optional, tag = "3")]
+	pub total_fee_earned_msat: ::core::option::Option<u64>,
+	/// The share of the total fee withheld in addition to the forwarding fee.
+	/// Set only for an intercepted HTLC forwarded with less than the expected amount,
+	/// if the fee is known. This is included in total_fee_earned_msat; do not add the two.
+	#[prost(uint64, optional, tag = "4")]
+	pub skimmed_fee_msat: ::core::option::Option<u64>,
+	/// Whether the next hop claimed the forwarded HTLC through an on-chain transaction.
+	#[prost(bool, tag = "5")]
+	pub claim_from_onchain_tx: bool,
+	/// The total outgoing amount after fees, in millisatoshis.
+	#[prost(uint64, tag = "6")]
+	pub outbound_amount_forwarded_msat: u64,
+	/// The time the server handles the event, in seconds since the Unix epoch.
+	/// This can be later than the stored forwarding time, including after a restart.
+	#[prost(uint64, tag = "7")]
+	pub observed_at_timestamp: u64,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

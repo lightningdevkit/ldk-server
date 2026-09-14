@@ -454,59 +454,174 @@ pub struct HtlcLocator {
 	#[prost(string, optional, tag = "3")]
 	pub node_id: ::core::option::Option<::prost::alloc::string::String>,
 	/// The amount in millisatoshis of the HTLC that was sent or received, if known.
-	/// This can be unset for events serialized by LDK Node v0.7.0 and prior,
-	/// or forwarding records stored by LDK Server before this field was added.
+	/// This can be unset for events serialized by LDK Node v0.7.0 and prior.
 	#[prost(uint64, optional, tag = "4")]
 	pub amount_msat: ::core::option::Option<u64>,
 }
-/// A forwarded payment through our node.
-///
-/// A forwarded payment can involve multiple incoming and outgoing HTLCs, e.g. when acting as a
-/// trampoline router. The `prev_htlcs` and `next_htlcs` fields are the canonical representation of
-/// the HTLCs associated with this forwarding event. Their indices do not imply pairwise
-/// correspondence.
-///
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
+/// A stored forwarding record from LDK Node's detailed history.
+/// Each record describes one incoming and one outgoing HTLC.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ForwardedPayment {
-	/// The total fee, in milli-satoshis, which was earned as a result of the payment.
-	///
-	/// Note that if we force-closed the channel over which we forwarded an HTLC while the HTLC was pending, the amount the
-	/// next hop claimed will have been rounded down to the nearest whole satoshi. Thus, the fee calculated here may be
-	/// higher than expected as we still claimed the full value in millisatoshis from the source.
-	/// In this case, `claim_from_onchain_tx` will be set.
-	///
-	/// If the channel which sent us the payment has been force-closed, we will claim the funds via an on-chain transaction.
-	/// In that case we do not yet know the on-chain transaction fees which we will spend and will instead set this to `None`.
-	#[prost(uint64, optional, tag = "1")]
+	/// The opaque, hex-encoded identifier assigned by LDK Node.
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+	/// The incoming channel ID.
+	#[prost(string, tag = "2")]
+	pub prev_channel_id: ::prost::alloc::string::String,
+	/// The outgoing channel ID.
+	#[prost(string, tag = "3")]
+	pub next_channel_id: ::prost::alloc::string::String,
+	/// The incoming user channel ID as a decimal string, if known.
+	#[prost(string, optional, tag = "4")]
+	pub prev_user_channel_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The outgoing user channel ID as a decimal string, if known.
+	#[prost(string, optional, tag = "5")]
+	pub next_user_channel_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The previous node's public key, if known.
+	#[prost(string, optional, tag = "6")]
+	pub prev_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The next node's public key, if known.
+	#[prost(string, optional, tag = "7")]
+	pub next_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The incoming amount, in millisatoshis, if known.
+	#[prost(uint64, optional, tag = "8")]
+	pub inbound_amount_forwarded_msat: ::core::option::Option<u64>,
+	/// The total fee earned, in millisatoshis, if known.
+	#[prost(uint64, optional, tag = "9")]
 	pub total_fee_earned_msat: ::core::option::Option<u64>,
-	/// The share of the total fee, in milli-satoshis, which was withheld in addition to the forwarding fee.
-	/// This will only be set if we forwarded an intercepted HTLC with less than the expected amount. This means our
-	/// counterparty accepted to receive less than the invoice amount.
-	///
-	/// The caveat described above the `total_fee_earned_msat` field applies here as well.
-	#[prost(uint64, optional, tag = "2")]
+	/// The share of the total fee withheld in addition to the forwarding fee, if known.
+	/// This is included in total_fee_earned_msat; do not add the two amounts.
+	#[prost(uint64, optional, tag = "10")]
 	pub skimmed_fee_msat: ::core::option::Option<u64>,
-	/// If this is true, the forwarded HTLC was claimed by our counterparty via an on-chain transaction.
-	#[prost(bool, tag = "3")]
+	/// Whether the next hop claimed the forwarded HTLC through an on-chain transaction.
+	#[prost(bool, tag = "11")]
 	pub claim_from_onchain_tx: bool,
-	/// The final amount forwarded, in milli-satoshis, after the fee is deducted.
-	///
-	/// The caveat described above the `total_fee_earned_msat` field applies here as well.
-	#[prost(uint64, optional, tag = "4")]
+	/// The outgoing amount, in millisatoshis, if known.
+	#[prost(uint64, optional, tag = "12")]
 	pub outbound_amount_forwarded_msat: ::core::option::Option<u64>,
-	/// The set of incoming HTLCs forwarded to our node that will be claimed by this forward.
-	/// This is the canonical incoming HTLC representation.
-	#[prost(message, repeated, tag = "5")]
-	pub prev_htlcs: ::prost::alloc::vec::Vec<HtlcLocator>,
-	/// The set of outgoing HTLCs forwarded by our node that have been claimed by this forward.
-	/// This is the canonical outgoing HTLC representation.
-	#[prost(message, repeated, tag = "6")]
-	pub next_htlcs: ::prost::alloc::vec::Vec<HtlcLocator>,
+	/// LDK Node's stored forwarding time, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "13")]
+	pub forwarded_at_timestamp: u64,
+}
+/// Forwarding statistics reported by LDK Node.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChannelForwardingStats {
+	/// The channel id these stats apply to.
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+	/// The channel counterparty node id, if known.
+	#[prost(string, optional, tag = "2")]
+	pub counterparty_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// Number of forwarded payments where this was the incoming channel.
+	#[prost(uint64, tag = "3")]
+	pub inbound_payments_forwarded: u64,
+	/// Number of forwarded payments where this was the outgoing channel.
+	#[prost(uint64, tag = "4")]
+	pub outbound_payments_forwarded: u64,
+	/// Total inbound amount forwarded through this channel, in millisatoshis.
+	#[prost(uint64, tag = "5")]
+	pub total_inbound_amount_msat: u64,
+	/// Total outbound amount forwarded through this channel, in millisatoshis.
+	#[prost(uint64, tag = "6")]
+	pub total_outbound_amount_msat: u64,
+	/// Total forwarding fees earned through this channel, in millisatoshis, if known for every
+	/// recorded forward.
+	///
+	/// A single record covers this channel in both roles. A forward contributes its fee here when
+	/// this was the incoming channel, and contributes nothing when this was the outgoing channel,
+	/// because fees are attributed to the incoming side.
+	#[prost(uint64, optional, tag = "7")]
+	pub total_fee_earned_msat: ::core::option::Option<u64>,
+	/// Total skimmed fees earned through this channel, in millisatoshis.
+	///
+	/// This is the share of `total_fee_earned_msat` that was withheld in addition to the
+	/// forwarding fee, not an amount earned on top of it. Adding the two would double-count.
+	#[prost(uint64, tag = "8")]
+	pub total_skimmed_fee_msat: u64,
+	/// Number of forwarded HTLCs that the next hop claimed from an on-chain transaction.
+	///
+	/// A forward contributes here when this was the outgoing channel.
+	#[prost(uint64, tag = "9")]
+	pub onchain_claims_count: u64,
+	/// Timestamp of the first forward recorded for this channel, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "10")]
+	pub first_forwarded_at_timestamp: u64,
+	/// Timestamp of the latest forward recorded for this channel, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "11")]
+	pub last_forwarded_at_timestamp: u64,
+}
+/// Forwarding statistics reported by LDK Node.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChannelPairForwardingStats {
+	/// An opaque identifier for this channel-pair bucket.
+	#[prost(string, tag = "1")]
+	pub id: ::prost::alloc::string::String,
+	/// The incoming channel id.
+	#[prost(string, tag = "2")]
+	pub prev_channel_id: ::prost::alloc::string::String,
+	/// The outgoing channel id.
+	#[prost(string, tag = "3")]
+	pub next_channel_id: ::prost::alloc::string::String,
+	/// Start timestamp of this aggregation bucket, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "4")]
+	pub bucket_start_timestamp: u64,
+	/// Width of this aggregation bucket, in seconds.
+	#[prost(uint64, tag = "5")]
+	pub bucket_size_secs: u64,
+	/// The previous node id, if available.
+	#[prost(string, optional, tag = "6")]
+	pub prev_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// The next node id, if available.
+	#[prost(string, optional, tag = "7")]
+	pub next_node_id: ::core::option::Option<::prost::alloc::string::String>,
+	/// Number of payments aggregated in this bucket.
+	#[prost(uint64, tag = "8")]
+	pub payment_count: u64,
+	/// Total inbound amount in this bucket, in millisatoshis.
+	#[prost(uint64, tag = "9")]
+	pub total_inbound_amount_msat: u64,
+	/// Total outbound amount in this bucket, in millisatoshis.
+	#[prost(uint64, tag = "10")]
+	pub total_outbound_amount_msat: u64,
+	/// Total forwarding fees earned in this bucket, in millisatoshis, if known for every payment.
+	#[prost(uint64, optional, tag = "11")]
+	pub total_fee_earned_msat: ::core::option::Option<u64>,
+	/// Total skimmed fees in this bucket, in millisatoshis.
+	///
+	/// This is the share of `total_fee_earned_msat` that was withheld in addition to the
+	/// forwarding fee, not an amount earned on top of it. Adding the two would double-count.
+	#[prost(uint64, tag = "12")]
+	pub total_skimmed_fee_msat: u64,
+	/// Number of forwarded HTLCs that the next hop claimed from an on-chain transaction.
+	#[prost(uint64, tag = "13")]
+	pub onchain_claims_count: u64,
+	/// Average forwarding fee per payment, in millisatoshis, if known for every payment.
+	#[prost(uint64, optional, tag = "14")]
+	pub avg_fee_msat: ::core::option::Option<u64>,
+	/// Average inbound amount per payment, in millisatoshis.
+	#[prost(uint64, tag = "15")]
+	pub avg_inbound_amount_msat: u64,
+	/// Timestamp of the first forward in this bucket, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "16")]
+	pub first_forwarded_at_timestamp: u64,
+	/// Timestamp of the latest forward in this bucket, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "17")]
+	pub last_forwarded_at_timestamp: u64,
+	/// Timestamp when this bucket was aggregated, in seconds since the Unix epoch.
+	#[prost(uint64, tag = "18")]
+	pub aggregated_at_timestamp: u64,
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -1551,6 +1666,42 @@ impl Network {
 			"TESTNET4" => Some(Self::Testnet4),
 			"SIGNET" => Some(Self::Signet),
 			"REGTEST" => Some(Self::Regtest),
+			_ => None,
+		}
+	}
+}
+/// The forwarding history stored by LDK Node.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ForwardedPaymentTrackingMode {
+	Unspecified = 0,
+	/// Update per-channel totals without storing individual forwards.
+	Stats = 1,
+	/// Also store individual forwards, which are later aggregated into channel-pair buckets.
+	Detailed = 2,
+}
+impl ForwardedPaymentTrackingMode {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			ForwardedPaymentTrackingMode::Unspecified => {
+				"FORWARDED_PAYMENT_TRACKING_MODE_UNSPECIFIED"
+			},
+			ForwardedPaymentTrackingMode::Stats => "FORWARDED_PAYMENT_TRACKING_MODE_STATS",
+			ForwardedPaymentTrackingMode::Detailed => "FORWARDED_PAYMENT_TRACKING_MODE_DETAILED",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"FORWARDED_PAYMENT_TRACKING_MODE_UNSPECIFIED" => Some(Self::Unspecified),
+			"FORWARDED_PAYMENT_TRACKING_MODE_STATS" => Some(Self::Stats),
+			"FORWARDED_PAYMENT_TRACKING_MODE_DETAILED" => Some(Self::Detailed),
 			_ => None,
 		}
 	}

@@ -64,6 +64,14 @@ falling back to other channel types supported by the peer. Enabling this setting
 source that supports Bitcoin Core's `submitpackage` RPC, and relays TRUC, P2A, and ephemeral
 dust. The default is `false`.
 
+Set `forwarded_payment_tracking_mode = "detailed"` to store individual
+forwards. LDK Node retains these records for the current and previous one-hour buckets, then
+aggregates them into hourly channel-pair statistics and removes the individual records.
+Set it to `"stats"` (the default, matching LDK Node) to update per-channel totals directly without
+storing individual forwards. Values are case-insensitive.
+The same setting is available as `--node-forwarded-payment-tracking-mode` or
+`LDK_SERVER_NODE_FORWARDED_PAYMENT_TRACKING_MODE`.
+
 ### `[probing]`
 
 Enables LDK Node's background probing service to train the payment scorer with current
@@ -209,8 +217,7 @@ Two resolution methods are supported via the `mode` field:
   <network>/                # e.g., bitcoin/, regtest/, signet/
     api_key                # API key
     ldk-server.log         # Log file
-    ldk_node_data.sqlite   # LDK Node state (channels, wallet, payments)
-    ldk_server_data.sqlite # Forwarded-payment history
+    ldk_node_data.sqlite   # LDK Node state, payments, and forwarding history
 ```
 
 The mnemonic is the node's master secret, required to recover on-chain funds. On first start,

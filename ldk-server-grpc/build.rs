@@ -85,6 +85,10 @@ fn generate_protos() {
 			"api.UnifiedSendResponse.payment_result",
 			"#[cfg_attr(feature = \"serde\", serde(flatten))]",
 		)
+		.field_attribute(
+			"api.GetForwardedPaymentTrackingModeResponse.mode",
+			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_forwarded_payment_tracking_mode\"))]",
+		)
 		.compile_protos(
 			&[
 				"src/proto/api.proto",

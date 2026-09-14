@@ -8,7 +8,6 @@
 // licenses.
 
 mod api;
-mod io;
 mod service;
 mod util;
 
@@ -36,6 +35,7 @@ use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
 use ldk_server_grpc::types::{HtlcLocator, Payment};
 use log::{debug, error, info};
+#[cfg(test)]
 use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
@@ -43,17 +43,11 @@ use tokio::signal::unix::SignalKind;
 use tokio::sync::broadcast;
 
 use crate::api::node_to_proto_custom_tlv;
-use crate::io::persist::paginated_kv_store::PaginatedKVStore;
-use crate::io::persist::sqlite_store::SqliteStore;
-use crate::io::persist::{
-	FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,
-	FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-};
 use crate::service::NodeService;
 use crate::util::config::{load_config, ArgsConfig, ChainSource};
 use crate::util::logger::{LogConfig, ServerLogger};
 use crate::util::metrics::Metrics;
-use crate::util::proto_adapter::{forwarded_payment_to_proto, payment_to_proto};
+use crate::util::proto_adapter::payment_to_proto;
 use crate::util::tls::get_or_generate_tls_config;
 use crate::util::{create_dir_all_private, systemd, write_new};
 
@@ -157,6 +151,7 @@ fn main() {
 	ldk_node_config.listening_addresses = config_file.listening_addrs;
 	ldk_node_config.announcement_addresses = config_file.announcement_addrs;
 	ldk_node_config.network = config_file.network;
+	ldk_node_config.forwarded_payment_tracking_mode = config_file.forwarded_payment_tracking_mode;
 	ldk_node_config.hrn_config = config_file.hrn_config;
 	ldk_node_config.anchor_channels_config.enable_zero_fee_commitments =
 		config_file.enable_zero_fee_commitments;
@@ -274,15 +269,6 @@ fn main() {
 			std::process::exit(-1);
 		},
 	};
-
-	let paginated_store: Arc<dyn PaginatedKVStore> =
-		Arc::new(match SqliteStore::new(network_dir.clone(), None, None) {
-			Ok(store) => store,
-			Err(e) => {
-				error!("Failed to create SqliteStore: {e:?}");
-				std::process::exit(-1);
-			},
-		});
 
 	let (event_sender, _) = broadcast::channel::<EventEnvelope>(1024);
 	let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -616,41 +602,26 @@ fn main() {
 								})
 								.collect();
 
-							let forwarded_payment = forwarded_payment_to_proto(
+							let forwarded_payment = events::PaymentForwarded {
+								// Node events have no timestamp, so use the time we handle the event.
+								observed_at_timestamp: SystemTime::now().duration_since(UNIX_EPOCH)
+									.expect("Time must be after the Unix epoch").as_secs(),
 								prev_htlcs,
 								next_htlcs,
 								total_fee_earned_msat,
 								skimmed_fee_msat,
 								claim_from_onchain_tx,
-								Some(outbound_amount_forwarded_msat),
-							);
-
-							let mut forwarded_payment_id = [0u8; 32];
-							getrandom::getrandom(&mut forwarded_payment_id).expect("Failed to generate random bytes");
-
-							let forwarded_payment_creation_time = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time must be > 1970").as_secs() as i64;
+								outbound_amount_forwarded_msat,
+							};
 
 							if let Err(e) = event_sender.send(EventEnvelope {
-								event: Some(event_envelope::Event::PaymentForwarded(events::PaymentForwarded {
-									forwarded_payment: Some(forwarded_payment.clone()),
-								})),
+								event: Some(event_envelope::Event::PaymentForwarded(forwarded_payment)),
 							}) {
 								debug!("No event subscribers connected, skipping event: {e}");
 							}
 
-							match paginated_store.write(FORWARDED_PAYMENTS_PERSISTENCE_PRIMARY_NAMESPACE,FORWARDED_PAYMENTS_PERSISTENCE_SECONDARY_NAMESPACE,
-								&forwarded_payment_id.to_lower_hex_string(),
-								forwarded_payment_creation_time,
-								&forwarded_payment.encode_to_vec(),
-							) {
-								Ok(_) => {
-									if let Err(e) = event_node.event_handled() {
-										error!("Failed to mark event as handled: {e}");
-									}
-								}
-								Err(e) => {
-										error!("Failed to write forwarded payment to persistence: {}", e);
-								}
+							if let Err(e) = event_node.event_handled() {
+								error!("Failed to mark event as handled: {e}");
 							}
 						},
 						Event::SpliceNegotiated {
@@ -711,7 +682,6 @@ fn main() {
 						Ok((stream, _)) => {
 							let node_service = NodeService::new(
 								Arc::clone(&node),
-								Arc::clone(&paginated_store),
 								api_key.clone(),
 								metrics.clone(),
 								metrics_auth_header.clone(),

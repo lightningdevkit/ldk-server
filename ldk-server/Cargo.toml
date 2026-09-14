@@ -26,7 +26,6 @@ prost = { version = "0.11.6", default-features = false, features = ["std"] }
 ldk-server-grpc = { path = "../ldk-server-grpc" }
 bytes = { version = "1.4.0", default-features = false }
 hex = { package = "hex-conservative", version = "0.2.1", default-features = false }
-rusqlite = { version = "0.31.0", features = ["bundled"] }
 toml = { version = "0.8.9", default-features = false, features = ["parse"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 log = "0.4.28"

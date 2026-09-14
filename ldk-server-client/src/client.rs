@@ -28,19 +28,23 @@ use ldk_server_grpc::api::{
 	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
 	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
 	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest,
-	GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
+	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
+	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
 	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
 	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
-	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListPaymentsRequest,
-	ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
-	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	GraphListNodesResponse, ListChannelForwardingStatsRequest, ListChannelForwardingStatsResponse,
+	ListChannelPairForwardingStatsRequest, ListChannelPairForwardingStatsResponse,
+	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest,
+	ListForwardedPaymentsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
+	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest,
+	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -49,9 +53,11 @@ use ldk_server_grpc::endpoints::{
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
 	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
+	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
+	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
@@ -356,7 +362,42 @@ impl LdkServerClient {
 		self.grpc_unary(&request, GET_PAYMENT_DETAILS_PATH).await
 	}
 
-	/// Retrieves list of all forwarded payments.
+	/// Get a stored forwarded payment by its ID.
+	pub async fn get_forwarded_payment_details(
+		&self, request: GetForwardedPaymentDetailsRequest,
+	) -> Result<GetForwardedPaymentDetailsResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_FORWARDED_PAYMENT_DETAILS_PATH).await
+	}
+
+	/// Get the configured forwarding history tracking mode.
+	pub async fn get_forwarded_payment_tracking_mode(
+		&self, request: GetForwardedPaymentTrackingModeRequest,
+	) -> Result<GetForwardedPaymentTrackingModeResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH).await
+	}
+
+	/// Get forwarding statistics for a channel.
+	pub async fn get_channel_forwarding_stats(
+		&self, request: GetChannelForwardingStatsRequest,
+	) -> Result<GetChannelForwardingStatsResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_CHANNEL_FORWARDING_STATS_PATH).await
+	}
+
+	/// List channel forwarding statistics (paginated).
+	pub async fn list_channel_forwarding_stats(
+		&self, request: ListChannelForwardingStatsRequest,
+	) -> Result<ListChannelForwardingStatsResponse, LdkServerError> {
+		self.grpc_unary(&request, LIST_CHANNEL_FORWARDING_STATS_PATH).await
+	}
+
+	/// List channel-pair forwarding statistics (paginated).
+	pub async fn list_channel_pair_forwarding_stats(
+		&self, request: ListChannelPairForwardingStatsRequest,
+	) -> Result<ListChannelPairForwardingStatsResponse, LdkServerError> {
+		self.grpc_unary(&request, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH).await
+	}
+
+	/// Retrieves a paginated list of forwarded payments.
 	pub async fn list_forwarded_payments(
 		&self, request: ListForwardedPaymentsRequest,
 	) -> Result<ListForwardedPaymentsResponse, LdkServerError> {

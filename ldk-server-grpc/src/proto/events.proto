@@ -201,7 +201,36 @@ message PaymentClaimable {
   uint64 claimable_amount_msat = 5;
 }
 
-// PaymentForwarded indicates a payment was forwarded through the node.
+// A payment was forwarded through the node.
+// Events can contain multiple HTLCs and do not always have a stored history record.
+// LDK Node does not supply a history record ID with the event.
 message PaymentForwarded {
-  types.ForwardedPayment forwarded_payment = 1;
+  // The incoming HTLCs. May contain multiple entries for trampoline payments.
+  // Indices do not imply pairwise correspondence with next_htlcs.
+  repeated types.HtlcLocator prev_htlcs = 1;
+
+  // The outgoing HTLCs. May contain multiple entries for trampoline payments.
+  repeated types.HtlcLocator next_htlcs = 2;
+
+  // The total fee earned, in millisatoshis, if known.
+  // An on-chain claim by the next hop rounds its amount down to whole satoshis,
+  // which can increase this fee. In that case claim_from_onchain_tx is true.
+  // If the incoming channel was force-closed, the fee is unknown until the
+  // on-chain transaction fees are known.
+  optional uint64 total_fee_earned_msat = 3;
+
+  // The share of the total fee withheld in addition to the forwarding fee.
+  // Set only for an intercepted HTLC forwarded with less than the expected amount,
+  // if the fee is known. This is included in total_fee_earned_msat; do not add the two.
+  optional uint64 skimmed_fee_msat = 4;
+
+  // Whether the next hop claimed the forwarded HTLC through an on-chain transaction.
+  bool claim_from_onchain_tx = 5;
+
+  // The total outgoing amount after fees, in millisatoshis.
+  uint64 outbound_amount_forwarded_msat = 6;
+
+  // The time the server handles the event, in seconds since the Unix epoch.
+  // This can be later than the stored forwarding time, including after a restart.
+  uint64 observed_at_timestamp = 7;
 }

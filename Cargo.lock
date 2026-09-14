@@ -1343,7 +1343,6 @@ dependencies = [
  "log",
  "prost",
  "ring",
- "rusqlite",
  "serde",
  "tokio",
  "tokio-rustls 0.26.4",
