@@ -254,7 +254,10 @@ fn main() {
 		},
 	};
 
-	builder.set_runtime(runtime.handle().clone());
+	if let Err(e) = builder.set_runtime(runtime.handle().clone()) {
+		error!("Failed to set LDK Node runtime: {e}");
+		std::process::exit(-1);
+	}
 
 	let node_entropy = match crate::util::entropy::load_or_generate_node_entropy(&storage_dir) {
 		Ok(entropy) => entropy,
