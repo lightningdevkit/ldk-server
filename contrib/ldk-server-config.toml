@@ -56,6 +56,10 @@ log_to_file = true                            # Enable logging to a file (defaul
 rpc_address = "127.0.0.1:18444"               # RPC endpoint
 rpc_user = "polaruser"                        # RPC username
 rpc_password = "polarpass"                    # RPC password
+# Optional: source block/header/tx data from Bitcoin Core's REST interface instead of RPC.
+# RPC above is still used for calls REST doesn't support (e.g. transaction broadcast).
+# Normally the same host:port as rpc_address.
+#rest_address = "127.0.0.1:18444"
 
 # Electrum settings
 [electrum]

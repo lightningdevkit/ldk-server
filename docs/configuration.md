@@ -137,7 +137,10 @@ See [Operations - TLS](operations.md#tls) for a recommended CA-signed flow.
 You must configure **exactly one** of the following sections:
 
 - **`[bitcoind]`** - Bitcoin Core RPC. **Recommended.** Most reliable and private option.
-  Required for production deployments.
+  Required for production deployments. Optionally set `rest_address` to source
+  block/header/tx data from Bitcoin Core's REST interface instead of RPC; RPC is still used
+  for calls REST doesn't support (e.g. transaction broadcast). `rest_address` is normally
+  the same host:port as `rpc_address`.
 - **`[electrum]`** - Electrum server. Lighter weight, but relies on a trusted third-party
   server for chain data.
 - **`[esplora]`** - Esplora HTTP API. Convenient for quick testing with a public block

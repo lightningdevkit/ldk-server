@@ -40,9 +40,22 @@ impl Default for TestBitcoind {
 
 impl TestBitcoind {
 	pub fn new() -> Self {
+		Self::with_extra_args(&[])
+	}
+
+	/// Same as [`TestBitcoind::new`], but starts bitcoind with `-rest=1` so its REST interface
+	/// (disabled by default) is reachable, for exercising `[bitcoind]`'s `rest_address` option.
+	pub fn new_with_rest() -> Self {
+		Self::with_extra_args(&["-rest=1"])
+	}
+
+	fn with_extra_args(extra_args: &[&str]) -> Self {
+		let mut conf = corepc_node::Conf::default();
+		conf.args.extend_from_slice(extra_args);
+
 		let bitcoind = match std::env::var("BITCOIND_EXE") {
-			Ok(path) => Node::new(path).unwrap(),
-			Err(_) => Node::from_downloaded().unwrap(),
+			Ok(path) => Node::with_conf(path, &conf).unwrap(),
+			Err(_) => Node::from_downloaded_with_conf(&conf).unwrap(),
 		};
 		// Generate initial blocks to make coins spendable
 		let address = bitcoind.client.new_address().unwrap();
@@ -120,7 +133,12 @@ pub struct TestServerParams {
 
 /// A chain source for the test config, mirroring the server's supported backends.
 pub enum ChainSource {
-	Bitcoind { rpc_address: String, rpc_user: String, rpc_password: String },
+	Bitcoind {
+		rpc_address: String,
+		rpc_user: String,
+		rpc_password: String,
+		rest_address: Option<String>,
+	},
 	Electrum { server_url: String },
 	Esplora { server_url: String },
 }
@@ -129,10 +147,16 @@ impl ChainSource {
 	/// Render the chain source as its TOML section.
 	fn to_toml(&self) -> String {
 		match self {
-			ChainSource::Bitcoind { rpc_address, rpc_user, rpc_password } => format!(
-				"[bitcoind]\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
-				rpc_address, rpc_user, rpc_password
-			),
+			ChainSource::Bitcoind { rpc_address, rpc_user, rpc_password, rest_address } => {
+				let mut toml = format!(
+					"[bitcoind]\nrpc_address = \"{}\"\nrpc_user = \"{}\"\nrpc_password = \"{}\"",
+					rpc_address, rpc_user, rpc_password
+				);
+				if let Some(rest_address) = rest_address {
+					toml.push_str(&format!("\nrest_address = \"{}\"", rest_address));
+				}
+				toml
+			},
 			ChainSource::Electrum { server_url } => {
 				format!("[electrum]\nserver_url = \"{}\"", server_url)
 			},
@@ -173,6 +197,7 @@ impl TestConfigBuilder {
 				rpc_address: params.rpc_address.clone(),
 				rpc_user: params.rpc_user.clone(),
 				rpc_password: params.rpc_password.clone(),
+				rest_address: None,
 			},
 			metrics_auth: None,
 			log: None,
