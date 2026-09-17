@@ -681,8 +681,68 @@ message ListPaymentsResponse {
   optional string next_page_token = 2;
 }
 
-// Retrieves list of all forwarded payments.
-// See more: https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded
+// Get a stored forwarded payment by its ID.
+message GetForwardedPaymentDetailsRequest {
+  // The 32-byte identifier in hex-encoded form.
+  string forwarded_payment_id = 1;
+}
+
+message GetForwardedPaymentDetailsResponse {
+  // Unset if no stored record exists for this identifier.
+  types.ForwardedPayment payment = 1;
+}
+
+// Get the configured forwarding history tracking mode.
+message GetForwardedPaymentTrackingModeRequest {
+}
+
+message GetForwardedPaymentTrackingModeResponse {
+  // The configured tracking mode.
+  types.ForwardedPaymentTrackingMode mode = 1;
+}
+
+// Get forwarding statistics for a channel.
+message GetChannelForwardingStatsRequest {
+  // The 32-byte identifier in hex-encoded form.
+  string channel_id = 1;
+}
+
+message GetChannelForwardingStatsResponse {
+  // Unset if no stored record exists for this identifier.
+  types.ChannelForwardingStats stats = 1;
+}
+
+// List channel forwarding statistics (paginated).
+message ListChannelForwardingStatsRequest {
+  // Opaque token returned by the previous page. Omit for the first page.
+  optional string page_token = 1;
+}
+
+message ListChannelForwardingStatsResponse {
+  // A page of statistics.
+  repeated types.ChannelForwardingStats stats = 1;
+  // Token for the next page. Unset when there are no more results.
+  optional string next_page_token = 2;
+}
+
+// List channel-pair forwarding statistics (paginated).
+message ListChannelPairForwardingStatsRequest {
+  // Opaque token returned by the previous page. Omit for the first page.
+  optional string page_token = 1;
+}
+
+message ListChannelPairForwardingStatsResponse {
+  // A page of statistics.
+  repeated types.ChannelPairForwardingStats stats = 1;
+  // Token for the next page. Unset when there are no more results.
+  optional string next_page_token = 2;
+}
+
+// Retrieves a paginated list of forwarded payments from LDK Node's detailed history.
+// LDK Node retains records for the current and previous one-hour buckets, then aggregates them
+// into hourly channel-pair statistics and removes the individual records.
+// Only forwards with one incoming HTLC, one outgoing HTLC, and a known fee are recorded.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.ForwardingAnalytics.html#method.list_payments
 message ListForwardedPaymentsRequest {
   // `page_token` is an opaque pagination token string.
   //
@@ -1088,7 +1148,22 @@ service LightningNode {
   rpc GetPaymentDetails(GetPaymentDetailsRequest) returns (GetPaymentDetailsResponse);
   // List all payments.
   rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
-  // List all forwarded payments.
+  // Get a stored forwarded payment by its ID.
+  rpc GetForwardedPaymentDetails(GetForwardedPaymentDetailsRequest) returns (GetForwardedPaymentDetailsResponse);
+
+  // Get the configured forwarding history tracking mode.
+  rpc GetForwardedPaymentTrackingMode(GetForwardedPaymentTrackingModeRequest) returns (GetForwardedPaymentTrackingModeResponse);
+
+  // Get forwarding statistics for a channel.
+  rpc GetChannelForwardingStats(GetChannelForwardingStatsRequest) returns (GetChannelForwardingStatsResponse);
+
+  // List channel forwarding statistics (paginated).
+  rpc ListChannelForwardingStats(ListChannelForwardingStatsRequest) returns (ListChannelForwardingStatsResponse);
+
+  // List channel-pair forwarding statistics (paginated).
+  rpc ListChannelPairForwardingStats(ListChannelPairForwardingStatsRequest) returns (ListChannelPairForwardingStatsResponse);
+
+  // List forwarded payments.
   rpc ListForwardedPayments(ListForwardedPaymentsRequest) returns (ListForwardedPaymentsResponse);
   // Connect to a peer.
   rpc ConnectPeer(ConnectPeerRequest) returns (ConnectPeerResponse);

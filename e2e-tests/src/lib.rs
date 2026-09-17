@@ -181,6 +181,7 @@ pub struct TestConfigBuilder {
 	metrics_auth: Option<(String, String)>,
 	log: Option<(Option<String>, String)>,
 	tls_hosts: Option<Vec<String>>,
+	forwarded_payment_tracking_mode: Option<String>,
 }
 
 impl TestConfigBuilder {
@@ -202,7 +203,13 @@ impl TestConfigBuilder {
 			metrics_auth: None,
 			log: None,
 			tls_hosts: None,
+			forwarded_payment_tracking_mode: None,
 		}
+	}
+
+	pub fn forwarded_payment_tracking_mode(mut self, mode: &str) -> Self {
+		self.forwarded_payment_tracking_mode = Some(mode.to_string());
+		self
 	}
 
 	/// Set the node alias, or `None` to omit it entirely.
@@ -255,6 +262,9 @@ impl TestConfigBuilder {
 		}
 
 		let mut node = vec!["[node]".to_string(), "network = \"regtest\"".to_string()];
+		if let Some(mode) = &self.forwarded_payment_tracking_mode {
+			node.push(format!("forwarded_payment_tracking_mode = \"{mode}\""));
+		}
 		if !self.listening_addresses.is_empty() {
 			node.push(format!(
 				"listening_addresses = {}",

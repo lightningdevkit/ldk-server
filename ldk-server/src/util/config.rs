@@ -16,7 +16,9 @@ use std::time::Duration;
 use clap::Parser;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
-use ldk_node::config::{AsyncPaymentsRole, HRNResolverConfig, HumanReadableNamesConfig};
+use ldk_node::config::{
+	AsyncPaymentsRole, ForwardedPaymentTrackingMode, HRNResolverConfig, HumanReadableNamesConfig,
+};
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
 use ldk_node::liquidity::LSPS2ServiceConfig;
@@ -74,6 +76,7 @@ pub struct Config {
 	pub probing_config: Option<ProbingConfig>,
 	pub async_payments_role: Option<AsyncPaymentsRole>,
 	pub enable_zero_fee_commitments: bool,
+	pub forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode,
 	pub metrics_enabled: bool,
 	pub poll_metrics_interval: Option<u64>,
 	pub metrics_username: Option<String>,
@@ -156,6 +159,7 @@ struct ConfigBuilder {
 	probing: Option<ProbingTomlConfig>,
 	async_payments_role: Option<String>,
 	enable_zero_fee_commitments: Option<bool>,
+	forwarded_payment_tracking_mode: Option<String>,
 	metrics_enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
 	metrics_username: Option<String>,
@@ -181,6 +185,9 @@ impl ConfigBuilder {
 				node.async_payments_role.or(self.async_payments_role.clone());
 			self.enable_zero_fee_commitments =
 				node.enable_zero_fee_commitments.or(self.enable_zero_fee_commitments);
+			self.forwarded_payment_tracking_mode = node
+				.forwarded_payment_tracking_mode
+				.or(self.forwarded_payment_tracking_mode.clone());
 			self.rgs_server_url = node.rgs_server_url.or(self.rgs_server_url.clone());
 		}
 
@@ -308,6 +315,10 @@ impl ConfigBuilder {
 
 		if let Some(enable_zero_fee_commitments) = args.node_enable_zero_fee_commitments {
 			self.enable_zero_fee_commitments = Some(enable_zero_fee_commitments);
+		}
+
+		if let Some(mode) = &args.node_forwarded_payment_tracking_mode {
+			self.forwarded_payment_tracking_mode = Some(mode.clone());
 		}
 
 		if args.has_probing_options() {
@@ -591,6 +602,16 @@ impl ConfigBuilder {
 		let async_payments_role =
 			self.async_payments_role.as_deref().map(parse_async_payments_role).transpose()?;
 
+		let forwarded_payment_tracking_mode = match self.forwarded_payment_tracking_mode.as_deref() {
+			None => ForwardedPaymentTrackingMode::default(),
+			Some(mode) if mode.eq_ignore_ascii_case("detailed") => ForwardedPaymentTrackingMode::Detailed,
+			Some(mode) if mode.eq_ignore_ascii_case("stats") => ForwardedPaymentTrackingMode::Stats,
+			Some(mode) => return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!("Invalid forwarded_payment_tracking_mode '{mode}': expected 'stats' or 'detailed'"),
+			)),
+		};
+
 		let metrics_enabled = self.metrics_enabled.unwrap_or(false);
 
 		let poll_metrics_interval = self.poll_metrics_interval;
@@ -651,6 +672,7 @@ impl ConfigBuilder {
 			probing_config,
 			async_payments_role,
 			enable_zero_fee_commitments: self.enable_zero_fee_commitments.unwrap_or(false),
+			forwarded_payment_tracking_mode,
 			metrics_enabled,
 			poll_metrics_interval,
 			metrics_username,
@@ -690,6 +712,7 @@ struct NodeConfig {
 	pathfinding_scores_source_url: Option<String>,
 	async_payments_role: Option<String>,
 	enable_zero_fee_commitments: Option<bool>,
+	forwarded_payment_tracking_mode: Option<String>,
 	rgs_server_url: Option<String>,
 }
 
@@ -1193,6 +1216,15 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_NODE_FORWARDED_PAYMENT_TRACKING_MODE",
+		value_parser = ["stats", "detailed"],
+		ignore_case = true,
+		help = "Forwarded payment tracking mode: stats or detailed (case-insensitive). Defaults to stats."
+	)]
+	node_forwarded_payment_tracking_mode: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_PROBING_STRATEGY",
 		help = "Enable background probing with `high_degree` or `random_walk`."
 	)]
@@ -1433,6 +1465,7 @@ mod tests {
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
 			node_async_payments_role: Some(String::from("server")),
 			node_enable_zero_fee_commitments: Some(false),
+			node_forwarded_payment_tracking_mode: None,
 			probing_strategy: None,
 			probing_top_node_count: None,
 			probing_max_hops: None,
@@ -1470,6 +1503,7 @@ mod tests {
 			pathfinding_scores_source_url: None,
 			node_async_payments_role: None,
 			node_enable_zero_fee_commitments: None,
+			node_forwarded_payment_tracking_mode: None,
 			probing_strategy: None,
 			probing_top_node_count: None,
 			probing_max_hops: None,
@@ -1588,6 +1622,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Client),
 			enable_zero_fee_commitments: true,
+			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -1614,6 +1649,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Client)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.forwarded_payment_tracking_mode,
+			expected.forwarded_payment_tracking_mode
+		);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 
@@ -2251,6 +2290,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
 			enable_zero_fee_commitments: false,
+			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -2274,6 +2314,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.forwarded_payment_tracking_mode,
+			expected.forwarded_payment_tracking_mode
+		);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 		assert_eq!(config.log_max_size_bytes, expected.log_max_size_bytes);
@@ -2376,6 +2420,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
 			enable_zero_fee_commitments: false,
+			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
 			metrics_username: None,
@@ -2403,6 +2448,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.forwarded_payment_tracking_mode,
+			expected.forwarded_payment_tracking_mode
+		);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
 	}
@@ -2660,6 +2709,76 @@ mod tests {
 			SocketAddress::from_str("[2001:db8::1]:53").unwrap()
 		);
 		assert!(parse_dns_server_address("invalid@address").is_err());
+	}
+
+	#[test]
+	fn test_forwarded_payment_tracking_mode_config_and_override() {
+		for (mode, expected, override_mode, override_expected) in [
+			(
+				"stats",
+				ForwardedPaymentTrackingMode::Stats,
+				"detailed",
+				ForwardedPaymentTrackingMode::Detailed,
+			),
+			(
+				"detailed",
+				ForwardedPaymentTrackingMode::Detailed,
+				"stats",
+				ForwardedPaymentTrackingMode::Stats,
+			),
+			(
+				"StAtS",
+				ForwardedPaymentTrackingMode::Stats,
+				"DeTaIlEd",
+				ForwardedPaymentTrackingMode::Detailed,
+			),
+			(
+				"DETAILED",
+				ForwardedPaymentTrackingMode::Detailed,
+				"STATS",
+				ForwardedPaymentTrackingMode::Stats,
+			),
+		] {
+			let toml = DEFAULT_CONFIG.replace(
+				"[node]",
+				&format!("[node]\nforwarded_payment_tracking_mode = \"{mode}\""),
+			);
+			let mut builder = ConfigBuilder::default();
+			builder.merge_toml(toml::from_str(&toml).unwrap());
+			assert_eq!(builder.build().unwrap().forwarded_payment_tracking_mode, expected);
+
+			let mut builder = ConfigBuilder::default();
+			builder.merge_toml(toml::from_str(&toml).unwrap());
+			let args = ArgsConfig::try_parse_from([
+				"ldk-server",
+				"--node-forwarded-payment-tracking-mode",
+				override_mode,
+			])
+			.unwrap();
+			builder.merge_args(&args);
+			assert_eq!(builder.build().unwrap().forwarded_payment_tracking_mode, override_expected);
+		}
+	}
+
+	#[test]
+	fn test_forwarded_payment_tracking_mode_rejects_invalid_values() {
+		for mode in ["", "invalid"] {
+			let toml = DEFAULT_CONFIG.replace(
+				"[node]",
+				&format!("[node]\nforwarded_payment_tracking_mode = \"{mode}\""),
+			);
+			let mut builder = ConfigBuilder::default();
+			builder.merge_toml(toml::from_str(&toml).unwrap());
+			let error = builder.build().unwrap_err();
+			assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+			assert!(error.to_string().contains("forwarded_payment_tracking_mode"));
+			assert!(ArgsConfig::try_parse_from([
+				"ldk-server",
+				"--node-forwarded-payment-tracking-mode",
+				mode,
+			])
+			.is_err());
+		}
 	}
 
 	#[test]

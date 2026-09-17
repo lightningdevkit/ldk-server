@@ -250,7 +250,7 @@ checksum = "2dee39a0ee5b4095224a0cfc6bf4cc1baf0f9624b96b367e53b66d974e51d953"
 [[package]]
 name = "bitcoin-payment-instructions"
 version = "0.6.0"
-source = "git+https://github.com/jkczyz/bitcoin-payment-instructions?rev=c359b125e972ff49b5c2e9f6865afb11500286a0#c359b125e972ff49b5c2e9f6865afb11500286a0"
+source = "git+https://github.com/benthecarman/bitcoin-payment-instructions?rev=632f2ce8de7ea2035d5c83d7d745a52ea3e1fe70#632f2ce8de7ea2035d5c83d7d745a52ea3e1fe70"
 dependencies = [
  "bitcoin",
  "dnssec-prover",
@@ -1059,7 +1059,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -1284,7 +1284,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-node"
 version = "0.8.0+git"
-source = "git+https://github.com/lightningdevkit/ldk-node?rev=b1337d2f1665716313d2ccf849a04114f8b3ca19#b1337d2f1665716313d2ccf849a04114f8b3ca19"
+source = "git+https://github.com/lightningdevkit/ldk-node?rev=f375e4d5de18093c29a023f19f08c93d890af220#f375e4d5de18093c29a023f19f08c93d890af220"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1399,7 +1399,7 @@ dependencies = [
 [[package]]
 name = "lightning"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bech32",
  "bitcoin",
@@ -1416,7 +1416,7 @@ dependencies = [
 [[package]]
 name = "lightning-background-processor"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "bitcoin-io",
@@ -1430,7 +1430,7 @@ dependencies = [
 [[package]]
 name = "lightning-block-sync"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "bitreq",
@@ -1442,7 +1442,7 @@ dependencies = [
 [[package]]
 name = "lightning-dns-resolver"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "dnssec-prover",
  "lightning",
@@ -1453,7 +1453,7 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.35.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bech32",
  "bitcoin",
@@ -1464,7 +1464,7 @@ dependencies = [
 [[package]]
 name = "lightning-liquidity"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "bitreq",
@@ -1480,7 +1480,7 @@ dependencies = [
 [[package]]
 name = "lightning-macros"
 version = "0.2.2+git"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1490,7 +1490,7 @@ dependencies = [
 [[package]]
 name = "lightning-net-tokio"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1500,7 +1500,7 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1511,7 +1511,7 @@ dependencies = [
 [[package]]
 name = "lightning-rapid-gossip-sync"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "bitcoin-io",
@@ -1522,7 +1522,7 @@ dependencies = [
 [[package]]
 name = "lightning-transaction-sync"
 version = "0.3.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
  "electrum-client",
@@ -1535,7 +1535,7 @@ dependencies = [
 [[package]]
 name = "lightning-types"
 version = "0.4.0-rc1"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "bitcoin",
 ]
@@ -1691,7 +1691,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "possiblyrandom"
 version = "0.2.0"
-source = "git+https://github.com/lightningdevkit/rust-lightning?rev=4219131b05e44663a1b417e4f6cf09c7740ead2a#4219131b05e44663a1b417e4f6cf09c7740ead2a"
+source = "git+https://github.com/lightningdevkit/rust-lightning?rev=697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e#697a239f2beff8ecadd4ddaffbcff8f1e5b3d09e"
 dependencies = [
  "getrandom 0.2.17",
 ]
@@ -1810,7 +1810,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.42",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror",
  "tokio",
  "tracing",
@@ -1847,7 +1847,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]

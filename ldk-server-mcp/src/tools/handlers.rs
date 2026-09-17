@@ -17,8 +17,10 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt12SendRefundRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
 	DecodeInvoiceRequest, DecodeOfferRequest, DisconnectPeerRequest,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, GetBalancesRequest,
-	GetNodeInfoRequest, GetPaymentDetailsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
-	GraphListChannelsRequest, GraphListNodesRequest, ListChannelsRequest,
+	GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest,
+	GetForwardedPaymentTrackingModeRequest, GetNodeInfoRequest, GetPaymentDetailsRequest,
+	GraphGetChannelRequest, GraphGetNodeRequest, GraphListChannelsRequest, GraphListNodesRequest,
+	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest, ListChannelsRequest,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, OnchainReceiveRequest,
 	OnchainSendRequest, OpenChannelRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
 	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
@@ -360,6 +362,48 @@ pub async fn handle_get_payment_details(
 ) -> Result<Value, McpError> {
 	let request: GetPaymentDetailsRequest = parse_request(args)?;
 	let response = client.get_payment_details(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_get_forwarded_payment_details(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: GetForwardedPaymentDetailsRequest = parse_request(args)?;
+	let response = client.get_forwarded_payment_details(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_get_forwarded_payment_tracking_mode(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: GetForwardedPaymentTrackingModeRequest = parse_request(args)?;
+	let response =
+		client.get_forwarded_payment_tracking_mode(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_get_channel_forwarding_stats(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: GetChannelForwardingStatsRequest = parse_request(args)?;
+	let response = client.get_channel_forwarding_stats(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_list_channel_forwarding_stats(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: ListChannelForwardingStatsRequest = parse_request(args)?;
+	let response = client.list_channel_forwarding_stats(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_list_channel_pair_forwarding_stats(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: ListChannelPairForwardingStatsRequest = parse_request(args)?;
+	let response =
+		client.list_channel_pair_forwarding_stats(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

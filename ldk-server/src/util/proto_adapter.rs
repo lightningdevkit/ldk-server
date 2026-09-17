@@ -45,10 +45,10 @@ use ldk_server_grpc::types::transaction_type::Kind::{
 	UnilateralClose as TxUnilateralClose,
 };
 use ldk_server_grpc::types::{
-	bolt11_invoice_description, AnchorBump, Channel,
-	ChannelShutdownState as ProtoChannelShutdownState, Claim, CooperativeClose, Feature,
-	ForwardedPayment, Funding, HtlcLocator, InteractiveFunding, OutPoint, Payment, Peer,
-	ReserveType as ProtoReserveType, Sweep, TransactionChannel,
+	bolt11_invoice_description, AnchorBump, Channel, ChannelForwardingStats,
+	ChannelPairForwardingStats, ChannelShutdownState as ProtoChannelShutdownState, Claim,
+	CooperativeClose, Feature, ForwardedPayment, Funding, InteractiveFunding, OutPoint, Payment,
+	Peer, ReserveType as ProtoReserveType, Sweep, TransactionChannel,
 	TransactionType as ProtoTransactionType, UnilateralClose,
 };
 
@@ -505,17 +505,65 @@ pub(crate) fn pending_sweep_balance_to_proto(
 }
 
 pub(crate) fn forwarded_payment_to_proto(
-	prev_htlcs: Vec<HtlcLocator>, next_htlcs: Vec<HtlcLocator>, total_fee_earned_msat: Option<u64>,
-	skimmed_fee_msat: Option<u64>, claim_from_onchain_tx: bool,
-	outbound_amount_forwarded_msat: Option<u64>,
+	payment: ldk_node::payment::ForwardedPaymentDetails,
 ) -> ForwardedPayment {
 	ForwardedPayment {
-		total_fee_earned_msat,
-		skimmed_fee_msat,
-		claim_from_onchain_tx,
-		outbound_amount_forwarded_msat,
-		prev_htlcs,
-		next_htlcs,
+		id: payment.id.to_string(),
+		prev_channel_id: payment.prev_channel_id.to_string(),
+		next_channel_id: payment.next_channel_id.to_string(),
+		prev_user_channel_id: payment.prev_user_channel_id.map(|id| id.0.to_string()),
+		next_user_channel_id: payment.next_user_channel_id.map(|id| id.0.to_string()),
+		prev_node_id: payment.prev_node_id.map(|id| id.to_string()),
+		next_node_id: payment.next_node_id.map(|id| id.to_string()),
+		inbound_amount_forwarded_msat: payment.inbound_amount_forwarded_msat,
+		total_fee_earned_msat: payment.total_fee_earned_msat,
+		skimmed_fee_msat: payment.skimmed_fee_msat,
+		claim_from_onchain_tx: payment.claim_from_onchain_tx,
+		outbound_amount_forwarded_msat: payment.outbound_amount_forwarded_msat,
+		forwarded_at_timestamp: payment.forwarded_at_timestamp,
+	}
+}
+
+pub(crate) fn channel_forwarding_stats_to_proto(
+	stats: ldk_node::payment::ChannelForwardingStats,
+) -> ChannelForwardingStats {
+	ChannelForwardingStats {
+		channel_id: stats.channel_id.to_string(),
+		counterparty_node_id: stats.counterparty_node_id.map(|id| id.to_string()),
+		inbound_payments_forwarded: stats.inbound_payments_forwarded,
+		outbound_payments_forwarded: stats.outbound_payments_forwarded,
+		total_inbound_amount_msat: stats.total_inbound_amount_msat,
+		total_outbound_amount_msat: stats.total_outbound_amount_msat,
+		total_fee_earned_msat: stats.total_fee_earned_msat,
+		total_skimmed_fee_msat: stats.total_skimmed_fee_msat,
+		onchain_claims_count: stats.onchain_claims_count,
+		first_forwarded_at_timestamp: stats.first_forwarded_at_timestamp,
+		last_forwarded_at_timestamp: stats.last_forwarded_at_timestamp,
+	}
+}
+
+pub(crate) fn channel_pair_forwarding_stats_to_proto(
+	stats: ldk_node::payment::ChannelPairForwardingStats,
+) -> ChannelPairForwardingStats {
+	ChannelPairForwardingStats {
+		id: stats.id.to_string(),
+		prev_channel_id: stats.prev_channel_id.to_string(),
+		next_channel_id: stats.next_channel_id.to_string(),
+		bucket_start_timestamp: stats.bucket_start_timestamp,
+		bucket_size_secs: stats.bucket_size_secs,
+		prev_node_id: stats.prev_node_id.map(|id| id.to_string()),
+		next_node_id: stats.next_node_id.map(|id| id.to_string()),
+		payment_count: stats.payment_count,
+		total_inbound_amount_msat: stats.total_inbound_amount_msat,
+		total_outbound_amount_msat: stats.total_outbound_amount_msat,
+		total_fee_earned_msat: stats.total_fee_earned_msat,
+		total_skimmed_fee_msat: stats.total_skimmed_fee_msat,
+		onchain_claims_count: stats.onchain_claims_count,
+		avg_fee_msat: stats.avg_fee_msat,
+		avg_inbound_amount_msat: stats.avg_inbound_amount_msat,
+		first_forwarded_at_timestamp: stats.first_forwarded_at_timestamp,
+		last_forwarded_at_timestamp: stats.last_forwarded_at_timestamp,
+		aggregated_at_timestamp: stats.aggregated_at_timestamp,
 	}
 }
 
@@ -693,6 +741,105 @@ mod tests {
 
 	fn test_channel_id(byte: u8) -> ChannelId {
 		ChannelId([byte; 32])
+	}
+
+	#[test]
+	fn forwarded_payment_preserves_id_amounts_and_optional_fields() {
+		let payment = ldk_node::payment::ForwardedPaymentDetails {
+			id: ldk_node::payment::ForwardedPaymentId([3; 32]),
+			prev_channel_id: test_channel_id(1),
+			next_channel_id: test_channel_id(2),
+			prev_user_channel_id: Some(ldk_node::UserChannelId(u128::MAX)),
+			next_user_channel_id: None,
+			prev_node_id: Some(test_pubkey()),
+			next_node_id: None,
+			inbound_amount_forwarded_msat: Some(105_000),
+			total_fee_earned_msat: Some(5_000),
+			skimmed_fee_msat: Some(4_000),
+			claim_from_onchain_tx: true,
+			outbound_amount_forwarded_msat: Some(100_000),
+			forwarded_at_timestamp: 1_700_000_000,
+		};
+		let proto = forwarded_payment_to_proto(payment.clone());
+		assert_eq!(proto.id, "03".repeat(32));
+		assert_eq!(proto.forwarded_at_timestamp, 1_700_000_000);
+		assert_eq!(proto.total_fee_earned_msat, Some(5_000));
+		assert_eq!(proto.skimmed_fee_msat, Some(4_000));
+		assert!(proto.claim_from_onchain_tx);
+		assert_eq!(proto.outbound_amount_forwarded_msat, Some(100_000));
+		assert_eq!(proto.prev_channel_id, test_channel_id(1).to_string());
+		assert_eq!(proto.next_channel_id, test_channel_id(2).to_string());
+		assert_eq!(proto.prev_user_channel_id, Some(u128::MAX.to_string()));
+		assert_eq!(proto.next_user_channel_id, None);
+		assert_eq!(proto.prev_node_id, Some(test_pubkey().to_string()));
+		assert_eq!(proto.next_node_id, None);
+		assert_eq!(proto.inbound_amount_forwarded_msat, Some(105_000));
+
+		let proto = forwarded_payment_to_proto(ldk_node::payment::ForwardedPaymentDetails {
+			inbound_amount_forwarded_msat: None,
+			outbound_amount_forwarded_msat: None,
+			total_fee_earned_msat: None,
+			skimmed_fee_msat: None,
+			..payment
+		});
+		assert_eq!(proto.inbound_amount_forwarded_msat, None);
+		assert_eq!(proto.outbound_amount_forwarded_msat, None);
+		assert_eq!(proto.total_fee_earned_msat, None);
+		assert_eq!(proto.skimmed_fee_msat, None);
+	}
+
+	#[test]
+	fn channel_pair_stats_preserve_bucket_and_optional_values() {
+		let stats = ldk_node::payment::ChannelPairForwardingStats {
+			id: ldk_node::payment::ChannelPairForwardingStatsId([3; 32]),
+			prev_channel_id: test_channel_id(1),
+			next_channel_id: test_channel_id(2),
+			bucket_start_timestamp: 1_699_999_200,
+			bucket_size_secs: 3600,
+			prev_node_id: Some(test_pubkey()),
+			next_node_id: None,
+			payment_count: 2,
+			total_inbound_amount_msat: 210_000,
+			total_outbound_amount_msat: 200_000,
+			total_fee_earned_msat: Some(10_000),
+			total_skimmed_fee_msat: 8_000,
+			onchain_claims_count: 1,
+			avg_fee_msat: Some(5_000),
+			avg_inbound_amount_msat: 105_000,
+			first_forwarded_at_timestamp: 1_700_000_000,
+			last_forwarded_at_timestamp: 1_700_000_100,
+			aggregated_at_timestamp: 1_700_006_400,
+		};
+		let proto = channel_pair_forwarding_stats_to_proto(stats.clone());
+		assert_eq!(proto.id, "03".repeat(32));
+		assert_eq!(proto.prev_channel_id, test_channel_id(1).to_string());
+		assert_eq!(proto.next_channel_id, test_channel_id(2).to_string());
+		assert_eq!(proto.prev_node_id, Some(test_pubkey().to_string()));
+		assert_eq!(proto.next_node_id, None);
+		assert_eq!(proto.bucket_start_timestamp, 1_699_999_200);
+		assert_eq!(proto.bucket_size_secs, 3600);
+		assert_eq!(proto.payment_count, 2);
+		assert_eq!(proto.total_inbound_amount_msat, 210_000);
+		assert_eq!(proto.total_outbound_amount_msat, 200_000);
+		assert_eq!(proto.total_fee_earned_msat, Some(10_000));
+		assert_eq!(proto.total_skimmed_fee_msat, 8_000);
+		assert_eq!(proto.onchain_claims_count, 1);
+		assert_eq!(proto.avg_fee_msat, Some(5_000));
+		assert_eq!(proto.avg_inbound_amount_msat, 105_000);
+		assert_eq!(proto.first_forwarded_at_timestamp, 1_700_000_000);
+		assert_eq!(proto.last_forwarded_at_timestamp, 1_700_000_100);
+		assert_eq!(proto.aggregated_at_timestamp, 1_700_006_400);
+
+		let proto =
+			channel_pair_forwarding_stats_to_proto(ldk_node::payment::ChannelPairForwardingStats {
+				prev_node_id: None,
+				total_fee_earned_msat: None,
+				avg_fee_msat: None,
+				..stats
+			});
+		assert_eq!(proto.prev_node_id, None);
+		assert_eq!(proto.total_fee_earned_msat, None);
+		assert_eq!(proto.avg_fee_msat, None);
 	}
 
 	#[test]

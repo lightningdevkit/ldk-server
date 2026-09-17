@@ -161,7 +161,12 @@ a channel just-in-time when the invoice is paid.
 |-------------------------|------------------------------------------------|
 | `GetPaymentDetails`     | Get details for a specific payment by ID       |
 | `ListPayments`          | List all payments (paginated)                  |
-| `ListForwardedPayments` | List all forwarded/routed payments (paginated) |
+| `GetForwardedPaymentDetails` | Get a stored forwarded payment by its ID |
+| `GetForwardedPaymentTrackingMode` | Get the configured forwarding history tracking mode |
+| `GetChannelForwardingStats` | Get forwarding statistics for a channel |
+| `ListChannelForwardingStats` | List channel forwarding statistics (paginated) |
+| `ListChannelPairForwardingStats` | List channel-pair forwarding statistics (paginated) |
+| `ListForwardedPayments` | List forwarded payments (paginated) |
 
 See [Pagination](#pagination) below for how to page through results.
 
@@ -286,7 +291,8 @@ errors before accepting further payments.
 
 ## Pagination
 
-`ListPayments` and `ListForwardedPayments` support cursor-based pagination:
+`ListPayments`, `ListForwardedPayments`, `ListChannelForwardingStats`, and
+`ListChannelPairForwardingStats` support cursor-based pagination:
 
 1. Make the first request without a `page_token`. The server controls the page size.
 2. If the response includes a `next_page_token`, pass it as `page_token` in the next request.

@@ -25,9 +25,11 @@ use ldk_server_grpc::endpoints::{
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
 	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
+	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
+	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
@@ -66,12 +68,17 @@ use crate::api::disconnect_peer::handle_disconnect_peer;
 use crate::api::error::{LdkServerError, LdkServerErrorCode};
 use crate::api::export_pathfinding_scores::handle_export_pathfinding_scores_request;
 use crate::api::get_balances::handle_get_balances_request;
+use crate::api::get_channel_forwarding_stats::handle_get_channel_forwarding_stats_request;
+use crate::api::get_forwarded_payment_details::handle_get_forwarded_payment_details_request;
+use crate::api::get_forwarded_payment_tracking_mode::handle_get_forwarded_payment_tracking_mode_request;
 use crate::api::get_node_info::handle_get_node_info_request;
 use crate::api::get_payment_details::handle_get_payment_details_request;
 use crate::api::graph_get_channel::handle_graph_get_channel_request;
 use crate::api::graph_get_node::handle_graph_get_node_request;
 use crate::api::graph_list_channels::handle_graph_list_channels_request;
 use crate::api::graph_list_nodes::handle_graph_list_nodes_request;
+use crate::api::list_channel_forwarding_stats::handle_list_channel_forwarding_stats_request;
+use crate::api::list_channel_pair_forwarding_stats::handle_list_channel_pair_forwarding_stats_request;
 use crate::api::list_channels::handle_list_channels_request;
 use crate::api::list_forwarded_payments::handle_list_forwarded_payments_request;
 use crate::api::list_payments::handle_list_payments_request;
@@ -85,7 +92,6 @@ use crate::api::spontaneous_send::handle_spontaneous_send_request;
 use crate::api::unified_send::handle_unified_send_request;
 use crate::api::update_channel_config::handle_update_channel_config_request;
 use crate::api::verify_signature::handle_verify_signature_request;
-use crate::io::persist::paginated_kv_store::PaginatedKVStore;
 use crate::util::metrics::Metrics;
 
 /// gRPC path prefix for the LightningNode service.
@@ -106,12 +112,11 @@ pub(crate) struct NodeService {
 
 impl NodeService {
 	pub(crate) fn new(
-		node: Arc<Node>, paginated_kv_store: Arc<dyn PaginatedKVStore>, api_key: String,
-		metrics: Option<Arc<Metrics>>, metrics_auth_header: Option<String>,
-		event_sender: broadcast::Sender<EventEnvelope>,
+		node: Arc<Node>, api_key: String, metrics: Option<Arc<Metrics>>,
+		metrics_auth_header: Option<String>, event_sender: broadcast::Sender<EventEnvelope>,
 		shutdown_rx: tokio::sync::watch::Receiver<bool>,
 	) -> Self {
-		let context = Arc::new(Context { node, paginated_kv_store });
+		let context = Arc::new(Context { node });
 		Self { context, api_key, metrics, metrics_auth_header, event_sender, shutdown_rx }
 	}
 }
@@ -169,7 +174,6 @@ fn validate_auth<B>(req: &Request<B>, api_key: &str, body: &[u8]) -> Result<(), 
 
 pub(crate) struct Context {
 	pub(crate) node: Arc<Node>,
-	pub(crate) paginated_kv_store: Arc<dyn PaginatedKVStore>,
 }
 
 impl Service<Request<Incoming>> for NodeService {
@@ -370,6 +374,46 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				LIST_PAYMENTS_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_list_payments_request).await
+				},
+				GET_FORWARDED_PAYMENT_DETAILS_PATH => {
+					handle_grpc_unary(
+						context,
+						body_bytes,
+						handle_get_forwarded_payment_details_request,
+					)
+					.await
+				},
+				GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH => {
+					handle_grpc_unary(
+						context,
+						body_bytes,
+						handle_get_forwarded_payment_tracking_mode_request,
+					)
+					.await
+				},
+				GET_CHANNEL_FORWARDING_STATS_PATH => {
+					handle_grpc_unary(
+						context,
+						body_bytes,
+						handle_get_channel_forwarding_stats_request,
+					)
+					.await
+				},
+				LIST_CHANNEL_FORWARDING_STATS_PATH => {
+					handle_grpc_unary(
+						context,
+						body_bytes,
+						handle_list_channel_forwarding_stats_request,
+					)
+					.await
+				},
+				LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH => {
+					handle_grpc_unary(
+						context,
+						body_bytes,
+						handle_list_channel_pair_forwarding_stats_request,
+					)
+					.await
 				},
 				LIST_FORWARDED_PAYMENTS_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_list_forwarded_payments_request)

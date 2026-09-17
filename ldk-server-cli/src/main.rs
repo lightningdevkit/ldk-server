@@ -36,10 +36,14 @@ use ldk_server_client::ldk_server_grpc::api::{
 	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
 	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
 	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetBalancesRequest, GetBalancesResponse, GetChannelForwardingStatsRequest,
+	GetChannelForwardingStatsResponse, GetForwardedPaymentDetailsRequest,
+	GetForwardedPaymentDetailsResponse, GetForwardedPaymentTrackingModeRequest,
+	GetForwardedPaymentTrackingModeResponse, GetNodeInfoRequest, GetNodeInfoResponse,
 	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GraphGetChannelRequest,
 	GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest,
-	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse, ListChannelsRequest,
+	GraphListChannelsResponse, GraphListNodesRequest, GraphListNodesResponse,
+	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest, ListChannelsRequest,
 	ListChannelsResponse, ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest,
 	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
 	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
@@ -548,7 +552,41 @@ enum Commands {
 		#[arg(help = "The payment ID in hex-encoded form")]
 		payment_id: String,
 	},
-	#[command(about = "Retrieves list of all forwarded payments")]
+	#[command(about = "Get a stored forwarded payment by its ID")]
+	GetForwardedPaymentDetails {
+		#[arg(help = "The 32-byte identifier in hex-encoded form")]
+		forwarded_payment_id: String,
+	},
+	#[command(about = "Get the configured forwarding history tracking mode")]
+	GetForwardedPaymentTrackingMode,
+	#[command(about = "Get forwarding statistics for a channel")]
+	GetChannelForwardingStats {
+		#[arg(help = "The 32-byte identifier in hex-encoded form")]
+		channel_id: String,
+	},
+	#[command(about = "List channel forwarding statistics (paginated)")]
+	ListChannelForwardingStats {
+		#[arg(
+			short,
+			long,
+			help = "Fetch at least this many records across pages; otherwise fetch one page"
+		)]
+		number_of_records: Option<u64>,
+		#[arg(long, help = "Opaque page token returned by a previous request")]
+		page_token: Option<String>,
+	},
+	#[command(about = "List channel-pair forwarding statistics (paginated)")]
+	ListChannelPairForwardingStats {
+		#[arg(
+			short,
+			long,
+			help = "Fetch at least this many records across pages; otherwise fetch one page"
+		)]
+		number_of_records: Option<u64>,
+		#[arg(long, help = "Opaque page token returned by a previous request")]
+		page_token: Option<String>,
+	},
+	#[command(about = "Retrieves a paginated list of forwarded payments")]
 	ListForwardedPayments {
 		#[arg(
 			short,
@@ -1187,6 +1225,69 @@ async fn main() {
 		Commands::GetPaymentDetails { payment_id } => {
 			handle_response_result::<_, GetPaymentDetailsResponse>(
 				client.get_payment_details(GetPaymentDetailsRequest { payment_id }).await,
+			);
+		},
+		Commands::GetForwardedPaymentDetails { forwarded_payment_id } => {
+			handle_response_result::<_, GetForwardedPaymentDetailsResponse>(
+				client
+					.get_forwarded_payment_details(GetForwardedPaymentDetailsRequest {
+						forwarded_payment_id,
+					})
+					.await,
+			);
+		},
+		Commands::GetForwardedPaymentTrackingMode => {
+			handle_response_result::<_, GetForwardedPaymentTrackingModeResponse>(
+				client
+					.get_forwarded_payment_tracking_mode(GetForwardedPaymentTrackingModeRequest {})
+					.await,
+			);
+		},
+		Commands::GetChannelForwardingStats { channel_id } => {
+			handle_response_result::<_, GetChannelForwardingStatsResponse>(
+				client
+					.get_channel_forwarding_stats(GetChannelForwardingStatsRequest { channel_id })
+					.await,
+			);
+		},
+		Commands::ListChannelForwardingStats { number_of_records, page_token } => {
+			handle_response_result::<
+				_,
+				CliPaginatedResponse<
+					ldk_server_client::ldk_server_grpc::types::ChannelForwardingStats,
+				>,
+			>(
+				fetch_paginated(
+					number_of_records,
+					page_token,
+					|page_token| {
+						client.list_channel_forwarding_stats(ListChannelForwardingStatsRequest {
+							page_token,
+						})
+					},
+					|r| (r.stats, r.next_page_token),
+				)
+				.await,
+			);
+		},
+		Commands::ListChannelPairForwardingStats { number_of_records, page_token } => {
+			handle_response_result::<
+				_,
+				CliPaginatedResponse<
+					ldk_server_client::ldk_server_grpc::types::ChannelPairForwardingStats,
+				>,
+			>(
+				fetch_paginated(
+					number_of_records,
+					page_token,
+					|page_token| {
+						client.list_channel_pair_forwarding_stats(
+							ListChannelPairForwardingStatsRequest { page_token },
+						)
+					},
+					|r| (r.stats, r.next_page_token),
+				)
+				.await,
 			);
 		},
 		Commands::ListForwardedPayments { number_of_payments, page_token } => {

@@ -76,6 +76,8 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidOfferId
 			| NodeError::InvalidNodeId
 			| NodeError::InvalidPaymentId
+			| NodeError::InvalidForwardedPaymentId
+			| NodeError::InvalidChannelPairForwardingStatsId
 			| NodeError::InvalidPaymentHash
 			| NodeError::InvalidPaymentPreimage
 			| NodeError::InvalidPaymentSecret

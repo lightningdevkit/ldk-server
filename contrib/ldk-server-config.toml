@@ -10,6 +10,11 @@ alias = "ldk_server"                          # Lightning node alias
 #async_payments_role = "client"               # Optional async payments role: "client" or "server"
 #enable_zero_fee_commitments = false          # Enable zero-fee commitment channels (default: false)
 
+# Forwarding history: "detailed" retains individual records for the current and previous hour,
+# then aggregates them into hourly channel-pair statistics and removes the individual records.
+# "stats" updates per-channel totals directly without storing individual forwards.
+#forwarded_payment_tracking_mode = "stats"    # Default: "stats"
+
 # Background probing service (optional)
 # CAUTION: Probes send real HTLCs and can lock outbound liquidity until they time out.
 # See docs/configuration.md for complete field descriptions.

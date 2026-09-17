@@ -13,7 +13,7 @@ keywords = ["bitcoin", "lightning", "ldk", "server"]
 categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
-ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "b1337d2f1665716313d2ccf849a04114f8b3ca19" }
+ldk-node = { git = "https://github.com/lightningdevkit/ldk-node", rev = "f375e4d5de18093c29a023f19f08c93d890af220" }
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 hyper = { version = "1", default-features = false, features = ["server", "http2"] }
 http-body-util = { version = "0.1", default-features = false }
@@ -26,7 +26,6 @@ prost = { version = "0.11.6", default-features = false, features = ["std"] }
 ldk-server-grpc = { path = "../ldk-server-grpc" }
 bytes = { version = "1.4.0", default-features = false }
 hex = { package = "hex-conservative", version = "0.2.1", default-features = false }
-rusqlite = { version = "0.31.0", features = ["bundled"] }
 toml = { version = "0.8.9", default-features = false, features = ["parse"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 log = "0.4.28"

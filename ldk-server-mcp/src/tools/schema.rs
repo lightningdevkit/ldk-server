@@ -674,6 +674,60 @@ pub fn get_payment_details_schema() -> Value {
 	})
 }
 
+pub fn get_forwarded_payment_details_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"forwarded_payment_id": {
+				"type": "string",
+				"description": "The 32-byte identifier in hex-encoded form"
+			}
+		},
+		"required": ["forwarded_payment_id"]
+	})
+}
+
+pub fn get_forwarded_payment_tracking_mode_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {},
+		"required": []
+	})
+}
+
+pub fn get_channel_forwarding_stats_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"channel_id": {
+				"type": "string",
+				"description": "The 32-byte identifier in hex-encoded form"
+			}
+		},
+		"required": ["channel_id"]
+	})
+}
+
+pub fn list_channel_forwarding_stats_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"page_token": page_token_schema()
+		},
+		"required": []
+	})
+}
+
+pub fn list_channel_pair_forwarding_stats_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"page_token": page_token_schema()
+		},
+		"required": []
+	})
+}
+
 pub fn list_forwarded_payments_schema() -> Value {
 	json!({
 		"type": "object",

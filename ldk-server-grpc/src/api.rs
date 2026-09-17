@@ -932,8 +932,122 @@ pub struct ListPaymentsResponse {
 	#[prost(string, optional, tag = "2")]
 	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Retrieves list of all forwarded payments.
-/// See more: <https://docs.rs/ldk-node/latest/ldk_node/enum.Event.html#variant.PaymentForwarded>
+/// Get a stored forwarded payment by its ID.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetForwardedPaymentDetailsRequest {
+	/// The 32-byte identifier in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub forwarded_payment_id: ::prost::alloc::string::String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetForwardedPaymentDetailsResponse {
+	/// Unset if no stored record exists for this identifier.
+	#[prost(message, optional, tag = "1")]
+	pub payment: ::core::option::Option<super::types::ForwardedPayment>,
+}
+/// Get the configured forwarding history tracking mode.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetForwardedPaymentTrackingModeRequest {}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetForwardedPaymentTrackingModeResponse {
+	/// The configured tracking mode.
+	#[prost(enumeration = "super::types::ForwardedPaymentTrackingMode", tag = "1")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_forwarded_payment_tracking_mode")
+	)]
+	pub mode: i32,
+}
+/// Get forwarding statistics for a channel.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetChannelForwardingStatsRequest {
+	/// The 32-byte identifier in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetChannelForwardingStatsResponse {
+	/// Unset if no stored record exists for this identifier.
+	#[prost(message, optional, tag = "1")]
+	pub stats: ::core::option::Option<super::types::ChannelForwardingStats>,
+}
+/// List channel forwarding statistics (paginated).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelForwardingStatsRequest {
+	/// Opaque token returned by the previous page. Omit for the first page.
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelForwardingStatsResponse {
+	/// A page of statistics.
+	#[prost(message, repeated, tag = "1")]
+	pub stats: ::prost::alloc::vec::Vec<super::types::ChannelForwardingStats>,
+	/// Token for the next page. Unset when there are no more results.
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// List channel-pair forwarding statistics (paginated).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelPairForwardingStatsRequest {
+	/// Opaque token returned by the previous page. Omit for the first page.
+	#[prost(string, optional, tag = "1")]
+	pub page_token: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelPairForwardingStatsResponse {
+	/// A page of statistics.
+	#[prost(message, repeated, tag = "1")]
+	pub stats: ::prost::alloc::vec::Vec<super::types::ChannelPairForwardingStats>,
+	/// Token for the next page. Unset when there are no more results.
+	#[prost(string, optional, tag = "2")]
+	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Retrieves a paginated list of forwarded payments from LDK Node's detailed history.
+/// LDK Node retains records for the current and previous one-hour buckets, then aggregates them
+/// into hourly channel-pair statistics and removes the individual records.
+/// Only forwards with one incoming HTLC, one outgoing HTLC, and a known fee are recorded.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.ForwardingAnalytics.html#method.list_payments>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
