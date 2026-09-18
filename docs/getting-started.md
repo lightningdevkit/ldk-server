@@ -10,8 +10,6 @@ This guide walks you through building, configuring, and running your first LDK S
     - An [Electrum](https://electrum.org/) server
     - An [Esplora](https://github.com/Blockstream/esplora) API endpoint
 
-No other external dependencies are required.
-
 ## Build
 
 ```bash
