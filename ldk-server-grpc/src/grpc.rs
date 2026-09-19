@@ -24,6 +24,8 @@ pub const GRPC_STATUS_INTERNAL: u32 = 13;
 pub const GRPC_STATUS_UNAVAILABLE: u32 = 14;
 pub const GRPC_STATUS_UNAUTHENTICATED: u32 = 16;
 
+const MAX_GRPC_MESSAGE_HEADER_LEN: usize = 4 * 1024;
+
 /// A gRPC status with code and human-readable message.
 #[derive(Debug)]
 pub struct GrpcStatus {
@@ -166,16 +168,25 @@ fn ok_trailers() -> http::HeaderMap {
 	trailers
 }
 
+fn grpc_message_header_value(message: &str) -> Option<http::HeaderValue> {
+	if message.is_empty() || message.len() > MAX_GRPC_MESSAGE_HEADER_LEN {
+		return None;
+	}
+
+	let encoded = percent_encode(message);
+	if encoded.len() > MAX_GRPC_MESSAGE_HEADER_LEN {
+		return None;
+	}
+
+	http::HeaderValue::from_str(&encoded).ok()
+}
+
 /// Build trailers for a gRPC error response.
 fn error_trailers(status: &GrpcStatus) -> http::HeaderMap {
 	let mut trailers = http::HeaderMap::with_capacity(2);
 	trailers.insert("grpc-status", http::HeaderValue::from_str(&status.code.to_string()).unwrap());
-	if !status.message.is_empty() {
-		// Percent-encode the message per gRPC spec.
-		let encoded = percent_encode(&status.message);
-		if let Ok(val) = http::HeaderValue::from_str(&encoded) {
-			trailers.insert("grpc-message", val);
-		}
+	if let Some(value) = grpc_message_header_value(&status.message) {
+		trailers.insert("grpc-message", value);
 	}
 	trailers
 }
@@ -193,11 +204,8 @@ pub fn grpc_error_response(status: GrpcStatus) -> http::Response<GrpcBody> {
 		.header("grpc-accept-encoding", "identity")
 		.header("content-length", "0")
 		.header("grpc-status", status.code.to_string());
-	if !status.message.is_empty() {
-		let encoded = percent_encode(&status.message);
-		if let Ok(val) = http::HeaderValue::from_str(&encoded) {
-			builder = builder.header("grpc-message", val);
-		}
+	if let Some(value) = grpc_message_header_value(&status.message) {
+		builder = builder.header("grpc-message", value);
 	}
 	builder.body(GrpcBody::Empty).unwrap()
 }
@@ -348,6 +356,26 @@ mod tests {
 		let response = grpc_error_response(GrpcStatus::new(GRPC_STATUS_INVALID_ARGUMENT, "bad"));
 
 		assert_eq!(response.headers().get("content-length").unwrap(), "0");
+	}
+
+	#[test]
+	fn test_grpc_error_response_omits_oversized_message() {
+		let response = grpc_error_response(GrpcStatus::new(
+			GRPC_STATUS_INVALID_ARGUMENT,
+			"%".repeat(MAX_GRPC_MESSAGE_HEADER_LEN),
+		));
+
+		assert!(response.headers().get("grpc-message").is_none());
+	}
+
+	#[test]
+	fn test_error_trailers_omit_oversized_message() {
+		let trailers = error_trailers(&GrpcStatus::new(
+			GRPC_STATUS_INVALID_ARGUMENT,
+			"a".repeat(MAX_GRPC_MESSAGE_HEADER_LEN + 1),
+		));
+
+		assert!(trailers.get("grpc-message").is_none());
 	}
 
 	#[test]
