@@ -41,7 +41,9 @@ dir_path = "/tmp/ldk-server/"                 # Path for local ldk-server data, 
 #connection_string = "postgresql://postgres:postgres@localhost:5432" # PostgreSQL connection string. Do not include dbname if db_name is set.
 #db_name = "ldk_db"                         # Optional database name.
 #kv_table_name = "ldk_data"                 # Optional KV table name.
-#certificate_path = "/path/to/postgres-ca.pem" # Optional CA certificate PEM file for TLS PostgreSQL connections.
+#certificate_path = "/path/to/postgres-ca.pem" # PEM-encoded CA certificate required to enable PostgreSQL TLS.
+# Without certificate_path, the default sslmode=prefer uses plaintext; sslmode=require fails to connect.
+# With certificate_path, TLS is required; sslmode=disable is rejected.
 
 [log]
 level = "Debug"                               # Log level (Error, Warn, Info, Debug, Trace)

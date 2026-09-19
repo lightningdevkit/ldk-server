@@ -131,10 +131,16 @@ kv_table_name = "ldk_data"
 certificate_path = "/path/to/postgres-ca.pem"
 ```
 
-Only `connection_string` is required. `db_name`, `kv_table_name`, and `certificate_path`
-are optional. If `db_name` is set, do not also include a database name in the connection
-string. If `certificate_path` is set, the file must contain a PEM-encoded CA certificate
-for TLS PostgreSQL connections.
+Only `connection_string` is required. `db_name` and `kv_table_name` are optional. If
+`db_name` is set, do not also include a database name in the connection string.
+
+`certificate_path` is optional, but **required to enable PostgreSQL TLS**. The file must
+contain a PEM-encoded CA certificate, which is added to the system's default trusted roots.
+Without `certificate_path`, the default `sslmode=prefer` uses plaintext even when PostgreSQL
+supports TLS, and `sslmode=require` fails to connect. System trust alone does not enable TLS.
+
+When `certificate_path` is set, TLS is required, including with the default `sslmode=prefer`.
+Combining it with `sslmode=disable` is rejected.
 
 Storage migration is not supported. ldk-server refuses to start with PostgreSQL when an existing
 `ldk_node_data.sqlite` file is present. After the first successful PostgreSQL node build,
