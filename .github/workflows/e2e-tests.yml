@@ -13,6 +13,21 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ldk_server_e2e
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ldk_server_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -37,5 +52,12 @@ jobs:
       - name: Run end-to-end tests
         run: cargo test --manifest-path e2e-tests/Cargo.toml --verbose --color=always -- --test-threads=4 --nocapture
         env:
+          RUST_BACKTRACE: 1
+          BITCOIND_SKIP_DOWNLOAD: 1
+
+      - name: Run PostgreSQL end-to-end tests
+        run: cargo test --manifest-path e2e-tests/Cargo.toml --test postgres --verbose --color=always -- --ignored --nocapture
+        env:
+          POSTGRES_CONNECTION_STRING: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports[5432] }}/ldk_server_e2e?sslmode=disable
           RUST_BACKTRACE: 1
           BITCOIND_SKIP_DOWNLOAD: 1
