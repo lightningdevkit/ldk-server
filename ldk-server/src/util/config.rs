@@ -1293,7 +1293,7 @@ pub struct ArgsConfig {
 	#[arg(
 		long,
 		env = "LDK_SERVER_STORAGE_POSTGRES_CERTIFICATE_PATH",
-		help = "Optional path to a PEM-encoded CA certificate for TLS PostgreSQL connections."
+		help = "Path to a PEM-encoded CA certificate required to enable PostgreSQL TLS. If omitted, the default sslmode=prefer uses plaintext and sslmode=require fails to connect."
 	)]
 	storage_postgres_certificate_path: Option<String>,
 

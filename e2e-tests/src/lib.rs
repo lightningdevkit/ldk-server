@@ -139,8 +139,12 @@ pub enum ChainSource {
 		rpc_password: String,
 		rest_address: Option<String>,
 	},
-	Electrum { server_url: String },
-	Esplora { server_url: String },
+	Electrum {
+		server_url: String,
+	},
+	Esplora {
+		server_url: String,
+	},
 }
 
 impl ChainSource {
@@ -177,6 +181,7 @@ pub struct TestConfigBuilder {
 	grpc_service_address: String,
 	alias: Option<String>,
 	storage_dir: PathBuf,
+	postgres: Option<(String, String)>,
 	chain_source: ChainSource,
 	metrics_auth: Option<(String, String)>,
 	log: Option<(Option<String>, String)>,
@@ -194,6 +199,7 @@ impl TestConfigBuilder {
 			grpc_service_address: format!("127.0.0.1:{}", params.grpc_port),
 			alias: Some("e2e-test-node".to_string()),
 			storage_dir: params.storage_dir.clone(),
+			postgres: None,
 			chain_source: ChainSource::Bitcoind {
 				rpc_address: params.rpc_address.clone(),
 				rpc_user: params.rpc_user.clone(),
@@ -209,6 +215,12 @@ impl TestConfigBuilder {
 
 	pub fn forwarded_payment_tracking_mode(mut self, mode: &str) -> Self {
 		self.forwarded_payment_tracking_mode = Some(mode.to_string());
+		self
+	}
+
+	/// Store LDK Node state in PostgreSQL, keeping keys and server files on disk.
+	pub fn postgres(mut self, connection_string: &str, kv_table_name: &str) -> Self {
+		self.postgres = Some((connection_string.to_string(), kv_table_name.to_string()));
 		self
 	}
 
@@ -319,6 +331,13 @@ poll_metrics_interval = 1{metrics_auth}
 			metrics_auth = metrics_auth,
 		);
 
+		if let Some((connection_string, kv_table_name)) = &self.postgres {
+			config.push_str(&format!(
+				"\n[storage.postgres]\nconnection_string = \"{}\"\nkv_table_name = \"{}\"\n",
+				connection_string, kv_table_name,
+			));
+		}
+
 		if let Some((level, file)) = &self.log {
 			config.push_str("\n[log]\n");
 			if let Some(level) = level {
@@ -357,26 +376,8 @@ impl LdkServerHandle {
 		config_bitcoind: &TestBitcoind, config: impl FnOnce(&TestServerParams) -> String,
 	) -> Self {
 		let (mut child, params, config_path) = spawn_server(config_bitcoind, config);
+		forward_server_output(&mut child);
 		let TestServerParams { grpc_port, p2p_port, storage_dir, .. } = params;
-
-		// Spawn threads to forward stdout and stderr for debugging
-		let stdout = child.stdout.take().unwrap();
-		std::thread::spawn(move || {
-			let reader = BufReader::new(stdout);
-			for line in reader.lines().map_while(Result::ok) {
-				eprintln!("[ldk-server stdout] {}", line);
-			}
-		});
-		let stderr = child.stderr.take().unwrap();
-		std::thread::spawn(move || {
-			let reader = BufReader::new(stderr);
-			for line in reader.lines().map_while(Result::ok) {
-				if line.contains("Failed to retrieve fee rate estimates") {
-					continue;
-				}
-				eprintln!("[ldk-server stderr] {}", line);
-			}
-		});
 
 		// Wait for the api_key and tls.crt files to appear in the network subdir
 		let network_dir = storage_dir.join("regtest");
@@ -413,6 +414,18 @@ impl LdkServerHandle {
 		handle.node_id = node_info.node_id;
 
 		handle
+	}
+
+	/// Kill and restart the server with the same config and storage to test crash recovery.
+	pub async fn restart(&mut self) {
+		let mut child = self.child.take().expect("Server is not running");
+		child.kill().expect("Failed to kill ldk-server");
+		child.wait().expect("Failed to reap ldk-server");
+		let mut child = spawn_server_process(&self.config_path);
+		forward_server_output(&mut child);
+		self.child = Some(child);
+		let info = wait_for_server_ready(self, Duration::from_secs(60)).await;
+		assert_eq!(info.node_id, self.node_id, "Node identity changed after restart");
 	}
 
 	pub fn client(&self) -> &LdkServerClient {
@@ -457,17 +470,42 @@ fn spawn_server(
 	let config_path = params.storage_dir.join("config.toml");
 	std::fs::write(&config_path, &config_content).unwrap();
 
+	let child = spawn_server_process(&config_path);
+	(child, params, config_path)
+}
+
+/// Spawn a server using an existing config, retaining its output pipes.
+fn spawn_server_process(config_path: &Path) -> Child {
 	let server_binary = server_binary_path();
-	let child = Command::new(&server_binary)
-		.arg(config_path.to_str().unwrap())
+	Command::new(&server_binary)
+		.arg(config_path)
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
 		.spawn()
 		.unwrap_or_else(|e| {
 			panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
-		});
+		})
+}
 
-	(child, params, config_path)
+fn forward_server_output(child: &mut Child) {
+	// Spawn threads to forward stdout and stderr for debugging
+	let stdout = child.stdout.take().unwrap();
+	std::thread::spawn(move || {
+		let reader = BufReader::new(stdout);
+		for line in reader.lines().map_while(Result::ok) {
+			eprintln!("[ldk-server stdout] {}", line);
+		}
+	});
+	let stderr = child.stderr.take().unwrap();
+	std::thread::spawn(move || {
+		let reader = BufReader::new(stderr);
+		for line in reader.lines().map_while(Result::ok) {
+			if line.contains("Failed to retrieve fee rate estimates") {
+				continue;
+			}
+			eprintln!("[ldk-server stderr] {}", line);
+		}
+	});
 }
 
 /// Start ldk-server with the given config and expect it to fail (exit non-zero).
@@ -793,9 +831,7 @@ pub async fn setup_funded_channel(
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				channel_amount_sats,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(channel_amount_sats)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
