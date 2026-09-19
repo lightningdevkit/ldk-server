@@ -60,7 +60,9 @@ async fn channels(server: &LdkServerHandle, count: usize) -> Vec<Channel> {
 }
 
 async fn close_channel(initiator: &LdkServerHandle, peer: &LdkServerHandle, user_channel_id: &str) {
+	const RETRY_TIMEOUT: Duration = Duration::from_secs(5);
 	let start = Instant::now();
+	let mut logged_error = false;
 	loop {
 		let result = initiator
 			.client()
@@ -72,10 +74,14 @@ async fn close_channel(initiator: &LdkServerHandle, peer: &LdkServerHandle, user
 		match result {
 			Ok(_) => return,
 			Err(error) => {
+				if !logged_error {
+					eprintln!("Failed to close channel {user_channel_id}: {error:?}");
+					logged_error = true;
+				}
 				// The last HTLC's asynchronous monitor update can briefly block shutdown,
 				// even after PaymentSuccessful and PaymentForwarded have been emitted.
 				assert_eq!(error.error_code, LdkServerErrorCode::LightningError);
-				assert!(start.elapsed() < TIMEOUT, "Channel closure failed: {error:?}");
+				assert!(start.elapsed() < RETRY_TIMEOUT, "Channel closure failed: {error:?}");
 				tokio::time::sleep(Duration::from_millis(200)).await;
 			},
 		}
