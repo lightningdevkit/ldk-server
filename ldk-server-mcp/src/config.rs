@@ -10,8 +10,8 @@
 use std::path::PathBuf;
 
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key, resolve_base_url,
-	resolve_cert_path,
+	get_default_config_path, load_config, read_tls_certificate, resolve_api_key,
+	resolve_api_key_path, resolve_base_url, resolve_cert_path,
 };
 
 pub struct ResolvedConfig {
@@ -28,6 +28,14 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 		env_base_url.is_some() && env_api_key.is_some() && env_tls_cert_path.is_some();
 
 	let explicit_config_path = config_path.map(PathBuf::from);
+	if let Some(path) = &explicit_config_path {
+		if !path.is_file() {
+			return Err(format!(
+				"Config file '{}' does not exist or is not a file",
+				path.display()
+			));
+		}
+	}
 	let config_path = explicit_config_path.clone().or_else(get_default_config_path);
 	let config = match config_path {
 		Some(ref path)
@@ -40,9 +48,14 @@ pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, Str
 
 	let base_url = resolve_base_url(env_base_url, config.as_ref());
 
-	let api_key = resolve_api_key(env_api_key, config.as_ref())?.ok_or_else(
-		|| "API key not provided. Set LDK_API_KEY or ensure the api_key file exists at ~/.ldk-server/[network]/api_key".to_string()
-	)?;
+	let api_key_path = resolve_api_key_path(config.as_ref());
+	let api_key = resolve_api_key(env_api_key, config.as_ref())?.ok_or_else(|| match api_key_path {
+		Some(path) => format!(
+			"API key not provided. Set LDK_API_KEY or ensure the api_key file exists at '{}'",
+			path.display()
+		),
+		None => "API key not provided. Set LDK_API_KEY; no API key file path could be resolved from the configuration".to_string(),
+	})?;
 
 	let tls_cert_path = resolve_cert_path(env_tls_cert_path, config.as_ref()).ok_or_else(|| {
 		"TLS cert path not provided. Set LDK_TLS_CERT_PATH or ensure config file exists at ~/.ldk-server/config.toml"
@@ -136,6 +149,7 @@ mod tests {
 		let temp_dir = std::env::temp_dir()
 			.join(format!("ldk-server-mcp-config-fallback-{}", std::process::id()));
 		std::fs::create_dir_all(&temp_dir).unwrap();
+		let (default_dir_env_var, old_default_dir) = set_default_data_dir(&temp_dir);
 
 		let cert_path = temp_dir.join("tls.crt");
 		std::fs::write(&cert_path, b"test-cert").unwrap();
@@ -144,14 +158,29 @@ mod tests {
 		std::env::set_var("LDK_API_KEY", "deadbeef");
 		std::env::set_var("LDK_TLS_CERT_PATH", &cert_path);
 		std::env::remove_var("LDK_BASE_URL");
-		let resolved =
-			resolve_config(Some(temp_dir.join("nonexistent.toml").display().to_string())).unwrap();
+		let resolved = resolve_config(None).unwrap();
 		std::env::remove_var("LDK_API_KEY");
 		std::env::remove_var("LDK_TLS_CERT_PATH");
+		restore_env_var(&default_dir_env_var, old_default_dir);
 
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
+	}
+
+	#[test]
+	fn resolve_config_rejects_missing_explicit_config() {
+		let _lock = ENV_LOCK.lock().unwrap();
+		let temp_dir = std::env::temp_dir()
+			.join(format!("ldk-server-mcp-missing-config-{}", std::process::id()));
+		std::fs::create_dir_all(&temp_dir).unwrap();
+		let missing_path = temp_dir.join("missing.toml");
+
+		let result = resolve_config(Some(missing_path.display().to_string()));
+
+		std::fs::remove_dir_all(temp_dir).unwrap();
+		let error = result.err().unwrap();
+		assert!(error.contains(&missing_path.display().to_string()));
 	}
 
 	#[test]
@@ -227,6 +256,43 @@ mod tests {
 		assert_eq!(resolved.base_url, DEFAULT_GRPC_SERVICE_ADDRESS);
 		assert_eq!(resolved.api_key, "ab".repeat(32));
 		assert_eq!(resolved.tls_cert_pem, b"storage-cert");
+
+		std::fs::remove_dir_all(temp_dir).unwrap();
+	}
+
+	#[test]
+	fn resolve_config_reports_missing_key_in_storage_dir() {
+		let _lock = ENV_LOCK.lock().unwrap();
+
+		let temp_dir = std::env::temp_dir()
+			.join(format!("ldk-server-mcp-missing-storage-key-{}", std::process::id()));
+		let custom_storage = temp_dir.join("custom-storage");
+		std::fs::create_dir_all(&custom_storage).unwrap();
+
+		let config_path = temp_dir.join("config.toml");
+		std::fs::write(
+			&config_path,
+			format!(
+				r#"
+					[node]
+					network = "regtest"
+
+					[storage.disk]
+					dir_path = "{}"
+				"#,
+				custom_storage.display()
+			),
+		)
+		.unwrap();
+
+		std::env::remove_var("LDK_API_KEY");
+		std::env::remove_var("LDK_TLS_CERT_PATH");
+		std::env::remove_var("LDK_BASE_URL");
+		let error = resolve_config(Some(config_path.display().to_string())).err().unwrap();
+
+		assert!(
+			error.contains(&custom_storage.join("regtest").join("api_key").display().to_string())
+		);
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
 	}
