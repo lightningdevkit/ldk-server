@@ -33,10 +33,7 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 async fn start_postgres(bitcoind: &TestBitcoind, connection_string: &str) -> LdkServerHandle {
 	let server = LdkServerHandle::start_with_config(bitcoind, |params| {
 		// Each server gets its own table, even when sharing the same test database.
-		let table_name = format!(
-			"node_{}",
-			params.storage_dir.file_name().unwrap().to_str().unwrap().trim_start_matches('.')
-		);
+		let table_name = format!("node_{}", params.grpc_port);
 		TestConfigBuilder::new(params)
 			.postgres(connection_string, &table_name)
 			.forwarded_payment_tracking_mode("detailed")
