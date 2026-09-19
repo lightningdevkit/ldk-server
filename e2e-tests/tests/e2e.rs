@@ -1918,10 +1918,11 @@ async fn test_metrics_endpoint() {
 	assert!(metrics.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
 	assert!(metrics.contains("ldk_server_total_lightning_balance_sats 0"));
 
-	// Set up channel and make a payment to trigger metrics update
+	// Set up the channel and confirm the wallet deposit and channel funding transaction.
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
 
-	// Poll for channel, peer and balance metrics.
+	// Wait for both onchain payments and the channel, peer and balance metrics.
 	let timeout = Duration::from_secs(10);
 	let start = std::time::Instant::now();
 	loop {
@@ -1929,7 +1930,10 @@ async fn test_metrics_endpoint() {
 		if metrics.contains("ldk_server_total_peers_count 1")
 			&& metrics.contains("ldk_server_total_channels_count 1")
 			&& metrics.contains("ldk_server_total_public_channels_count 1")
-			&& metrics.contains("ldk_server_total_payments_count 2")
+			&& metrics.contains("ldk_server_total_payments_count 2\n")
+			&& metrics.contains("ldk_server_total_successful_payments_count 2\n")
+			&& metrics.contains("ldk_server_total_pending_payments_count 0\n")
+			&& metrics.contains("ldk_server_total_failed_payments_count 0\n")
 			&& !metrics.contains("ldk_server_total_lightning_balance_sats 0")
 			&& !metrics.contains("ldk_server_total_onchain_balance_sats 0")
 			&& !metrics.contains("ldk_server_spendable_onchain_balance_sats 0")
@@ -1962,12 +1966,15 @@ async fn test_metrics_endpoint() {
 
 	run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
 
-	// Wait to receive the PaymentSuccessful event and update metrics
+	// The deposit, channel funding and BOLT11 payment must all be counted as successful.
 	let timeout = Duration::from_secs(30);
 	let start = std::time::Instant::now();
 	loop {
 		let metrics = client.get_metrics().await.unwrap();
-		if metrics.contains("ldk_server_total_successful_payments_count 1")
+		if metrics.contains("ldk_server_total_payments_count 3\n")
+			&& metrics.contains("ldk_server_total_successful_payments_count 3\n")
+			&& metrics.contains("ldk_server_total_pending_payments_count 0\n")
+			&& metrics.contains("ldk_server_total_failed_payments_count 0\n")
 			&& !metrics.contains("ldk_server_total_lightning_balance_sats 0")
 			&& !metrics.contains("ldk_server_total_onchain_balance_sats 0")
 			&& !metrics.contains("ldk_server_spendable_onchain_balance_sats 0")
@@ -1976,7 +1983,7 @@ async fn test_metrics_endpoint() {
 			break;
 		}
 		if start.elapsed() > timeout {
-			panic!("Timed out waiting for payment metrics to update");
+			panic!("Timed out waiting for payment metrics to update. Current metrics:\n{metrics}");
 		}
 		tokio::time::sleep(Duration::from_millis(500)).await;
 	}
