@@ -523,9 +523,15 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 	}
 	// Have SQLite discover the unilateral close onchain, ensuring PostgreSQL's commitment
 	// confirms without a competing commitment broadcast in response to a peer error message.
+	// Clear both peer stores so neither side reconnects before the commitment confirms.
 	postgres
 		.client()
 		.disconnect_peer(DisconnectPeerRequest { node_pubkey: sqlite_c.node_id().to_string() })
+		.await
+		.unwrap();
+	sqlite_c
+		.client()
+		.disconnect_peer(DisconnectPeerRequest { node_pubkey: postgres.node_id().to_string() })
 		.await
 		.unwrap();
 	postgres
