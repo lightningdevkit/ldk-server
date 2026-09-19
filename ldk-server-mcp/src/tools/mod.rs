@@ -88,6 +88,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			|client, args| Box::pin(handlers::handle_onchain_receive(client, args)),
 		),
 		tool_spec(
+			"onchain_bump_fee",
+			"Replace an unconfirmed outbound on-chain payment using RBF. Funding payments are not eligible. Returns the replacement transaction ID",
+			schema::onchain_bump_fee_schema,
+			|client, args| Box::pin(handlers::handle_onchain_bump_fee(client, args)),
+		),
+		tool_spec(
 			"onchain_send",
 			"Send an on-chain Bitcoin payment to an address",
 			schema::onchain_send_schema,
@@ -204,6 +210,12 @@ pub fn build_tool_registry() -> ToolRegistry {
 			"Decrease a channel's balance by splicing out to on-chain",
 			schema::splice_out_schema,
 			|client, args| Box::pin(handlers::handle_splice_out(client, args)),
+		),
+		tool_spec(
+			"bump_channel_funding_fee",
+			"Bump a pending splice fee, preserving its amount and destination. No general channel-opening fee bumping or caller-selected fee rate. Returns empty success when initiated",
+			schema::bump_channel_funding_fee_schema,
+			|client, args| Box::pin(handlers::handle_bump_channel_funding_fee(client, args)),
 		),
 		tool_spec(
 			"close_channel",
