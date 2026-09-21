@@ -79,7 +79,7 @@ impl McpProcess {
 	fn spawn() -> Self {
 		let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ldk-server-mcp"))
 			.env("LDK_BASE_URL", "localhost:19999")
-			.env("LDK_API_KEY", "deadbeef")
+			.env("LDK_MACAROON", "0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429")
 			.env("LDK_TLS_CERT_PATH", test_cert_path())
 			.stdin(std::process::Stdio::piped())
 			.stdout(std::process::Stdio::piped())
@@ -186,6 +186,26 @@ fn test_tools_list() {
 		EXPECTED_TOOLS.iter().map(|name| name.to_string()).collect::<Vec<_>>();
 	expected_tool_names.sort();
 	assert_eq!(tool_names, expected_tool_names, "Tool names drifted from the expected API surface");
+	let mut unary_rpc_tools: Vec<_> = include_str!("../../ldk-server-grpc/src/proto/api.proto")
+		.lines()
+		.filter_map(|line| {
+			let mut words = line.split_whitespace();
+			if words.next() != Some("rpc") || line.contains("returns (stream ") {
+				return None;
+			}
+			let method = words.next().unwrap().split('(').next().unwrap();
+			let mut name = String::new();
+			for (index, ch) in method.chars().enumerate() {
+				if index > 0 && ch.is_ascii_uppercase() {
+					name.push('_');
+				}
+				name.push(ch.to_ascii_lowercase());
+			}
+			Some(name)
+		})
+		.collect();
+	unary_rpc_tools.sort();
+	assert_eq!(tool_names, unary_rpc_tools, "Every unary RPC must have an MCP tool");
 
 	for tool in tools {
 		assert!(tool["name"].is_string(), "Tool missing name");

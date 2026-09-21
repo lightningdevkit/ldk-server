@@ -15,13 +15,14 @@ use clap_complete::{generate, Shell};
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::config::{
-	get_default_config_path, load_config, read_tls_certificate, resolve_api_key,
-	resolve_api_key_path, resolve_base_url, resolve_cert_path, Config,
+	get_default_config_path, load_config, read_tls_certificate, resolve_base_url,
+	resolve_cert_path, resolve_macaroon, resolve_macaroon_path, Config,
 	DEFAULT_GRPC_SERVICE_ADDRESS,
 };
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::{
-	AuthError, InternalError, InternalServerError, InvalidRequestError, LightningError,
+	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
+	LightningError,
 };
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
@@ -98,8 +99,8 @@ struct Cli {
 	)]
 	base_url: Option<String>,
 
-	#[arg(short, long, help = format!("API key for authentication. Defaults by reading {DEFAULT_DIR}/[network]/api_key"))]
-	api_key: Option<String>,
+	#[arg(short, long, help = format!("Hex macaroon. Defaults to the token in {DEFAULT_DIR}/[network]/macaroons/admin.macaroon"))]
+	macaroon: Option<String>,
 
 	#[arg(short, long, help = format!("Path to the server's TLS certificate file (PEM format). Defaults to {DEFAULT_DIR}/tls.crt"))]
 	tls_cert: Option<String>,
@@ -708,7 +709,6 @@ enum Commands {
 #[tokio::main]
 async fn main() {
 	let cli = Cli::parse();
-
 	// short-circuit if generating completions
 	if let Commands::Completions { shell } = cli.command {
 		generate(shell, &mut Cli::command(), "ldk-server-cli", &mut std::io::stdout());
@@ -720,22 +720,22 @@ async fn main() {
 		std::process::exit(1);
 	});
 
-	let api_key = resolve_api_key(cli.api_key, config.as_ref())
+	let macaroon = resolve_macaroon(cli.macaroon, config.as_ref())
 		.unwrap_or_else(|e| {
-			eprintln!("Failed to resolve API key: {e}");
+			eprintln!("Failed to resolve macaroon: {e}");
 			std::process::exit(1);
 		})
 		.unwrap_or_else(|| {
-			match resolve_api_key_path(config.as_ref()).unwrap_or_else(|e| {
-				eprintln!("Failed to resolve API key: {e}");
+			match resolve_macaroon_path(config.as_ref()).unwrap_or_else(|e| {
+				eprintln!("Failed to resolve Macaroon: {e}");
 				std::process::exit(1);
 			}) {
 				Some(path) => eprintln!(
-					"API key not provided. Use --api-key or ensure the api_key file exists at '{}'",
+					"Macaroon not provided. Use --macaroon or ensure the macaroon file exists at '{}'",
 					path.display()
 				),
 				None => eprintln!(
-					"API key not provided. Use --api-key; no API key file path could be resolved from the configuration"
+					"Macaroon not provided. Use --macaroon; no macaroon file path could be resolved from the configuration"
 				),
 			}
 			std::process::exit(1);
@@ -754,7 +754,7 @@ async fn main() {
 		std::process::exit(1);
 	});
 
-	let client = LdkServerClient::new(base_url, api_key, &server_cert_pem).unwrap_or_else(|e| {
+	let client = LdkServerClient::new(base_url, macaroon, &server_cert_pem).unwrap_or_else(|e| {
 		eprintln!("Failed to create client: {e}");
 		std::process::exit(1);
 	});
@@ -1598,6 +1598,7 @@ pub(crate) fn handle_error(e: LdkServerError) -> ! {
 	let error_type = match e.error_code {
 		InvalidRequestError => "Invalid Request",
 		AuthError => "Authentication Error",
+		AuthorizationError => "Permission Denied",
 		LightningError => "Lightning Error",
 		InternalServerError => "Internal Server Error",
 		InternalError => "Internal Error",

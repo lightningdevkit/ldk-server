@@ -115,7 +115,7 @@ cooldown_secs = 3600
 
 Where local ldk-server data is stored. Defaults to `~/.ldk-server/` on Linux and
 `~/Library/Application Support/ldk-server/` on macOS. This directory is still used for
-the node mnemonic, API key, TLS material, and logs when LDK Node state and history
+the node mnemonic, macaroon credentials, TLS material, and logs when LDK Node state and history
 use PostgreSQL.
 
 ### `[storage.postgres]`
@@ -257,7 +257,10 @@ Two resolution methods are supported via the `mode` field:
   tls.crt                # TLS certificate (PEM)
   tls.key                # TLS private key (PEM)
   <network>/                # e.g., bitcoin/, regtest/, signet/
-    api_key                # API key
+    macaroons/
+      admin.macaroon       # Admin token (0400)
+      roots/               # Private root keys (0700)
+        admin.toml         # Admin root key and permissions (0400)
     ldk-server.log         # Log file
     ldk_node_postgres.lock  # Present when LDK Node state uses PostgreSQL
     ldk_node_data.sqlite   # LDK Node state, payments, and forwarding history
@@ -271,4 +274,4 @@ guidance.
 
 When `[storage.postgres]` is configured, LDK Node wallet state, channel state, payment
 history, and forwarding history are stored in PostgreSQL instead of `ldk_node_data.sqlite`.
-The storage directory remains required for the mnemonic, API key, TLS material, and logs.
+The storage directory remains required for the mnemonic, macaroon credentials, TLS material, and logs.
