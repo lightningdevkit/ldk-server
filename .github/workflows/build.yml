@@ -38,7 +38,11 @@ jobs:
           if [ "${{ matrix.msrv }}" = "true" ]; then rustup component add clippy; fi
       - name: Check formatting
         if: matrix.check-fmt
-        run: rustup component add rustfmt && cargo fmt --all -- --check
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check
+          # e2e-tests is excluded from the workspace and must be checked separately
+          cargo fmt --manifest-path e2e-tests/Cargo.toml --all -- --check
       - name: Pin packages to allow for MSRV
         if: matrix.msrv
         run: |

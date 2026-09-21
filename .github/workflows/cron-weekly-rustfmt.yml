@@ -19,7 +19,7 @@ jobs:
           components: rustfmt
       - name: Run Nightly rustfmt
         # Run the formatter and manually remove trailing whitespace.
-        run: cargo +nightly fmt && git ls-files -- '*.rs' -z | xargs sed -E -i'' -e 's/[[:space:]]+$//'
+        run: cargo +nightly fmt && cargo +nightly fmt --manifest-path e2e-tests/Cargo.toml && git ls-files -- '*.rs' -z | xargs sed -E -i'' -e 's/[[:space:]]+$//'
       - name: Get the current date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
       - name: Create Pull Request

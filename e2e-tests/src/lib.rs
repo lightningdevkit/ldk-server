@@ -139,8 +139,12 @@ pub enum ChainSource {
 		rpc_password: String,
 		rest_address: Option<String>,
 	},
-	Electrum { server_url: String },
-	Esplora { server_url: String },
+	Electrum {
+		server_url: String,
+	},
+	Esplora {
+		server_url: String,
+	},
 }
 
 impl ChainSource {
@@ -793,9 +797,7 @@ pub async fn setup_funded_channel(
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				channel_amount_sats,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(channel_amount_sats)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,

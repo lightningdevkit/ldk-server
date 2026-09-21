@@ -14,6 +14,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build commands, testing, code style, 
 ## Development Rules
 
 - Always ensure tests pass and lints are fixed before committing
-- Run `cargo fmt --all` after every code change
+- Run `cargo fmt --all` and `cargo fmt --manifest-path e2e-tests/Cargo.toml --all` after every code change.
+  The `e2e-tests` crate is excluded from the workspace, so it must be formatted separately.
 - Never add new dependencies unless explicitly requested
 - Please always disclose the use of any AI tools in commit messages and PR descriptions
