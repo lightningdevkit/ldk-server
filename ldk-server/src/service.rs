@@ -22,16 +22,17 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
-	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
-	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
+	GET_CHANNEL_FORWARDING_STATS_PATH, GET_FORWARDED_PAYMENT_DETAILS_PATH,
+	GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
+	GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
 	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH,
+	SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -82,6 +83,10 @@ use crate::api::list_channels::handle_list_channels_request;
 use crate::api::list_forwarded_payments::handle_list_forwarded_payments_request;
 use crate::api::list_payments::handle_list_payments_request;
 use crate::api::list_peers::handle_list_peers_request;
+use crate::api::macaroons::{
+	handle_create_macaroon_request, handle_get_permissions_request, handle_list_macaroons_request,
+	handle_revoke_macaroon_request,
+};
 use crate::api::onchain_receive::handle_onchain_receive_request;
 use crate::api::onchain_send::handle_onchain_send_request;
 use crate::api::open_channel::handle_open_channel;
@@ -215,7 +220,7 @@ impl Service<Request<Incoming>> for NodeService {
 		let shutdown_rx = self.shutdown_rx.clone();
 		let (request_parts, request_body) = req.into_parts();
 		let future: Self::Future = Box::pin(async move {
-			let (_issuer, body_bytes) = match read_authorized_request(
+			let (issuer, body_bytes) = match read_authorized_request(
 				&macaroon_store,
 				&method,
 				&request_parts.headers,
@@ -453,6 +458,33 @@ impl Service<Request<Incoming>> for NodeService {
 					});
 					Ok(grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false }))
 				},
+				CREATE_MACAROON_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_create_macaroon_request(store, issuer, request)
+					})
+					.await
+				},
+				LIST_MACAROONS_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_list_macaroons_request(store, request)
+					})
+					.await
+				},
+				REVOKE_MACAROON_PATH => {
+					let store = Arc::clone(&macaroon_store);
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_revoke_macaroon_request(store, issuer, request)
+					})
+					.await
+				},
+				GET_PERMISSIONS_PATH => {
+					handle_grpc_unary(context, body_bytes, move |_context, request| {
+						handle_get_permissions_request(issuer, request)
+					})
+					.await
+				},
 				_ => {
 					let status = GrpcStatus::new(
 						GRPC_STATUS_UNIMPLEMENTED,
@@ -651,6 +683,71 @@ mod tests {
 				};
 			assert_eq!(status, expected, "timestamp offset: {offset}");
 		}
+	}
+
+	#[tokio::test]
+	async fn rejected_requests_do_not_poll_the_body() {
+		let (_directory, store) = test_store("http-admission");
+		let token = admin_token(&store);
+		let admin = store.authenticate(CREATE_MACAROON_PATH, Some(&token)).unwrap();
+		let reader = store.create_root("reader", vec!["node:read".into()], &admin).unwrap();
+		let timestamp =
+			std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+		let denied = bind_request(&reader.token, ONCHAIN_SEND_PATH, b"", timestamp);
+		let unknown = bind_request(&token, "UnmappedMethod", b"", timestamp);
+		let stale = bind_request(&token, GET_NODE_INFO_PATH, b"", timestamp - 61);
+		let wrong_method = bind_request(&token, GET_BALANCES_PATH, b"", timestamp);
+		for (credential, method, expected) in [
+			(None, GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
+			(None, GET_PERMISSIONS_PATH, GRPC_STATUS_UNAUTHENTICATED),
+			(Some("invalid"), GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
+			(Some(reader.token.as_str()), GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
+			(Some(denied.as_str()), ONCHAIN_SEND_PATH, GRPC_STATUS_PERMISSION_DENIED),
+			(Some(unknown.as_str()), "UnmappedMethod", GRPC_STATUS_UNIMPLEMENTED),
+			(Some(stale.as_str()), GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
+			(Some(wrong_method.as_str()), GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
+		] {
+			let mut headers = HeaderMap::new();
+			if let Some(token) = credential {
+				headers.insert("macaroon", token.parse().unwrap());
+			}
+			let error =
+				read_authorized_request(&store, method, &headers, UnreadBody).await.unwrap_err();
+			assert_eq!(error.code, expected);
+		}
+		let mut headers = HeaderMap::new();
+		let bound = bind_request(&reader.token, GET_NODE_INFO_PATH, b"request", timestamp);
+		headers.insert("macaroon", bound.parse().unwrap());
+		let body = http_body_util::Full::new(bytes::Bytes::from_static(b"request"));
+		let (_, bytes) =
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body).await.unwrap();
+		assert_eq!(bytes.as_ref(), b"request");
+		let changed_body = http_body_util::Full::new(bytes::Bytes::from_static(b"changed"));
+		assert_eq!(
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, changed_body)
+				.await
+				.unwrap_err()
+				.code,
+			GRPC_STATUS_UNAUTHENTICATED
+		);
+		// Authorized requests still have both declared and actual body-size limits.
+		headers.insert("content-length", (MAX_BODY_SIZE + 1).to_string().parse().unwrap());
+		assert_eq!(
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, UnreadBody)
+				.await
+				.unwrap_err()
+				.code,
+			GRPC_STATUS_INVALID_ARGUMENT
+		);
+		headers.remove("content-length");
+		let oversized = http_body_util::Full::new(bytes::Bytes::from(vec![0; MAX_BODY_SIZE + 1]));
+		assert_eq!(
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, oversized)
+				.await
+				.unwrap_err()
+				.code,
+			GRPC_STATUS_INVALID_ARGUMENT
+		);
 	}
 
 	#[tokio::test]

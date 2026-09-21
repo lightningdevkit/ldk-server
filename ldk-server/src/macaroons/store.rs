@@ -10,27 +10,38 @@
 //! Root lifecycle and request authentication.
 
 use std::collections::{BTreeSet, HashMap};
-use std::fs;
+use std::fs::{self, File};
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use hex::FromHex;
+use ldk_server_grpc::endpoints::{CREATE_MACAROON_PATH, REVOKE_MACAROON_PATH};
 use ldk_server_grpc::permissions::ADMIN_PERMISSION;
 use ldk_server_macaroons::{Macaroon, RequestBinding, MAX_MACAROON_BYTES};
 
 use super::persistence::{
-	compute_root_id, generate_secret, record_from_stored, write_private_file, write_root_file,
-	RootRecord, StoredRoot, ADMIN_MACAROON_FILE, ADMIN_ROOT_FILE, MACAROONS_DIR,
+	compute_root_id, generate_secret, is_hex, record_from_stored, write_private_file,
+	write_root_file, RootRecord, StoredRoot, ADMIN_MACAROON_FILE, ADMIN_ROOT_FILE, MACAROONS_DIR,
 	MACAROON_FILE_SIZE_LIMIT,
 };
 use super::policy::{
-	check_caveat, check_caveat_at, check_request_timestamp, mint_token, unix_time,
+	check_caveat, check_caveat_at, check_request_timestamp, is_unrestricted_admin,
+	management_permissions, mint_token, unix_time, validate_name, validate_permissions,
 };
-use super::{auth_error, authorization_error, invalid_data, store_lock_error, MacaroonInfo};
+use super::{
+	auth_error, authorization_error, internal_error, invalid_data, invalid_request,
+	store_lock_error, MacaroonInfo,
+};
 use crate::api::error::LdkServerError;
 use crate::util::{create_dir_all_private, read_to_string_with_limit};
+
+#[derive(Debug)]
+pub(crate) struct CreatedMacaroon {
+	pub(crate) info: MacaroonInfo,
+	pub(crate) token: String,
+}
 
 /// The signature and header conditions passed, but the body has not been checked yet.
 /// This must be completed with `finish_request` before executing the RPC.
@@ -42,6 +53,7 @@ pub(crate) struct PendingMacaroonRequest {
 
 pub(crate) struct MacaroonStore {
 	roots: RwLock<HashMap<String, Arc<RootRecord>>>,
+	management: Mutex<()>,
 	directory: PathBuf,
 }
 
@@ -54,7 +66,8 @@ impl MacaroonStore {
 		create_dir_all_private(&directory)?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
 
-		let mut store = Self { roots: RwLock::new(HashMap::new()), directory };
+		let mut store =
+			Self { roots: RwLock::new(HashMap::new()), management: Mutex::new(()), directory };
 		store.load_root_files()?;
 		if store.roots_mut()?.is_empty() {
 			store.create_initial_admin()?;
@@ -239,6 +252,131 @@ impl MacaroonStore {
 			check_caveat(caveat, method, &mut info.permissions)?;
 		}
 		Ok(Arc::new(info))
+	}
+
+	// Call management operations from a blocking thread. Authentication never takes this mutex.
+	pub(crate) fn create_root(
+		&self, name: &str, permissions: Vec<String>, issuer: &MacaroonInfo,
+	) -> Result<CreatedMacaroon, LdkServerError> {
+		self.create_root_with_writer(name, permissions, issuer, write_root_file)
+	}
+
+	fn create_root_with_writer(
+		&self, name: &str, permissions: Vec<String>, issuer: &MacaroonInfo,
+		write: impl FnOnce(&Path, &MacaroonInfo, &str) -> io::Result<()>,
+	) -> Result<CreatedMacaroon, LdkServerError> {
+		validate_name(name)?;
+		let permissions = validate_permissions(permissions).map_err(invalid_request)?;
+		let _management = self.management.lock().map_err(|_| store_lock_error())?;
+		let issuer_permissions = management_permissions(issuer, CREATE_MACAROON_PATH)?;
+		let secret = generate_secret().map_err(internal_error)?;
+		let info = MacaroonInfo {
+			id: compute_root_id(&secret),
+			name: name.to_string(),
+			permissions,
+			caveats: issuer.caveats.clone(),
+		};
+		let token = mint_token(&info, &secret).map_err(invalid_request)?;
+		{
+			let roots = self.roots.read().map_err(|_| store_lock_error())?;
+			if !roots.contains_key(&issuer.id) {
+				return Err(auth_error("Invalid credentials"));
+			}
+			if roots.values().any(|record| record.info.name == name) {
+				return Err(invalid_request(format!("macaroon name already exists: {name}")));
+			}
+			if !issuer_permissions.contains(ADMIN_PERMISSION)
+				&& info
+					.permissions
+					.iter()
+					.any(|permission| !issuer_permissions.contains(permission))
+			{
+				return Err(authorization_error(
+					"Cannot grant a permission that the calling root does not have",
+				));
+			}
+			if roots.contains_key(&info.id) {
+				return Err(internal_error("Generated a duplicate macaroon ID"));
+			}
+		}
+		let path = self.directory.join(format!("{}.toml", info.id));
+		write(&path, &info, &secret).map_err(internal_error)?;
+		let record =
+			Arc::new(RootRecord { info: Arc::new(info.clone()), secret: secret.clone(), path });
+		self.roots.write().map_err(|_| store_lock_error())?.insert(info.id.clone(), record);
+		log::info!(
+			"Created macaroon: issuer={} id={} name={} permissions={:?}",
+			issuer.id,
+			info.id,
+			info.name,
+			info.permissions
+		);
+		Ok(CreatedMacaroon { info, token })
+	}
+
+	pub(crate) fn list_roots(&self) -> Result<Vec<MacaroonInfo>, LdkServerError> {
+		let records = self.roots.read().map_err(|_| store_lock_error())?;
+		let mut roots: Vec<_> = records.values().map(|record| (*record.info).clone()).collect();
+		roots.sort_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
+		Ok(roots)
+	}
+
+	pub(crate) fn revoke_root(
+		&self, id: &str, issuer: &MacaroonInfo,
+	) -> Result<(), LdkServerError> {
+		if !is_hex(id, 32) {
+			return Err(invalid_request(
+				"macaroon ID must contain exactly 32 hexadecimal characters",
+			));
+		}
+		let id = id.to_ascii_lowercase();
+		let _management = self.management.lock().map_err(|_| store_lock_error())?;
+		let issuer_permissions = management_permissions(issuer, REVOKE_MACAROON_PATH)?;
+		let roots = self.roots.read().map_err(|_| store_lock_error())?;
+		if !roots.contains_key(&issuer.id) {
+			return Err(auth_error("Invalid credentials"));
+		}
+		let record =
+			roots.get(&id).ok_or_else(|| invalid_request(format!("Unknown macaroon ID: {id}")))?;
+		if !issuer_permissions.contains(ADMIN_PERMISSION)
+			&& (record.info.is_admin()
+				|| record
+					.info
+					.permissions
+					.iter()
+					.any(|permission| !issuer_permissions.contains(permission)))
+		{
+			return Err(authorization_error(
+				"Cannot revoke a root with permissions that the calling root does not have",
+			));
+		}
+		if is_unrestricted_admin(&record.info)
+			&& roots.values().filter(|record| is_unrestricted_admin(&record.info)).count() == 1
+		{
+			return Err(invalid_request("Cannot revoke the final admin macaroon"));
+		}
+
+		let path = record.path.clone();
+		let info = Arc::clone(&record.info);
+		drop(roots);
+		match fs::remove_file(path) {
+			Ok(()) => {},
+			// The file may have been deleted manually; still revoke the root from memory.
+			Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+			Err(error) => return Err(internal_error(error)),
+		}
+		self.roots.write().map_err(|_| store_lock_error())?.remove(&id);
+		File::open(&self.directory)
+			.and_then(|directory| directory.sync_all())
+			.map_err(internal_error)?;
+		log::info!(
+			"Revoked macaroon: issuer={} id={} name={} permissions={:?}",
+			issuer.id,
+			info.id,
+			info.name,
+			info.permissions
+		);
+		Ok(())
 	}
 }
 

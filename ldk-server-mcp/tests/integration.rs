@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 46;
+const NUM_TOOLS: usize = 50;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
@@ -28,6 +28,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt12_send_refund",
 	"close_channel",
 	"connect_peer",
+	"create_macaroon",
 	"decode_invoice",
 	"decode_offer",
 	"disconnect_peer",
@@ -36,10 +37,12 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"get_balances",
 	"get_node_info",
 	"get_payment_details",
+	"get_permissions",
 	"graph_get_channel",
 	"graph_get_node",
 	"graph_list_channels",
 	"graph_list_nodes",
+	"list_macaroons",
 	"list_channels",
 	"get_forwarded_payment_details",
 	"get_forwarded_payment_tracking_mode",
@@ -52,6 +55,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"onchain_receive",
 	"onchain_send",
 	"open_channel",
+	"revoke_macaroon",
 	"sign_message",
 	"splice_in",
 	"splice_out",

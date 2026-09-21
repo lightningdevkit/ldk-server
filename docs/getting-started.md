@@ -86,6 +86,13 @@ The default storage directory is `~/.ldk-server/` on Linux and
 The CLI reads `admin.macaroon` automatically. This file contains a hex token.
 Keep it private, and never give clients files from `macaroons/roots/`.
 
+Create a restricted token for each application:
+
+```bash
+ldk-server-cli create-macaroon my-app --preset readonly
+ldk-server-cli create-macaroon invoice-app --preset invoice
+```
+
 ## First Commands
 
 If the CLI and server share the same machine and use the default storage directory, the CLI

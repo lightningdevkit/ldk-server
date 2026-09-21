@@ -12,10 +12,13 @@
 use std::collections::BTreeSet;
 
 use hex::FromHex;
-use ldk_server_grpc::permissions::{ADMIN_PERMISSION, ALL_PERMISSIONS};
+use ldk_server_grpc::endpoints::GET_PERMISSIONS_PATH;
+use ldk_server_grpc::permissions::{
+	ADMIN_PERMISSION, ALL_PERMISSIONS, MACAROONS_MANAGE_PERMISSION,
+};
 use ldk_server_macaroons::{Macaroon, REQUEST_TIMESTAMP_TOLERANCE_SECS};
 
-use super::{auth_error, authorization_error, internal_error};
+use super::{auth_error, authorization_error, internal_error, invalid_request};
 use crate::api::error::LdkServerError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,13 +92,22 @@ pub(super) fn check_caveat_at(
 			return Err(authorization_error("Macaroon expired"));
 		}
 	} else if let Some(value) = caveat.strip_prefix("method = ") {
-		if value != method {
+		// Holders may inspect their restrictions even when limited to another RPC.
+		if method != GET_PERMISSIONS_PATH && value != method {
 			return Err(authorization_error("Macaroon does not allow this RPC method"));
 		}
 	} else {
 		return Err(authorization_error("Unknown macaroon caveat"));
 	}
 	Ok(())
+}
+
+pub(super) fn is_unrestricted_admin(info: &MacaroonInfo) -> bool {
+	info.is_admin() && info.caveats.iter().all(|c| c == "permissions = admin")
+}
+
+pub(super) fn validate_name(name: &str) -> Result<(), LdkServerError> {
+	validate_name_value(name).map_err(invalid_request)
 }
 
 pub(super) fn validate_name_value(name: &str) -> Result<(), String> {
@@ -125,6 +137,24 @@ pub(super) fn validate_permissions(permissions: Vec<String>) -> Result<BTreeSet<
 		return Err("The admin permission must be used by itself".to_string());
 	}
 	Ok(permissions)
+}
+
+pub(super) fn management_permissions(
+	issuer: &MacaroonInfo, method: &str,
+) -> Result<BTreeSet<String>, LdkServerError> {
+	if !issuer.allows(MACAROONS_MANAGE_PERMISSION) {
+		return Err(authorization_error("Macaroon management permission required"));
+	}
+	let mut issuer_permissions = issuer.permissions.clone();
+	for caveat in &issuer.caveats {
+		check_caveat(caveat, method, &mut issuer_permissions)?;
+	}
+	if !issuer_permissions.contains(ADMIN_PERMISSION)
+		&& !issuer_permissions.contains(MACAROONS_MANAGE_PERMISSION)
+	{
+		return Err(authorization_error("Macaroon management permission required"));
+	}
+	Ok(issuer_permissions)
 }
 
 #[cfg(test)]

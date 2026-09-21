@@ -28,6 +28,10 @@ fn invalid_data(message: impl Into<String>) -> io::Error {
 	io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
+fn invalid_request(message: impl Into<String>) -> LdkServerError {
+	LdkServerError::new(LdkServerErrorCode::InvalidRequestError, message)
+}
+
 fn authorization_error(message: impl Into<String>) -> LdkServerError {
 	LdkServerError::new(LdkServerErrorCode::AuthorizationError, message)
 }

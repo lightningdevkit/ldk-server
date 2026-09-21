@@ -73,8 +73,13 @@ the following config to `/etc/logrotate.d/ldk-server` (adjust the log path to ma
 Keep `<network_dir>/macaroons/` private. It contains the default admin token in `admin.macaroon`
 and the server's root keys in `roots/`. Give clients tokens, never root keys.
 
-Use caveats to give each client only the permissions it needs.
+Use `create-macaroon` to give each client a token you can revoke separately. Use `derive-macaroon`
+to make a restricted copy. Give each client only the permissions it needs.
 See the [API guide](api-guide.md#authentication) for restrictions and request binding.
+
+To replace an admin token, create and save a new admin token, then revoke the old ID.
+Replace `admin.macaroon` with the new token or pass it with `--macaroon`.
+The API prevents revocation of the last unrestricted admin token.
 
 #### Recovery
 
@@ -86,10 +91,16 @@ and logs the change. It keeps valid tokens, even if restricted or expired. It wa
 file holds a request token; replace that file with a reusable token.
 
 If the original admin root is gone but other roots remain, the server warns instead of replacing
-it. Restore the matching root and token files from your backup.
+it. Use another admin token to create a replacement and save it as `admin.macaroon`.
 
 Duplicate root names or IDs stop startup. Move conflicting files out of `roots/` and restart.
 Files ending in `.tmp` are ignored.
+
+Root-file caveat edits take effect after restart. `GetPermissions` shows them, and newly issued
+tokens inherit them. Tokens issued earlier have separate roots and do not change.
+
+The server logs successful token creation and revocation, including who made the change and
+which token it affects. Logs contain no tokens or root secrets.
 
 ### TLS
 

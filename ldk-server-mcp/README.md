@@ -97,6 +97,9 @@ All unary LDK Server RPCs are exposed as MCP tools. Use `tools/list` to discover
 
 Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `metrics` are not exposed as tools.
 
+The `create_macaroon` tool returns a private token that may be saved in chat history or tool logs.
+To keep it out of that history, create it with the CLI and supply it through `LDK_MACAROON`.
+
 ## MCP Protocol
 
 - **Protocol version**: `2025-11-25`

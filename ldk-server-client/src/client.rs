@@ -22,26 +22,29 @@ use ldk_server_grpc::api::{
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
 	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
-	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
-	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest, GraphGetNodeResponse,
-	GraphListChannelsRequest, GraphListChannelsResponse, GraphListNodesRequest,
-	GraphListNodesResponse, ListChannelForwardingStatsRequest, ListChannelForwardingStatsResponse,
-	ListChannelPairForwardingStatsRequest, ListChannelPairForwardingStatsResponse,
-	ListChannelsRequest, ListChannelsResponse, ListForwardedPaymentsRequest,
-	ListForwardedPaymentsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+	ConnectPeerRequest, ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse,
+	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
+	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
+	ExportPathfindingScoresResponse, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetChannelForwardingStatsRequest,
+	GetChannelForwardingStatsResponse, GetForwardedPaymentDetailsRequest,
+	GetForwardedPaymentDetailsResponse, GetForwardedPaymentTrackingModeRequest,
+	GetForwardedPaymentTrackingModeResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
+	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
+	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	GraphListNodesRequest, GraphListNodesResponse, ListChannelForwardingStatsRequest,
+	ListChannelForwardingStatsResponse, ListChannelPairForwardingStatsRequest,
+	ListChannelPairForwardingStatsResponse, ListChannelsRequest, ListChannelsResponse,
+	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListMacaroonsRequest,
+	ListMacaroonsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
 	ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
-	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest,
-	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest,
+	RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -49,16 +52,17 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH, BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH,
 	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
 	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
-	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
-	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH,
+	EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH,
+	GET_CHANNEL_FORWARDING_STATS_PATH, GET_FORWARDED_PAYMENT_DETAILS_PATH,
+	GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
+	GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
 	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH,
+	SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -483,6 +487,34 @@ impl LdkServerClient {
 		&self, request: GraphGetNodeRequest,
 	) -> Result<GraphGetNodeResponse, LdkServerError> {
 		self.grpc_unary(&request, GRAPH_GET_NODE_PATH).await
+	}
+
+	/// Create a macaroon with the specified permissions.
+	pub async fn create_macaroon(
+		&self, request: CreateMacaroonRequest,
+	) -> Result<CreateMacaroonResponse, LdkServerError> {
+		self.grpc_unary(&request, CREATE_MACAROON_PATH).await
+	}
+
+	/// List macaroons without returning their secrets.
+	pub async fn list_macaroons(
+		&self, request: ListMacaroonsRequest,
+	) -> Result<ListMacaroonsResponse, LdkServerError> {
+		self.grpc_unary(&request, LIST_MACAROONS_PATH).await
+	}
+
+	/// Revoke a macaroon by ID.
+	pub async fn revoke_macaroon(
+		&self, request: RevokeMacaroonRequest,
+	) -> Result<RevokeMacaroonResponse, LdkServerError> {
+		self.grpc_unary(&request, REVOKE_MACAROON_PATH).await
+	}
+
+	/// Show the calling macaroon's ID, name, permissions, and caveats.
+	pub async fn get_permissions(
+		&self, request: GetPermissionsRequest,
+	) -> Result<GetPermissionsResponse, LdkServerError> {
+		self.grpc_unary(&request, GET_PERMISSIONS_PATH).await
 	}
 
 	/// Subscribe to a stream of server events via server-streaming gRPC.

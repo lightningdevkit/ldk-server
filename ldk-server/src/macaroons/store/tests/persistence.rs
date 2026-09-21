@@ -10,6 +10,23 @@
 use super::*;
 
 #[test]
+fn creates_initial_admin_root() {
+	let (directory, store) = test_store("initial-admin");
+	let roots = store.list_roots().unwrap();
+
+	assert_eq!(roots.len(), 1);
+	assert_eq!(roots[0].name, "admin");
+	assert!(roots[0].is_admin());
+	let admin_path = directory.join(MACAROONS_DIR).join("roots").join(ADMIN_ROOT_FILE);
+	assert!(admin_path.exists());
+	assert_eq!(fs::metadata(admin_path).unwrap().permissions().mode() & 0o777, 0o400);
+	assert_eq!(
+		fs::metadata(directory.join(MACAROONS_DIR)).unwrap().permissions().mode() & 0o777,
+		0o700
+	);
+}
+
+#[test]
 fn load_macaroon_rejects_oversized_toml() {
 	let (directory, store) = test_store("oversized-root-toml");
 	let path = directory.join(MACAROONS_DIR).join("roots").join("oversized.toml");
@@ -52,6 +69,21 @@ fn load_rejects_duplicate_root_names_and_ids() {
 }
 
 #[test]
+fn bootstrap_token_is_private_and_recovers_with_the_same_root() {
+	let (directory, store) = test_store("bootstrap-token");
+	let path = directory.join(MACAROONS_DIR).join(ADMIN_MACAROON_FILE);
+	let original = fs::read_to_string(&path).unwrap();
+	assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o400);
+	assert!(store.authenticate(GET_NODE_INFO_PATH, Some(&original)).unwrap().is_admin());
+	let roots = store.list_roots().unwrap();
+	fs::remove_file(&path).unwrap();
+	drop(store);
+	let reloaded = MacaroonStore::load_or_create(&directory).unwrap();
+	assert_eq!(reloaded.list_roots().unwrap(), roots);
+	assert_eq!(fs::read_to_string(path).unwrap(), original);
+}
+
+#[test]
 fn bootstrap_recovers_after_roots_reset_and_invalid_token() {
 	let (directory, store) = test_store("bootstrap-reset");
 	let path = directory.join(MACAROONS_DIR).join(ADMIN_MACAROON_FILE);
@@ -90,6 +122,45 @@ fn bootstrap_read_errors_identify_the_default_token_path() {
 	let error = MacaroonStore::load_or_create(&directory).err().unwrap();
 	assert_eq!(error.kind(), expected_kind);
 	assert!(error.to_string().contains(path.to_str().unwrap()));
+}
+
+#[test]
+fn bootstrap_preserves_valid_restrictions_and_does_not_recreate_revoked_root() {
+	let (directory, store) = test_store("bootstrap-preserve");
+	let path = directory.join(MACAROONS_DIR).join(ADMIN_MACAROON_FILE);
+	let original = fs::read_to_string(&path).unwrap();
+	for caveat in ["permissions = node:read", "time-before = 0", "method = CreateMacaroon"] {
+		let restricted = restrict(&original, &[caveat]);
+		write_private_file(&path, restricted.as_bytes()).unwrap();
+		MacaroonStore::load_or_create(&directory).unwrap();
+		assert_eq!(fs::read_to_string(&path).unwrap(), restricted);
+	}
+	let bound = bind_request(&original, GET_NODE_INFO_PATH, b"", now());
+	write_private_file(&path, bound.as_bytes()).unwrap();
+	MacaroonStore::load_or_create(&directory).unwrap();
+	assert_eq!(fs::read_to_string(&path).unwrap(), bound);
+	let admin = store.authenticate(CREATE_MACAROON_PATH, Some(&original)).unwrap();
+	let replacement =
+		store.create_root("replacement", vec![ADMIN_PERMISSION.into()], &admin).unwrap();
+	store.revoke_root(&admin.id, &admin).unwrap();
+	drop(store);
+	let store = MacaroonStore::load_or_create(&directory).unwrap();
+	assert_eq!(store.list_roots().unwrap(), vec![replacement.info.clone()]);
+	assert!(store.authenticate(GET_NODE_INFO_PATH, Some(&replacement.token)).is_ok());
+	assert!(!directory.join(MACAROONS_DIR).join("roots/admin.toml").exists());
+	fs::remove_file(&path).unwrap();
+	MacaroonStore::load_or_create(&directory).unwrap();
+	assert!(!path.exists());
+}
+
+#[test]
+fn leftover_temporary_root_files_are_ignored() {
+	let (directory, store) = test_store("temporary-roots");
+	let original = store.list_roots().unwrap();
+	for name in ["partial.tmp", ".admin.toml.123.tmp"] {
+		fs::write(store.directory.join(name), "incomplete TOML").unwrap();
+	}
+	assert_eq!(MacaroonStore::load_or_create(&directory).unwrap().list_roots().unwrap(), original);
 }
 
 #[test]

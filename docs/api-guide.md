@@ -55,17 +55,42 @@ A caveat is a condition that limits what a macaroon can do. All caveats must pas
 | Caveat | Meaning |
 |--------|---------|
 | `permissions = node:read,payments:read` | Allow only these permissions |
-| `method = GetNodeInfo` | Allow only this RPC method |
+| `method = GetNodeInfo` | Allow this RPC method and `GetPermissions` |
 | `time-before = 1800000000` | Expire at this Unix time in seconds |
 
 Added caveats can only reduce access. They cannot restore permissions or extend the expiry time.
+`GetPermissions` ignores method restrictions, but still requires a valid, unexpired macaroon.
 
-Rust clients can use `macaroon::derive_macaroon` to make a restricted copy.
+Derive a restricted copy without contacting the server:
+
+```bash
+ldk-server-cli derive-macaroon "$MACAROON" \
+  --caveat 'permissions = node:read' \
+  --caveat 'method = GetNodeInfo' \
+  --caveat "time-before = $EXPIRY_UNIX_SECONDS"
+```
+
+The command prints a hex token. Rust clients can use `macaroon::derive_macaroon`.
 Give the copy to the application and keep the original private.
+
+### Create and revoke tokens
+
+Use `CreateMacaroon` to give each client a token you can revoke separately. New tokens keep
+all the caller's restrictions. Revoking the caller's token does not revoke these new tokens.
+
+Copies made with `derive-macaroon` share the original token's ID. Revoking that ID blocks
+all those copies. The server cannot list copies made locally.
+
+Revocation and expiry block new requests. Existing event streams stay open until the client
+disconnects or the server stops. Reconnecting requires a valid token.
+
+See [Macaroon Management](#macaroon-management) for the RPCs and
+[Operations](operations.md#macaroons) for storage and recovery.
 
 ### Macaroon Permissions
 
 Choose the permissions each client needs, or use `admin` by itself for full access.
+The CLI also has `readonly`, `invoice`, and `admin` presets.
 RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 
 | Permission | Access |
@@ -87,6 +112,10 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | `graph:read` | Read network graph data |
 | `utilities:read` | Decode invoices and offers |
 | `events:read` | Subscribe to the event stream |
+| `macaroons:manage` | Create, list, and revoke macaroons within your permissions |
+
+MCP provides token management through `create_macaroon`, `list_macaroons`, `revoke_macaroon`,
+and `get_permissions`.
 
 ## TLS
 
@@ -291,6 +320,18 @@ queue can continue processing.
 Use events as notifications. After reconnecting, reconcile recoverable state with APIs such as
 `GetPaymentDetails`, `ListPayments`, `ListForwardedPayments`, and `ListChannels`. Some event fields
 cannot be recovered through these APIs.
+
+### Macaroon Management
+
+| RPC | Description |
+|-----|-------------|
+| `CreateMacaroon` | Create a macaroon and return its private hex token in `token` |
+| `ListMacaroons` | List IDs, names, permissions, and caveats, without secrets |
+| `RevokeMacaroon` | Revoke a macaroon by ID |
+| `GetPermissions` | Show the caller's ID, name, usable permissions, and caveats |
+
+The first three RPCs require `macaroons:manage` or `admin`. You can only create or revoke
+tokens whose permissions you have. The last unrestricted admin token cannot be revoked.
 
 ### Metrics
 

@@ -25,9 +25,10 @@ pub const MESSAGES_VERIFY_PERMISSION: &str = "messages:verify";
 pub const GRAPH_READ_PERMISSION: &str = "graph:read";
 pub const UTILITIES_READ_PERMISSION: &str = "utilities:read";
 pub const EVENTS_READ_PERMISSION: &str = "events:read";
+pub const MACAROONS_MANAGE_PERMISSION: &str = "macaroons:manage";
 
 /// All permissions accepted when a macaroon is created.
-pub const ALL_PERMISSIONS: [&str; 18] = [
+pub const ALL_PERMISSIONS: [&str; 19] = [
 	ADMIN_PERMISSION,
 	NODE_READ_PERMISSION,
 	ONCHAIN_RECEIVE_PERMISSION,
@@ -46,4 +47,73 @@ pub const ALL_PERMISSIONS: [&str; 18] = [
 	GRAPH_READ_PERMISSION,
 	UTILITIES_READ_PERMISSION,
 	EVENTS_READ_PERMISSION,
+	MACAROONS_MANAGE_PERMISSION,
 ];
+
+/// Permissions included in the CLI `readonly` preset.
+pub const READONLY_PERMISSIONS: [&str; 8] = [
+	NODE_READ_PERMISSION,
+	PAYMENTS_READ_PERMISSION,
+	CHANNELS_READ_PERMISSION,
+	PEERS_READ_PERMISSION,
+	MESSAGES_VERIFY_PERMISSION,
+	GRAPH_READ_PERMISSION,
+	UTILITIES_READ_PERMISSION,
+	EVENTS_READ_PERMISSION,
+];
+
+/// Permissions included in the CLI `invoice` preset.
+pub const INVOICE_PERMISSIONS: [&str; 11] = [
+	NODE_READ_PERMISSION,
+	ONCHAIN_RECEIVE_PERMISSION,
+	INVOICES_CREATE_PERMISSION,
+	PAYMENTS_READ_PERMISSION,
+	PAYMENTS_CLAIM_PERMISSION,
+	CHANNELS_READ_PERMISSION,
+	PEERS_READ_PERMISSION,
+	MESSAGES_VERIFY_PERMISSION,
+	GRAPH_READ_PERMISSION,
+	UTILITIES_READ_PERMISSION,
+	EVENTS_READ_PERMISSION,
+];
+
+/// Named permission sets for issuing macaroons.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacaroonPreset {
+	Readonly,
+	Invoice,
+	Admin,
+}
+
+impl MacaroonPreset {
+	/// All supported presets, in display order.
+	pub const ALL: [Self; 3] = [Self::Readonly, Self::Invoice, Self::Admin];
+
+	/// The lowercase name of this preset.
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Readonly => "readonly",
+			Self::Invoice => "invoice",
+			Self::Admin => "admin",
+		}
+	}
+
+	/// Permissions granted by this preset.
+	pub fn permissions(self) -> Vec<String> {
+		match self {
+			Self::Readonly => {
+				READONLY_PERMISSIONS.iter().map(|value| (*value).to_string()).collect()
+			},
+			Self::Invoice => INVOICE_PERMISSIONS.iter().map(|value| (*value).to_string()).collect(),
+			Self::Admin => vec![ADMIN_PERMISSION.to_string()],
+		}
+	}
+}
+
+impl std::str::FromStr for MacaroonPreset {
+	type Err = &'static str;
+
+	fn from_str(name: &str) -> Result<Self, Self::Err> {
+		Self::ALL.into_iter().find(|preset| preset.name() == name).ok_or("Unknown macaroon preset")
+	}
+}

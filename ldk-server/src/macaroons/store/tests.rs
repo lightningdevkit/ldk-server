@@ -9,10 +9,12 @@
 
 use hex::DisplayHex;
 use ldk_server_grpc::endpoints::*;
+use ldk_server_grpc::permissions::*;
 
 use super::test_util::*;
 use super::*;
 use crate::api::error::LdkServerErrorCode;
 
+mod management;
 mod persistence;
 mod requests;
