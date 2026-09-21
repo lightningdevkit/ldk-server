@@ -1492,6 +1492,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ldk-server-macaroons"
+version = "0.1.0"
+dependencies = [
+ "bitcoin_hashes",
+ "hex-conservative 0.2.2",
+]
+
+[[package]]
 name = "ldk-server-mcp"
 version = "0.1.0"
 dependencies = [
