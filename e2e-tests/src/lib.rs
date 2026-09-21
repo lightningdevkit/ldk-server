@@ -11,17 +11,25 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use corepc_node::Node;
 use hex_conservative::DisplayHex;
 use ldk_server_client::client::{EventStream, LdkServerClient};
+use ldk_server_client::error::LdkServerErrorCode;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::api::{
-	open_channel_request, GetBalancesRequest, ListChannelsRequest, OnchainReceiveRequest,
+	open_channel_request, Bolt11ReceiveRequest, Bolt11SendRequest, CloseChannelRequest,
+	GetBalancesRequest, GetBalancesResponse, GraphGetChannelRequest, GraphListChannelsRequest,
+	ListChannelsRequest, ListForwardedPaymentsRequest, ListPaymentsRequest, OnchainReceiveRequest,
 	OpenChannelRequest,
+};
+use ldk_server_grpc::types::{
+	lightning_balance, payment_kind, pending_sweep_balance, BalanceSource, Channel,
+	ClaimableAwaitingConfirmations, ForwardedPayment, LightningBalance, Payment, PaymentDirection,
+	PaymentStatus,
 };
 use serde_json::Value;
 
@@ -139,8 +147,12 @@ pub enum ChainSource {
 		rpc_password: String,
 		rest_address: Option<String>,
 	},
-	Electrum { server_url: String },
-	Esplora { server_url: String },
+	Electrum {
+		server_url: String,
+	},
+	Esplora {
+		server_url: String,
+	},
 }
 
 impl ChainSource {
@@ -177,6 +189,7 @@ pub struct TestConfigBuilder {
 	grpc_service_address: String,
 	alias: Option<String>,
 	storage_dir: PathBuf,
+	postgres: Option<(String, String)>,
 	chain_source: ChainSource,
 	metrics_auth: Option<(String, String)>,
 	log: Option<(Option<String>, String)>,
@@ -194,6 +207,7 @@ impl TestConfigBuilder {
 			grpc_service_address: format!("127.0.0.1:{}", params.grpc_port),
 			alias: Some("e2e-test-node".to_string()),
 			storage_dir: params.storage_dir.clone(),
+			postgres: None,
 			chain_source: ChainSource::Bitcoind {
 				rpc_address: params.rpc_address.clone(),
 				rpc_user: params.rpc_user.clone(),
@@ -209,6 +223,12 @@ impl TestConfigBuilder {
 
 	pub fn forwarded_payment_tracking_mode(mut self, mode: &str) -> Self {
 		self.forwarded_payment_tracking_mode = Some(mode.to_string());
+		self
+	}
+
+	/// Store LDK Node state in PostgreSQL, keeping keys and server files on disk.
+	pub fn postgres(mut self, connection_string: &str, kv_table_name: &str) -> Self {
+		self.postgres = Some((connection_string.to_string(), kv_table_name.to_string()));
 		self
 	}
 
@@ -319,6 +339,13 @@ poll_metrics_interval = 1{metrics_auth}
 			metrics_auth = metrics_auth,
 		);
 
+		if let Some((connection_string, kv_table_name)) = &self.postgres {
+			config.push_str(&format!(
+				"\n[storage.postgres]\nconnection_string = \"{}\"\nkv_table_name = \"{}\"\n",
+				connection_string, kv_table_name,
+			));
+		}
+
 		if let Some((level, file)) = &self.log {
 			config.push_str("\n[log]\n");
 			if let Some(level) = level {
@@ -357,26 +384,8 @@ impl LdkServerHandle {
 		config_bitcoind: &TestBitcoind, config: impl FnOnce(&TestServerParams) -> String,
 	) -> Self {
 		let (mut child, params, config_path) = spawn_server(config_bitcoind, config);
+		forward_server_output(&mut child);
 		let TestServerParams { grpc_port, p2p_port, storage_dir, .. } = params;
-
-		// Spawn threads to forward stdout and stderr for debugging
-		let stdout = child.stdout.take().unwrap();
-		std::thread::spawn(move || {
-			let reader = BufReader::new(stdout);
-			for line in reader.lines().map_while(Result::ok) {
-				eprintln!("[ldk-server stdout] {}", line);
-			}
-		});
-		let stderr = child.stderr.take().unwrap();
-		std::thread::spawn(move || {
-			let reader = BufReader::new(stderr);
-			for line in reader.lines().map_while(Result::ok) {
-				if line.contains("Failed to retrieve fee rate estimates") {
-					continue;
-				}
-				eprintln!("[ldk-server stderr] {}", line);
-			}
-		});
 
 		// Wait for the api_key and tls.crt files to appear in the network subdir
 		let network_dir = storage_dir.join("regtest");
@@ -413,6 +422,18 @@ impl LdkServerHandle {
 		handle.node_id = node_info.node_id;
 
 		handle
+	}
+
+	/// Kill and restart the server with the same config and storage to test crash recovery.
+	pub async fn restart(&mut self) {
+		let mut child = self.child.take().expect("Server is not running");
+		child.kill().expect("Failed to kill ldk-server");
+		child.wait().expect("Failed to reap ldk-server");
+		let mut child = spawn_server_process(&self.config_path);
+		forward_server_output(&mut child);
+		self.child = Some(child);
+		let info = wait_for_server_ready(self, Duration::from_secs(60)).await;
+		assert_eq!(info.node_id, self.node_id, "Node identity changed after restart");
 	}
 
 	pub fn client(&self) -> &LdkServerClient {
@@ -457,17 +478,42 @@ fn spawn_server(
 	let config_path = params.storage_dir.join("config.toml");
 	std::fs::write(&config_path, &config_content).unwrap();
 
+	let child = spawn_server_process(&config_path);
+	(child, params, config_path)
+}
+
+/// Spawn a server using an existing config, retaining its output pipes.
+fn spawn_server_process(config_path: &Path) -> Child {
 	let server_binary = server_binary_path();
-	let child = Command::new(&server_binary)
-		.arg(config_path.to_str().unwrap())
+	Command::new(&server_binary)
+		.arg(config_path)
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
 		.spawn()
 		.unwrap_or_else(|e| {
 			panic!("Failed to start ldk-server binary at {:?}: {}", server_binary, e)
-		});
+		})
+}
 
-	(child, params, config_path)
+fn forward_server_output(child: &mut Child) {
+	// Spawn threads to forward stdout and stderr for debugging
+	let stdout = child.stdout.take().unwrap();
+	std::thread::spawn(move || {
+		let reader = BufReader::new(stdout);
+		for line in reader.lines().map_while(Result::ok) {
+			eprintln!("[ldk-server stdout] {}", line);
+		}
+	});
+	let stderr = child.stderr.take().unwrap();
+	std::thread::spawn(move || {
+		let reader = BufReader::new(stderr);
+		for line in reader.lines().map_while(Result::ok) {
+			if line.contains("Failed to retrieve fee rate estimates") {
+				continue;
+			}
+			eprintln!("[ldk-server stderr] {}", line);
+		}
+	});
 }
 
 /// Start ldk-server with the given config and expect it to fail (exit non-zero).
@@ -793,9 +839,7 @@ pub async fn setup_funded_channel(
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				channel_amount_sats,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(channel_amount_sats)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -811,4 +855,292 @@ pub async fn setup_funded_channel(
 	wait_for_usable_channel(server_a.client(), bitcoind, Duration::from_secs(60)).await;
 
 	open_resp.user_channel_id
+}
+
+/// Wait for exactly `count` channels, all usable, without mining additional blocks.
+/// Use zero to wait until no channels remain.
+pub async fn wait_for_channels(
+	server: &LdkServerHandle, count: usize, timeout: Duration,
+) -> Vec<Channel> {
+	let start = Instant::now();
+	loop {
+		let channels =
+			server.client().list_channels(ListChannelsRequest {}).await.unwrap().channels;
+		if channels.len() == count && channels.iter().all(|c| c.is_usable) {
+			return channels;
+		}
+		assert!(start.elapsed() < timeout, "Waiting for {count} usable channels: {channels:?}");
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
+}
+
+/// Initiate a cooperative close, retrying transient Lightning errors for up to five seconds.
+pub async fn close_channel(
+	initiator: &LdkServerHandle, peer: &LdkServerHandle, user_channel_id: &str,
+) {
+	const RETRY_TIMEOUT: Duration = Duration::from_secs(5);
+	let start = Instant::now();
+	let mut logged_error = false;
+	loop {
+		let result = initiator
+			.client()
+			.close_channel(CloseChannelRequest {
+				user_channel_id: user_channel_id.to_string(),
+				counterparty_node_id: peer.node_id().to_string(),
+			})
+			.await;
+		match result {
+			Ok(_) => return,
+			Err(error) => {
+				if !logged_error {
+					eprintln!("Failed to close channel {user_channel_id}: {error:?}");
+					logged_error = true;
+				}
+				// The last HTLC's asynchronous monitor update can briefly block shutdown,
+				// even after PaymentSuccessful and PaymentForwarded have been emitted.
+				assert_eq!(error.error_code, LdkServerErrorCode::LightningError);
+				assert!(start.elapsed() < RETRY_TIMEOUT, "Channel closure failed: {error:?}");
+				tokio::time::sleep(Duration::from_millis(200)).await;
+			},
+		}
+	}
+}
+
+/// Send a BOLT11 payment, wait for both peers to record success, and return the sender's payment ID.
+pub async fn send_bolt11_payment(
+	sender: &LdkServerHandle, receiver: &LdkServerHandle, amount_msat: u64,
+) -> String {
+	let mut sent = sender.client().subscribe_events().await.unwrap();
+	let mut received = receiver.client().subscribe_events().await.unwrap();
+	let invoice = receiver
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(amount_msat),
+			description: None,
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+	let payment_id = sender
+		.client()
+		.bolt11_send(Bolt11SendRequest {
+			invoice: invoice.invoice,
+			amount_msat: None,
+			route_parameters: None,
+		})
+		.await
+		.unwrap()
+		.payment_id;
+	let sent = wait_for_event(&mut sent, |event| {
+		matches!(event, Event::PaymentSuccessful(e) if e.payment.as_ref().is_some_and(|p| p.payment_id == payment_id))
+	})
+	.await;
+	let Some(Event::PaymentSuccessful(sent)) = sent.event else {
+		panic!("Expected a PaymentSuccessful event after paying the BOLT11 invoice");
+	};
+	let received =
+		wait_for_event(&mut received, |event| matches!(event, Event::PaymentReceived(_))).await;
+	let Some(Event::PaymentReceived(received)) = received.event else {
+		panic!("Expected a PaymentReceived event after paying the BOLT11 invoice");
+	};
+	// Events include the stored payment records. IDs are local to each node, so correlate by hash.
+	for (id, payment) in [(sent.payment_id, sent.payment), (received.payment_id, received.payment)]
+	{
+		let payment = payment.unwrap();
+		assert_eq!(payment.payment_id, id);
+		assert_eq!(payment.status, PaymentStatus::Succeeded as i32);
+		assert_eq!(payment.amount_msat, Some(amount_msat));
+		let Some(payment_kind::Kind::Bolt11(details)) = payment.kind.unwrap().kind else {
+			panic!("Expected a BOLT11 payment");
+		};
+		assert_eq!(details.hash, invoice.payment_hash);
+	}
+	payment_id
+}
+
+/// List payments for a test server, asserting that the history fits on one page.
+pub async fn list_payments(server: &LdkServerHandle) -> Vec<Payment> {
+	let response =
+		server.client().list_payments(ListPaymentsRequest { page_token: None }).await.unwrap();
+	assert!(response.next_page_token.is_none());
+	response.payments
+}
+
+/// Wait for the expected spendable onchain balance and for Lightning funds to settle.
+pub async fn wait_for_settled_balance(
+	server: &LdkServerHandle, expected_sats: u64, timeout: Duration,
+) -> GetBalancesResponse {
+	let start = Instant::now();
+	loop {
+		let balances = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
+		if balances.total_onchain_balance_sats == expected_sats
+			&& balances.spendable_onchain_balance_sats == expected_sats
+			&& balances.total_anchor_channels_reserve_sats == 0
+			&& balances.total_lightning_balance_sats == 0
+			&& balances.lightning_balances.is_empty()
+			&& balances.pending_balances_from_channel_closures.iter().all(|balance| {
+				matches!(
+					balance.balance_type,
+					Some(pending_sweep_balance::BalanceType::AwaitingThresholdConfirmations(_))
+				)
+			}) {
+			return balances;
+		}
+		assert!(
+			start.elapsed() < timeout,
+			"Expected {} to settle at {expected_sats} sats onchain: {balances:?}",
+			server.node_id()
+		);
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
+}
+
+/// Wait for exactly `count` announced channels with both routing directions enabled.
+pub async fn wait_for_gossip(server: &LdkServerHandle, count: usize, timeout: Duration) {
+	let start = Instant::now();
+	loop {
+		let graph = server.client().graph_list_channels(GraphListChannelsRequest {}).await.unwrap();
+		let mut ready = graph.short_channel_ids.len() == count;
+		for short_channel_id in graph.short_channel_ids {
+			if !ready {
+				break;
+			}
+			let channel = server
+				.client()
+				.graph_get_channel(GraphGetChannelRequest { short_channel_id })
+				.await
+				.unwrap()
+				.channel
+				.unwrap();
+			ready = channel.one_to_two.is_some_and(|update| update.enabled)
+				&& channel.two_to_one.is_some_and(|update| update.enabled);
+		}
+		if ready {
+			return;
+		}
+		assert!(
+			start.elapsed() < timeout,
+			"Timed out waiting for {count} channel announcements with enabled routing updates"
+		);
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
+}
+
+/// Wait for exactly `count` forwarded payments, asserting that the history fits on one page.
+pub async fn wait_for_forwarded_payments(
+	server: &LdkServerHandle, count: usize, timeout: Duration,
+) -> Vec<ForwardedPayment> {
+	let start = Instant::now();
+	loop {
+		let response = server
+			.client()
+			.list_forwarded_payments(ListForwardedPaymentsRequest { page_token: None })
+			.await
+			.unwrap();
+		assert!(response.next_page_token.is_none());
+		if response.forwarded_payments.len() == count {
+			return response.forwarded_payments;
+		}
+		assert!(start.elapsed() < timeout, "Expected {count} forwards: {response:?}");
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
+}
+
+/// Mine until each server has exactly one confirmed force-close claim with the expected source.
+/// Returns the claims in server order, before the channel monitors hand them to the wallet.
+pub async fn wait_for_force_close_claims(
+	bitcoind: &TestBitcoind, servers: &[(&LdkServerHandle, BalanceSource)], timeout: Duration,
+) -> Vec<ClaimableAwaitingConfirmations> {
+	let handles: Vec<_> = servers.iter().map(|(server, _)| *server).collect();
+	let start = Instant::now();
+	loop {
+		mine_and_sync(bitcoind, &handles, 1).await;
+		let mut balances = Vec::new();
+		for (server, _) in servers {
+			balances.push(server.client().get_balances(GetBalancesRequest {}).await.unwrap());
+		}
+		let claims: Option<Vec<_>> = balances
+			.iter()
+			.zip(servers)
+			.map(|(balances, (_, source))| match balances.lightning_balances.as_slice() {
+				[LightningBalance {
+					balance_type:
+						Some(lightning_balance::BalanceType::ClaimableAwaitingConfirmations(claim)),
+				}] if claim.source == *source as i32 => Some(claim.clone()),
+				_ => None,
+			})
+			.collect();
+		if let Some(claims) = claims {
+			return claims;
+		}
+		assert!(start.elapsed() < timeout, "Waiting for confirmed closing outputs: {balances:?}");
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
+}
+
+/// Compare funds before and after closure independently of the closing receipts, allowing
+/// 5,000 sats for sweep fees and differences from the commitment fee already deducted from
+/// Lightning balances. A cheaper cooperative close can slightly increase the onchain balance.
+pub fn assert_recovered_balance(before: &GetBalancesResponse, after: &GetBalancesResponse) {
+	let before_sats = before.total_onchain_balance_sats + before.total_lightning_balance_sats;
+	let after_sats = after.total_onchain_balance_sats;
+	let fee_allowance_sats = 5_000;
+	assert!(
+		before_sats.abs_diff(after_sats) <= fee_allowance_sats,
+		"Expected recovery of {before_sats} sats within {fee_allowance_sats} sats for fees, got {after_sats}"
+	);
+}
+
+/// Mine until `expected_receipts` new onchain receipts and all new onchain payments confirm,
+/// then reconcile them with the starting balance. Incoming amounts are already net of fees;
+/// outgoing amounts exclude their separately reported fees. Payment histories must fit on one page.
+pub async fn expected_onchain_balance(
+	bitcoind: &TestBitcoind, server: &LdkServerHandle, balance_before: u64,
+	payments_before: &[Payment], expected_receipts: usize, timeout: Duration,
+) -> u64 {
+	let start = Instant::now();
+	loop {
+		let new_payments: Vec<_> = list_payments(server)
+			.await
+			.into_iter()
+			.filter(|payment| {
+				matches!(
+					payment.kind.as_ref().and_then(|kind| kind.kind.as_ref()),
+					Some(payment_kind::Kind::Onchain(_))
+				) && !payments_before.iter().any(|old| old.payment_id == payment.payment_id)
+			})
+			.collect();
+		let receipts = new_payments
+			.iter()
+			.filter(|payment| payment.direction == PaymentDirection::Inbound as i32)
+			.count();
+		if receipts == expected_receipts
+			&& new_payments.iter().all(|payment| payment.status == PaymentStatus::Succeeded as i32)
+		{
+			let mut expected_msat = i128::from(balance_before) * 1000;
+			for payment in new_payments {
+				let amount =
+					i128::from(payment.amount_msat.expect("Missing onchain payment amount"));
+				let direction = PaymentDirection::from_i32(payment.direction)
+					.expect("Unexpected onchain payment direction");
+				match direction {
+					PaymentDirection::Inbound => expected_msat += amount,
+					PaymentDirection::Outbound => {
+						let fee = payment.fee_paid_msat.expect("Missing onchain transaction fee");
+						expected_msat -= amount + i128::from(fee);
+					},
+				}
+			}
+			assert_eq!(expected_msat % 1000, 0);
+			return u64::try_from(expected_msat / 1000).unwrap();
+		}
+		assert!(
+			start.elapsed() < timeout,
+			"Waiting for {expected_receipts} confirmed onchain payments: {new_payments:?}"
+		);
+		// Broadcast and wallet sync are asynchronous, so keep confirming until the public API
+		// reports the closing/sweep payments as succeeded.
+		mine_and_sync(bitcoind, &[server], 1).await;
+		tokio::time::sleep(Duration::from_millis(200)).await;
+	}
 }

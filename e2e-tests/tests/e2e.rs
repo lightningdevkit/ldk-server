@@ -12,9 +12,10 @@ use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use e2e_tests::{
-	find_available_port, mine_and_sync, run_cli, run_cli_raw, run_cli_with_config,
-	setup_funded_channel, wait_for_event, wait_for_onchain_balance, wait_for_usable_channel,
-	LdkServerConfig, LdkServerHandle, TestBitcoind, TestConfigBuilder,
+	close_channel, find_available_port, list_payments, mine_and_sync, run_cli, run_cli_raw,
+	run_cli_with_config, send_bolt11_payment, setup_funded_channel, wait_for_channels,
+	wait_for_event, wait_for_gossip, wait_for_onchain_balance, wait_for_settled_balance,
+	wait_for_usable_channel, LdkServerConfig, LdkServerHandle, TestBitcoind, TestConfigBuilder,
 };
 use hex_conservative::{DisplayHex, FromHex};
 use ldk_node::bitcoin::hashes::{sha256, Hash};
@@ -25,10 +26,9 @@ use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::error::LdkServerErrorCode::InvalidRequestError;
 use ldk_server_client::ldk_server_grpc::api::{
 	open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveRequest,
-	Bolt12ReceiveRequest, GetBalancesRequest, GetChannelForwardingStatsRequest,
-	GetForwardedPaymentDetailsRequest, ListChannelForwardingStatsRequest,
-	ListChannelPairForwardingStatsRequest, ListForwardedPaymentsRequest, OnchainReceiveRequest,
-	OpenChannelRequest,
+	Bolt12ReceiveRequest, GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest,
+	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest,
+	ListForwardedPaymentsRequest, OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -421,29 +421,13 @@ async fn test_cli_onchain_send_all() {
 	mine_and_sync(&bitcoind, &[&server], 6).await;
 	wait_for_onchain_balance(server.client(), Duration::from_secs(30)).await;
 
-	let balances_before = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
-
 	let address = bitcoind.bitcoind.client.new_address().unwrap().to_string();
 	let output = run_cli(&server, &["onchain-send", &address, "all"]);
 	assert!(!output["txid"].as_str().unwrap().is_empty());
 
 	mine_and_sync(&bitcoind, &[&server], 6).await;
 
-	let timeout = Duration::from_secs(30);
-	let start = std::time::Instant::now();
-	let balances = loop {
-		let balances = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
-		if balances.total_onchain_balance_sats != balances_before.total_onchain_balance_sats {
-			break balances;
-		}
-		if start.elapsed() > timeout {
-			panic!("Timed out waiting for on-chain balance to change");
-		}
-		tokio::time::sleep(Duration::from_millis(500)).await;
-	};
-
-	assert_eq!(balances.spendable_onchain_balance_sats, 0);
-	assert_eq!(balances.total_onchain_balance_sats, 0);
+	wait_for_settled_balance(&server, 0, Duration::from_secs(30)).await;
 }
 
 #[tokio::test]
@@ -501,13 +485,7 @@ async fn open_channel_via_cli(channel_amount: &str) {
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
 	let output = run_cli(
 		&server_a,
-		&[
-			"open-channel",
-			server_b.node_id(),
-			&addr,
-			channel_amount,
-			"--announce-channel",
-		],
+		&["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"],
 	);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
 }
@@ -544,9 +522,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -574,7 +550,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -637,7 +616,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 	assert!(ready_b.reason.is_none());
 	assert_eq!(ready_b.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 
-	run_cli(&server_a, &["close-channel", &open_resp.user_channel_id, server_b.node_id()]);
+	close_channel(&server_a, &server_b, &open_resp.user_channel_id).await;
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
 
 	let closed_a = wait_for_event(&mut events_a, |e| {
@@ -712,9 +691,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		.open_channel(OpenChannelRequest {
 			node_pubkey: server_b.node_id().to_string(),
 			address: format!("127.0.0.1:{}", server_b.p2p_port),
-			amount: Some(open_channel_request::Amount::ChannelAmountSats(
-				100_000,
-			)),
+			amount: Some(open_channel_request::Amount::ChannelAmountSats(100_000)),
 			push_to_counterparty_msat: None,
 			channel_config: None,
 			announce_channel: true,
@@ -742,7 +719,10 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert!(pending_a.reason.is_none());
 	assert_eq!(pending_a.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 	assert!(pending_a.former_temporary_channel_id.as_deref().is_some_and(|id| !id.is_empty()));
-	assert_ne!(pending_a.former_temporary_channel_id.as_deref(), Some(pending_a.channel_id.as_str()));
+	assert_ne!(
+		pending_a.former_temporary_channel_id.as_deref(),
+		Some(pending_a.channel_id.as_str())
+	);
 
 	let pending_b = wait_for_event(&mut events_b, |e| {
 		matches!(
@@ -1242,26 +1222,9 @@ async fn test_cli_get_payment_details() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	// Make a bolt11 payment via CLI
-	let invoice_resp = server_b
-		.client()
-		.bolt11_receive(Bolt11ReceiveRequest {
-			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
-			expiry_secs: 3600,
-		})
-		.await
-		.unwrap();
+	let payment_id = send_bolt11_payment(&server_a, &server_b, 10_000_000).await;
 
-	let send_output = run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
-	let payment_id = send_output["payment_id"].as_str().unwrap();
-
-	// Wait for payment to be recorded
-	tokio::time::sleep(Duration::from_secs(3)).await;
-
-	let output = run_cli(&server_a, &["get-payment-details", payment_id]);
+	let output = run_cli(&server_a, &["get-payment-details", &payment_id]);
 	assert!(output.get("payment").is_some());
 	assert_eq!(output["payment"]["payment_id"], payment_id);
 }
@@ -1273,24 +1236,14 @@ async fn test_cli_list_payments() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	// Make a bolt11 payment via CLI
-	let invoice_resp = server_b
-		.client()
-		.bolt11_receive(Bolt11ReceiveRequest {
-			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
-			expiry_secs: 3600,
-		})
-		.await
-		.unwrap();
-
-	run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
-	tokio::time::sleep(Duration::from_secs(3)).await;
+	let payment_id = send_bolt11_payment(&server_a, &server_b, 10_000_000).await;
+	let payments = list_payments(&server_a).await;
+	let expected_payment = payments.iter().find(|p| p.payment_id == payment_id).unwrap();
 
 	let output = run_cli(&server_a, &["list-payments"]);
-	assert!(!output["list"].as_array().unwrap().is_empty());
+	let payment =
+		output["list"].as_array().unwrap().iter().find(|p| p["payment_id"] == payment_id).unwrap();
+	assert_eq!(*payment, serde_json::to_value(expected_payment).unwrap());
 }
 
 #[tokio::test]
@@ -1304,7 +1257,7 @@ async fn test_cli_close_channel() {
 	assert!(output.is_object());
 
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
-	tokio::time::sleep(Duration::from_secs(2)).await;
+	wait_for_channels(&server_a, 0, Duration::from_secs(30)).await;
 
 	let channels_output = run_cli(&server_a, &["list-channels"]);
 	assert!(channels_output["channels"].as_array().unwrap().is_empty());
@@ -1321,7 +1274,7 @@ async fn test_cli_force_close_channel() {
 	assert!(output.is_object());
 
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
-	tokio::time::sleep(Duration::from_secs(2)).await;
+	wait_for_channels(&server_a, 0, Duration::from_secs(30)).await;
 
 	let channels_output = run_cli(&server_a, &["list-channels"]);
 	assert!(channels_output["channels"].as_array().unwrap().is_empty());
@@ -1335,14 +1288,11 @@ async fn splice_in_via_cli(splice_amount: &str) {
 
 	let mut events_a = server_a.client().subscribe_events().await.unwrap();
 
-	let output = run_cli(
-		&server_a,
-		&["splice-in", &user_channel_id, server_b.node_id(), splice_amount],
-	);
+	let output =
+		run_cli(&server_a, &["splice-in", &user_channel_id, server_b.node_id(), splice_amount]);
 	assert!(output.is_object());
 
-	let event_a =
-		wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::SpliceNegotiated(_))).await;
 	match &event_a.event {
 		Some(Event::SpliceNegotiated(splice_negotiated)) => {
 			assert_eq!(splice_negotiated.user_channel_id, user_channel_id);
@@ -1401,21 +1351,11 @@ async fn test_cli_graph_with_channel() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	// Wait for the channel announcement to appear in the network graph.
-	let scid = {
-		let start = std::time::Instant::now();
-		loop {
-			let output = run_cli(&server_a, &["graph-list-channels"]);
-			let scids = output["short_channel_ids"].as_array().unwrap();
-			if !scids.is_empty() {
-				break scids[0].as_u64().unwrap().to_string();
-			}
-			if start.elapsed() > Duration::from_secs(30) {
-				panic!("Timed out waiting for channel to appear in network graph");
-			}
-			tokio::time::sleep(Duration::from_secs(1)).await;
-		}
-	};
+	wait_for_gossip(&server_a, 1, Duration::from_secs(30)).await;
+	let output = run_cli(&server_a, &["graph-list-channels"]);
+	let scids = output["short_channel_ids"].as_array().unwrap();
+	assert_eq!(scids.len(), 1);
+	let scid = scids[0].as_u64().unwrap().to_string();
 
 	// Test GraphGetChannel: should return channel info with both our nodes.
 	let output = run_cli(&server_a, &["graph-get-channel", &scid]);
@@ -1595,6 +1535,16 @@ async fn forwarded_payment_event_and_history(tracking_mode: &str) {
 	assert_eq!(event_payment.next_htlcs.len(), 1);
 	assert!(event_payment.total_fee_earned_msat.is_some());
 
+	// LDK Node persists the forward before emitting the event in detailed mode.
+	// Query once without polling to check that ordering; stats mode omits individual records.
+	let history = server_b
+		.client()
+		.list_forwarded_payments(ListForwardedPaymentsRequest { page_token: None })
+		.await
+		.unwrap();
+	assert_eq!(history.forwarded_payments.len(), usize::from(tracking_mode == "detailed"));
+	assert!(history.next_page_token.is_none());
+
 	// Both tracking modes expose per-channel totals after forwarding.
 	let mode = run_cli(&server_b, &["get-forwarded-payment-tracking-mode"]);
 	assert_eq!(
@@ -1652,19 +1602,10 @@ async fn forwarded_payment_event_and_history(tracking_mode: &str) {
 	let pairs = run_cli(&server_b, &["list-channel-pair-forwarding-stats"]);
 	assert!(pairs["list"].as_array().unwrap().is_empty());
 
-	// LDK Node persists the forward before it emits the event.
-	let history = server_b
-		.client()
-		.list_forwarded_payments(ListForwardedPaymentsRequest { page_token: None })
-		.await
-		.unwrap();
 	if tracking_mode == "stats" {
-		assert!(history.forwarded_payments.is_empty());
-		assert!(history.next_page_token.is_none());
 		node_c.stop().unwrap();
 		return;
 	}
-	assert_eq!(history.forwarded_payments.len(), 1);
 	let record = &history.forwarded_payments[0];
 	let timestamp = record.forwarded_at_timestamp;
 	assert!(timestamp > 0);
@@ -1697,7 +1638,6 @@ async fn forwarded_payment_event_and_history(tracking_mode: &str) {
 	assert_eq!(record.total_fee_earned_msat, event_payment.total_fee_earned_msat);
 	assert_eq!(record.skimmed_fee_msat, event_payment.skimmed_fee_msat);
 	assert_eq!(record.claim_from_onchain_tx, event_payment.claim_from_onchain_tx);
-	assert!(history.next_page_token.is_none());
 
 	node_c.stop().unwrap();
 
@@ -1884,10 +1824,7 @@ async fn test_hodl_invoice_fail() {
 		panic!("expected PaymentFailed");
 	};
 	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
-	assert_eq!(
-		failed.reason,
-		Some(PaymentFailureReason::RecipientRejected as i32)
-	);
+	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
 }
 
 #[tokio::test]
@@ -1948,19 +1885,7 @@ async fn test_metrics_endpoint() {
 		tokio::time::sleep(Duration::from_secs(1)).await;
 	}
 
-	let invoice_resp = server_b
-		.client()
-		.bolt11_receive(Bolt11ReceiveRequest {
-			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("metrics test".to_string())),
-			}),
-			expiry_secs: 3600,
-		})
-		.await
-		.unwrap();
-
-	run_cli(&server_a, &["bolt11-send", &invoice_resp.invoice]);
+	send_bolt11_payment(&server_a, &server_b, 10_000_000).await;
 
 	// Wait to receive the PaymentSuccessful event and update metrics
 	let timeout = Duration::from_secs(30);
