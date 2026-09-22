@@ -67,6 +67,7 @@ use types::{
 	CliPaginatedResponse, Preimage,
 };
 
+mod pay_wait;
 mod types;
 
 const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
@@ -439,6 +440,24 @@ enum Commands {
 			help = "Maximum share of a channel's total capacity to send over a channel, as a power of 1/2 (default: 2)"
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
+		/// Wait for a Lightning payment to reach a terminal state.
+		///
+		/// With no `--wait-timeout`, waits until the payment succeeds or fails.
+		/// On-chain payments already return a transaction id and are not waited on.
+		#[arg(
+			long,
+			help = "Wait until a Lightning payment succeeds or fails. On-chain payments are not waited on"
+		)]
+		wait: bool,
+		/// Optional timeout in seconds for `--wait`. Omit to wait indefinitely.
+		#[arg(
+			long,
+			value_name = "SECS",
+			requires = "wait",
+			value_parser = clap::value_parser!(u64).range(1..),
+			help = "Seconds to wait when --wait is set. Omit to wait until the payment finishes (minimum: 1)"
+		)]
+		wait_timeout: Option<u64>,
 	},
 	#[command(about = "Decode a BOLT11 invoice and display its fields")]
 	DecodeInvoice {
@@ -1083,6 +1102,8 @@ async fn main() {
 			max_total_cltv_expiry_delta,
 			max_path_count,
 			max_channel_saturation_power_of_half,
+			wait,
+			wait_timeout,
 		} => {
 			let amount_msat = amount.map(|a| a.to_msat());
 			let max_total_routing_fee_msat = max_total_routing_fee.map(|a| a.to_msat());
@@ -1094,15 +1115,16 @@ async fn main() {
 				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
 					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
 			};
-			handle_response_result::<_, UnifiedSendResponse>(
-				client
-					.unified_send(UnifiedSendRequest {
-						uri,
-						amount_msat,
-						route_parameters: Some(route_parameters),
-					})
-					.await,
-			);
+			let request =
+				UnifiedSendRequest { uri, amount_msat, route_parameters: Some(route_parameters) };
+			if wait {
+				let timeout = wait_timeout.map(std::time::Duration::from_secs);
+				pay_wait::pay_and_wait(&client, request, timeout).await;
+			} else {
+				handle_response_result::<_, UnifiedSendResponse>(
+					client.unified_send(request).await,
+				);
+			}
 		},
 		Commands::DecodeInvoice { invoice } => {
 			handle_response_result::<_, DecodeInvoiceResponse>(
@@ -1467,7 +1489,7 @@ where
 /// in terminal output rather than silently reordering displayed text.
 /// serde_json already escapes ASCII control characters (U+0000–U+001F), but bidi
 /// overrides (U+200E–U+2069) pass through unescaped.
-fn sanitize_for_terminal(s: String) -> String {
+pub(crate) fn sanitize_for_terminal(s: String) -> String {
 	fn is_bidi_control(c: char) -> bool {
 		matches!(
 			c,
@@ -1498,7 +1520,17 @@ fn sanitize_for_terminal(s: String) -> String {
 	out
 }
 
-fn handle_response_result<Rs, Js>(response: Result<Rs, LdkServerError>)
+pub(crate) fn print_response<T: Serialize + std::fmt::Debug>(value: &T) {
+	match serde_json::to_string_pretty(value) {
+		Ok(json) => println!("{}", sanitize_for_terminal(json)),
+		Err(e) => {
+			eprintln!("Error serializing response ({value:?}) to JSON: {e}");
+			std::process::exit(1);
+		},
+	}
+}
+
+pub(crate) fn handle_response_result<Rs, Js>(response: Result<Rs, LdkServerError>)
 where
 	Rs: Into<Js>,
 	Js: Serialize + std::fmt::Debug,
@@ -1506,13 +1538,7 @@ where
 	match response {
 		Ok(response) => {
 			let json_response: Js = response.into();
-			match serde_json::to_string_pretty(&json_response) {
-				Ok(json) => println!("{}", sanitize_for_terminal(json)),
-				Err(e) => {
-					eprintln!("Error serializing response ({json_response:?}) to JSON: {e}");
-					std::process::exit(1);
-				},
-			}
+			print_response(&json_response);
 		},
 		Err(e) => {
 			handle_error(e);
@@ -1530,12 +1556,10 @@ fn parse_bolt11_invoice_description(
 		(None, Some(hash)) => Some(Bolt11InvoiceDescription {
 			kind: Some(bolt11_invoice_description::Kind::Hash(hash)),
 		}),
-		(Some(_), Some(_)) => {
-			handle_error(LdkServerError::new(
-				InvalidRequestError,
-				"Only one of description or description_hash can be set.".to_string(),
-			));
-		},
+		(Some(_), Some(_)) => handle_error(LdkServerError::new(
+			InvalidRequestError,
+			"Only one of description or description_hash can be set.".to_string(),
+		)),
 		(None, None) => None,
 	}
 }
@@ -1558,7 +1582,7 @@ fn handle_error_msg(msg: String) -> ! {
 	std::process::exit(1);
 }
 
-fn handle_error(e: LdkServerError) -> ! {
+pub(crate) fn handle_error(e: LdkServerError) -> ! {
 	let error_type = match e.error_code {
 		InvalidRequestError => "Invalid Request",
 		AuthError => "Authentication Error",
