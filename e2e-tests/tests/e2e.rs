@@ -47,6 +47,11 @@ async fn test_cli_get_node_info() {
 	let output = run_cli(&server, &["get-node-info"]);
 	assert!(output.get("node_id").is_some());
 	assert_eq!(output["node_id"], server.node_id());
+	let version = output["version"].as_str().expect("version");
+	assert!(
+		version.contains('(') && version.contains(')'),
+		"version should match `ldk-server --version` (`<cargo version> (<git commit>)`), got {version}"
+	);
 
 	// Ensure clients can inspect advertised node capabilities from get-node-info.
 	let keysend = &output["features"]["55"];

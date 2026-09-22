@@ -79,10 +79,10 @@ All RPCs are unary (single request, single response) unless noted otherwise.
 
 ### Node Information
 
-| RPC           | Description                                                                         |
-|---------------|-------------------------------------------------------------------------------------|
-| `GetNodeInfo` | Node ID, best block, sync timestamps, listening/announcement addresses, alias, URIs |
-| `GetBalances` | On-chain, Lightning channel, and claimable balance breakdown                        |
+| RPC           | Description                                                                                          |
+|---------------|------------------------------------------------------------------------------------------------------|
+| `GetNodeInfo` | Node ID, best block, sync timestamps, listening/announcement addresses, alias, URIs, server version  |
+| `GetBalances` | On-chain, Lightning channel, and claimable balance breakdown                                         |
 
 ### On-Chain
 
