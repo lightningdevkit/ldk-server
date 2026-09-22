@@ -54,7 +54,8 @@ use crate::util::{create_dir_all_private, systemd, write_new};
 const API_KEY_FILE: &str = "api_key";
 const API_KEY_LEN: usize = 32;
 const LDK_NODE_POSTGRES_LOCK_FILE: &str = "ldk_node_postgres.lock";
-const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
+pub(crate) const FULL_VERSION: &str =
+	concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]

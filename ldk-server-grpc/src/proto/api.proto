@@ -83,6 +83,10 @@ message GetNodeInfoResponse {
   // Will be `None` if background pathfinding score syncing isn't configured, or no scores have
   // been merged since the node was initialized.
   optional uint64 latest_pathfinding_scores_sync_timestamp = 15;
+
+  // The ldk-server build that is serving this request, in the same form as `ldk-server --version`:
+  // `<cargo version> (<git commit>)`.
+  string version = 16;
 }
 
 // Retrieve a new on-chain funding address.

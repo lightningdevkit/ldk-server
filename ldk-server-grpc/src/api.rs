@@ -95,6 +95,10 @@ pub struct GetNodeInfoResponse {
 	/// been merged since the node was initialized.
 	#[prost(uint64, optional, tag = "15")]
 	pub latest_pathfinding_scores_sync_timestamp: ::core::option::Option<u64>,
+	/// The ldk-server build that is serving this request, in the same form as `ldk-server --version`:
+	/// `<cargo version> (<git commit>)`.
+	#[prost(string, tag = "16")]
+	pub version: ::prost::alloc::string::String,
 }
 /// Retrieve a new on-chain funding address.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.OnchainPayment.html#method.new_address>

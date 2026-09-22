@@ -59,6 +59,7 @@ pub(crate) async fn handle_get_node_info_request(
 
 	let response = GetNodeInfoResponse {
 		node_id,
+		version: crate::FULL_VERSION.to_string(),
 		current_best_block: Some(best_block),
 		latest_lightning_wallet_sync_timestamp: node_status.latest_lightning_wallet_sync_timestamp,
 		latest_onchain_wallet_sync_timestamp: node_status.latest_onchain_wallet_sync_timestamp,
