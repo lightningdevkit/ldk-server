@@ -29,8 +29,12 @@ use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, splice_in_request, AllFunds,
 	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
 	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
-	Bolt11ReceiveRequest, Bolt11ReceiveResponse, Bolt11ReceiveVariableAmountViaJitChannelRequest,
-	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelRequest,
+	Bolt11ReceiveRequest, Bolt11ReceiveResponse,
+	Bolt11ReceiveVariableAmountViaJitChannelForHashRequest,
+	Bolt11ReceiveVariableAmountViaJitChannelForHashResponse,
+	Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelForHashRequest,
+	Bolt11ReceiveViaJitChannelForHashResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
 	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
@@ -214,6 +218,47 @@ enum Commands {
 		about = "Create a variable-amount BOLT11 invoice to receive via an LSPS2 JIT channel"
 	)]
 	Bolt11ReceiveVariableAmountViaJitChannel {
+		#[arg(short, long, help = "Description to attach along with the invoice")]
+		description: Option<String>,
+		#[arg(
+			long,
+			help = "SHA-256 hash of the description (hex). Use instead of description for longer text"
+		)]
+		description_hash: Option<String>,
+		#[arg(short, long, help = "Invoice expiry time in seconds (default: 86400)")]
+		expiry_secs: Option<u32>,
+		#[arg(long, help = "Maximum proportional fee the LSP may deduct in ppm-msat")]
+		max_proportional_lsp_fee_limit_ppm_msat: Option<u64>,
+	},
+	#[command(
+		about = "Create a fixed-amount BOLT11 invoice to receive via an LSPS2 JIT channel for a given payment hash (manual claim required)"
+	)]
+	Bolt11ReceiveViaJitChannelForHash {
+		#[arg(help = "The hex-encoded 32-byte payment hash")]
+		payment_hash: String,
+		#[arg(help = "Amount to request, e.g. 50sat or 50000msat")]
+		amount: Amount,
+		#[arg(short, long, help = "Description to attach along with the invoice")]
+		description: Option<String>,
+		#[arg(
+			long,
+			help = "SHA-256 hash of the description (hex). Use instead of description for longer text"
+		)]
+		description_hash: Option<String>,
+		#[arg(short, long, help = "Invoice expiry time in seconds (default: 86400)")]
+		expiry_secs: Option<u32>,
+		#[arg(
+			long,
+			help = "Maximum total fee an LSP may deduct for opening the JIT channel, e.g. 50sat or 50000msat"
+		)]
+		max_total_lsp_fee_limit: Option<Amount>,
+	},
+	#[command(
+		about = "Create a variable-amount BOLT11 invoice to receive via an LSPS2 JIT channel for a given payment hash (manual claim required)"
+	)]
+	Bolt11ReceiveVariableAmountViaJitChannelForHash {
+		#[arg(help = "The hex-encoded 32-byte payment hash")]
+		payment_hash: String,
 		#[arg(short, long, help = "Description to attach along with the invoice")]
 		description: Option<String>,
 		#[arg(
@@ -943,6 +988,42 @@ async fn main() {
 
 			handle_response_result::<_, Bolt11ReceiveVariableAmountViaJitChannelResponse>(
 				client.bolt11_receive_variable_amount_via_jit_channel(request).await,
+			);
+		},
+		Commands::Bolt11ReceiveViaJitChannelForHash {
+			amount,
+			description,
+			description_hash,
+			expiry_secs,
+			max_total_lsp_fee_limit,
+			payment_hash,
+		} => {
+			let request = Bolt11ReceiveViaJitChannelForHashRequest {
+				amount_msat: amount.to_msat(),
+				description: parse_bolt11_invoice_description(description, description_hash),
+				expiry_secs: expiry_secs.unwrap_or(DEFAULT_EXPIRY_SECS),
+				max_total_lsp_fee_limit_msat: max_total_lsp_fee_limit.map(|a| a.to_msat()),
+				payment_hash,
+			};
+			handle_response_result::<_, Bolt11ReceiveViaJitChannelForHashResponse>(
+				client.bolt11_receive_via_jit_channel_for_hash(request).await,
+			);
+		},
+		Commands::Bolt11ReceiveVariableAmountViaJitChannelForHash {
+			description,
+			description_hash,
+			expiry_secs,
+			max_proportional_lsp_fee_limit_ppm_msat,
+			payment_hash,
+		} => {
+			let request = Bolt11ReceiveVariableAmountViaJitChannelForHashRequest {
+				description: parse_bolt11_invoice_description(description, description_hash),
+				expiry_secs: expiry_secs.unwrap_or(DEFAULT_EXPIRY_SECS),
+				max_proportional_lsp_fee_limit_ppm_msat,
+				payment_hash,
+			};
+			handle_response_result::<_, Bolt11ReceiveVariableAmountViaJitChannelForHashResponse>(
+				client.bolt11_receive_variable_amount_via_jit_channel_for_hash(request).await,
 			);
 		},
 		Commands::Bolt11Send {

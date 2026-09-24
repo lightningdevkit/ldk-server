@@ -158,6 +158,22 @@ pub fn build_tool_registry() -> ToolRegistry {
 			},
 		),
 		tool_spec(
+			"bolt11_receive_via_jit_channel_for_hash",
+			"Create a BOLT11 Lightning invoice to receive via an LSPS2 JIT channel for a given payment hash",
+			schema::bolt11_receive_via_jit_channel_for_hash_schema,
+			|client, args| Box::pin(handlers::handle_bolt11_receive_via_jit_channel_for_hash(client, args)),
+		),
+		tool_spec(
+			"bolt11_receive_variable_amount_via_jit_channel_for_hash",
+			"Create a variable-amount BOLT11 Lightning invoice to receive via an LSPS2 JIT channel for a given payment hash",
+			schema::bolt11_receive_variable_amount_via_jit_channel_for_hash_schema,
+			|client, args| {
+				Box::pin(handlers::handle_bolt11_receive_variable_amount_via_jit_channel_for_hash(
+					client, args,
+				))
+			},
+		),
+		tool_spec(
 			"bolt11_send",
 			"Pay a BOLT11 Lightning invoice",
 			schema::bolt11_send_schema,

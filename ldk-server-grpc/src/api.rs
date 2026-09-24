@@ -249,7 +249,7 @@ pub struct Bolt11ReceiveForHashResponse {
 	pub invoice: ::prost::alloc::string::String,
 }
 /// Manually claim a payment for a given payment ID with the corresponding preimage.
-/// This should be used to claim payments created via `Bolt11ReceiveForHash`.
+/// This should be used to claim payments created via `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -279,7 +279,7 @@ pub struct Bolt11ClaimForIdRequest {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ClaimForIdResponse {}
 /// Manually fail a payment for a given payment ID.
-/// This should be used to reject payments created via `Bolt11ReceiveForHash`.
+/// This should be used to reject payments created via `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash`.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
@@ -360,6 +360,86 @@ pub struct Bolt11ReceiveVariableAmountViaJitChannelRequest {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Bolt11ReceiveVariableAmountViaJitChannelResponse {
+	/// An invoice for a payment within the Lightning Network.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+}
+/// Return a BOLT11 payable invoice for a given payment hash, received via an
+/// LSPS2 just-in-time channel.
+/// The inbound payment will NOT be automatically claimed upon arrival.
+/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+/// or manually failed by calling `Bolt11FailForId`.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel_for_hash>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveViaJitChannelForHashRequest {
+	/// The amount in millisatoshi to request.
+	#[prost(uint64, tag = "1")]
+	pub amount_msat: u64,
+	/// An optional description to attach along with the invoice.
+	/// Will be set in the description field of the encoded payment request.
+	#[prost(message, optional, tag = "2")]
+	pub description: ::core::option::Option<super::types::Bolt11InvoiceDescription>,
+	/// Invoice expiry time in seconds.
+	#[prost(uint32, tag = "3")]
+	pub expiry_secs: u32,
+	/// Optional upper bound for the total fee an LSP may deduct when opening the JIT channel.
+	#[prost(uint64, optional, tag = "4")]
+	pub max_total_lsp_fee_limit_msat: ::core::option::Option<u64>,
+	/// The hex-encoded 32-byte payment hash to use for the invoice.
+	/// Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
+	#[prost(string, tag = "5")]
+	pub payment_hash: ::prost::alloc::string::String,
+}
+/// The response for the `Bolt11ReceiveViaJitChannelForHash` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveViaJitChannelForHashResponse {
+	/// An invoice for a payment within the Lightning Network.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+}
+/// Return a variable-amount BOLT11 invoice for a given payment hash, received via an
+/// LSPS2 just-in-time channel.
+/// The inbound payment will NOT be automatically claimed upon arrival.
+/// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+/// or manually failed by calling `Bolt11FailForId`.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel_for_hash>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveVariableAmountViaJitChannelForHashRequest {
+	/// An optional description to attach along with the invoice.
+	/// Will be set in the description field of the encoded payment request.
+	#[prost(message, optional, tag = "1")]
+	pub description: ::core::option::Option<super::types::Bolt11InvoiceDescription>,
+	/// Invoice expiry time in seconds.
+	#[prost(uint32, tag = "2")]
+	pub expiry_secs: u32,
+	/// Optional upper bound for the proportional fee, in parts-per-million millisatoshis, that an
+	/// LSP may deduct when opening the JIT channel.
+	#[prost(uint64, optional, tag = "3")]
+	pub max_proportional_lsp_fee_limit_ppm_msat: ::core::option::Option<u64>,
+	/// The hex-encoded 32-byte payment hash to use for the invoice.
+	/// Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
+	#[prost(string, tag = "4")]
+	pub payment_hash: ::prost::alloc::string::String,
+}
+/// The response for the `Bolt11ReceiveVariableAmountViaJitChannelForHash` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11ReceiveVariableAmountViaJitChannelForHashResponse {
 	/// An invoice for a payment within the Lightning Network.
 	#[prost(string, tag = "1")]
 	pub invoice: ::prost::alloc::string::String,

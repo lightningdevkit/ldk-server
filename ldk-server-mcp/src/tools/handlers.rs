@@ -11,7 +11,8 @@ use hex_conservative::DisplayHex;
 use ldk_server_client::client::LdkServerClient;
 use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveForHashRequest,
-	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelRequest,
+	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelForHashRequest,
+	Bolt11ReceiveVariableAmountViaJitChannelRequest, Bolt11ReceiveViaJitChannelForHashRequest,
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
 	Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest, Bolt12ReceiveRequest,
 	Bolt12SendRefundRequest, Bolt12SendRequest, CloseChannelRequest, ConnectPeerRequest,
@@ -242,6 +243,32 @@ pub async fn handle_bolt11_receive_variable_amount_via_jit_channel(
 	}
 	let response = client
 		.bolt11_receive_variable_amount_via_jit_channel(request)
+		.await
+		.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt11_receive_via_jit_channel_for_hash(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let mut request: Bolt11ReceiveViaJitChannelForHashRequest = parse_request(args)?;
+	if request.expiry_secs == 0 {
+		request.expiry_secs = DEFAULT_EXPIRY_SECS;
+	}
+	let response =
+		client.bolt11_receive_via_jit_channel_for_hash(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt11_receive_variable_amount_via_jit_channel_for_hash(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let mut request: Bolt11ReceiveVariableAmountViaJitChannelForHashRequest = parse_request(args)?;
+	if request.expiry_secs == 0 {
+		request.expiry_secs = DEFAULT_EXPIRY_SECS;
+	}
+	let response = client
+		.bolt11_receive_variable_amount_via_jit_channel_for_hash(request)
 		.await
 		.map_err(McpError::from)?;
 	serialize_response(response)

@@ -316,6 +316,54 @@ pub fn bolt11_receive_variable_amount_via_jit_channel_schema() -> Value {
 	})
 }
 
+pub fn bolt11_receive_via_jit_channel_for_hash_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"amount_msat": {
+				"type": "integer",
+				"description": "The amount in millisatoshis to request"
+			},
+			"description": bolt11_invoice_description_schema(),
+			"expiry_secs": {
+				"type": "integer",
+				"description": "Invoice expiry time in seconds (defaults to 86400 if omitted or 0)"
+			},
+			"max_total_lsp_fee_limit_msat": {
+				"type": "integer",
+				"description": "Optional upper bound for the total fee an LSP may deduct when opening the JIT channel"
+			},
+			"payment_hash": {
+				"type": "string",
+				"description": "The hex-encoded 32-byte payment hash to use for the invoice"
+			}
+		},
+		"required": ["amount_msat", "payment_hash"]
+	})
+}
+
+pub fn bolt11_receive_variable_amount_via_jit_channel_for_hash_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"description": bolt11_invoice_description_schema(),
+			"expiry_secs": {
+				"type": "integer",
+				"description": "Invoice expiry time in seconds (defaults to 86400 if omitted or 0)"
+			},
+			"max_proportional_lsp_fee_limit_ppm_msat": {
+				"type": "integer",
+				"description": "Optional upper bound for the proportional fee, in parts-per-million millisatoshis, that an LSP may deduct when opening the JIT channel"
+			},
+			"payment_hash": {
+				"type": "string",
+				"description": "The hex-encoded 32-byte payment hash to use for the invoice"
+			}
+		},
+		"required": ["payment_hash"]
+	})
+}
+
 pub fn bolt11_send_schema() -> Value {
 	json!({
 		"type": "object",
