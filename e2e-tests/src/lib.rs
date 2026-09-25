@@ -14,7 +14,6 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use corepc_node::Node;
-use hex_conservative::DisplayHex;
 use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::error::LdkServerErrorCode;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
@@ -118,7 +117,7 @@ pub struct LdkServerHandle {
 	pub p2p_port: u16,
 	pub storage_dir: PathBuf,
 	pub config_path: PathBuf,
-	pub api_key: String,
+	pub macaroon: String,
 	pub tls_cert_path: PathBuf,
 	pub node_id: String,
 	client: LdkServerClient,
@@ -387,23 +386,21 @@ impl LdkServerHandle {
 		forward_server_output(&mut child);
 		let TestServerParams { grpc_port, p2p_port, storage_dir, .. } = params;
 
-		// Wait for the api_key and tls.crt files to appear in the network subdir
+		// Wait for the admin macaroon and TLS certificate files to appear.
 		let network_dir = storage_dir.join("regtest");
-		let api_key_path = network_dir.join("api_key");
+		let macaroon_path = network_dir.join("macaroons").join("admin.macaroon");
 		let tls_cert_path = storage_dir.join("tls.crt");
 
-		wait_for_file(&api_key_path, Duration::from_secs(30)).await;
+		wait_for_file(&macaroon_path, Duration::from_secs(30)).await;
 		wait_for_file(&tls_cert_path, Duration::from_secs(30)).await;
 
-		// Read the API key (raw bytes -> hex)
-		let api_key_bytes = std::fs::read(&api_key_path).unwrap();
-		let api_key = api_key_bytes.to_lower_hex_string();
+		let macaroon = std::fs::read_to_string(&macaroon_path).unwrap().trim().to_string();
 
 		// Read TLS cert
 		let tls_cert_pem = std::fs::read(&tls_cert_path).unwrap();
 
 		let base_url = format!("127.0.0.1:{grpc_port}");
-		let client = LdkServerClient::new(base_url, api_key.clone(), &tls_cert_pem).unwrap();
+		let client = LdkServerClient::new(base_url, macaroon.clone(), &tls_cert_pem).unwrap();
 
 		let mut handle = Self {
 			child: Some(child),
@@ -411,7 +408,7 @@ impl LdkServerHandle {
 			p2p_port,
 			storage_dir,
 			config_path,
-			api_key,
+			macaroon,
 			tls_cert_path,
 			node_id: String::new(),
 			client,
@@ -628,10 +625,14 @@ pub struct McpHandle {
 
 impl McpHandle {
 	pub fn start(server: &LdkServerHandle) -> Self {
+		Self::start_with_macaroon(server, &server.macaroon)
+	}
+
+	pub fn start_with_macaroon(server: &LdkServerHandle, macaroon: &str) -> Self {
 		let mcp_path = mcp_binary_path();
 		let mut child = Command::new(&mcp_path)
 			.env("LDK_BASE_URL", server.base_url())
-			.env("LDK_API_KEY", &server.api_key)
+			.env("LDK_MACAROON", macaroon)
 			.env("LDK_TLS_CERT_PATH", server.tls_cert_path.to_str().unwrap())
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())
@@ -683,8 +684,8 @@ pub fn run_cli_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
 	let output = Command::new(&cli_path)
 		.arg("--base-url")
 		.arg(handle.base_url())
-		.arg("--api-key")
-		.arg(&handle.api_key)
+		.arg("--macaroon")
+		.arg(&handle.macaroon)
 		.arg("--tls-cert")
 		.arg(handle.tls_cert_path.to_str().unwrap())
 		.args(args)

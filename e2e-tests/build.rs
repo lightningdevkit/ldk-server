@@ -56,6 +56,8 @@ fn main() {
 	println!("cargo:rerun-if-changed=../ldk-server-cli/Cargo.toml");
 	println!("cargo:rerun-if-changed=../ldk-server-client/src");
 	println!("cargo:rerun-if-changed=../ldk-server-client/Cargo.toml");
+	println!("cargo:rerun-if-changed=../ldk-server-macaroons/src");
+	println!("cargo:rerun-if-changed=../ldk-server-macaroons/Cargo.toml");
 	println!("cargo:rerun-if-changed=../ldk-server-grpc/src");
 	println!("cargo:rerun-if-changed=../ldk-server-grpc/Cargo.toml");
 	println!("cargo:rerun-if-changed=../ldk-server-mcp/src");

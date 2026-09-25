@@ -41,7 +41,7 @@ pub(crate) fn read_to_string_with_limit(path: &Path, limit: usize) -> io::Result
 pub(crate) fn write_new(path: &Path, contents: &[u8], mode: u32) -> io::Result<()> {
 	let mut file = OpenOptions::new().create_new(true).write(true).mode(mode).open(path)?;
 	file.write_all(contents)?;
-	fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+	file.set_permissions(fs::Permissions::from_mode(mode))?;
 	file.sync_all()?;
 	Ok(())
 }
@@ -75,6 +75,30 @@ mod tests {
 
 		assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
 		assert_eq!(fs::read(&path).unwrap(), b"original");
+
+		fs::remove_dir_all(dir).unwrap();
+	}
+
+	#[test]
+	fn write_new_rejects_symlinks() {
+		let dir = test_dir("symlinks");
+		let target = dir.join("target");
+		fs::write(&target, b"original").unwrap();
+		fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+
+		for (name, destination) in [("existing", target.clone()), ("dangling", dir.join("missing"))]
+		{
+			let path = dir.join(name);
+			std::os::unix::fs::symlink(&destination, &path).unwrap();
+
+			let err = write_new(&path, b"replacement", 0o400).unwrap_err();
+
+			assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+			assert_eq!(fs::read_link(&path).unwrap(), destination);
+		}
+		assert_eq!(fs::read(&target).unwrap(), b"original");
+		assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o600);
+		assert!(!dir.join("missing").exists());
 
 		fs::remove_dir_all(dir).unwrap();
 	}

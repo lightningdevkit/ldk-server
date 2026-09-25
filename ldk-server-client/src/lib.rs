@@ -15,6 +15,9 @@
 /// Implements a [`LdkServerClient`](client::LdkServerClient) to access a hosted instance of LDK Server.
 pub mod client;
 
+/// Macaroon credentials and request binding.
+pub use ldk_server_macaroons as macaroon;
+
 /// Shared configuration loading and credential resolution logic reused by `ldk-server` clients.
 #[cfg(feature = "serde")]
 pub mod config;

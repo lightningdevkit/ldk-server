@@ -10,21 +10,21 @@
 //! Shared `ldk-server` client configuration.
 //!
 //! Parses the TOML configuration file used by the `ldk-server` daemon and exposes helpers for
-//! locating the server's TLS certificate and API key on disk, so multiple clients (CLI, MCP
+//! locating the server's TLS certificate and macaroon on disk, so multiple clients (CLI, MCP
 //! bridge, etc.) can resolve connection credentials in a consistent way.
 
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
-use hex_conservative::DisplayHex;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CERT_FILE: &str = "tls.crt";
-const API_KEY_FILE: &str = "api_key";
-const API_KEY_LEN: usize = 32;
 const CONFIG_FILE_SIZE_LIMIT: usize = 1024 * 1024;
 const TLS_CERT_FILE_SIZE_LIMIT: usize = 1024 * 1024;
+const MACAROONS_DIR: &str = "macaroons";
+const ADMIN_MACAROON_FILE: &str = "admin.macaroon";
+const MACAROON_FILE_SIZE_LIMIT: usize = crate::macaroon::MAX_MACAROON_BYTES * 2;
 
 /// Default address of the `ldk-server` gRPC endpoint when no explicit value is configured.
 pub const DEFAULT_GRPC_SERVICE_ADDRESS: &str = "127.0.0.1:3536";
@@ -57,14 +57,15 @@ pub fn get_default_cert_path() -> Option<PathBuf> {
 	get_default_data_dir().map(|path| path.join(DEFAULT_CERT_FILE))
 }
 
-/// Default path of the network-scoped API key file inside the default data directory.
-pub fn get_default_api_key_path(network: &str) -> Option<PathBuf> {
-	get_default_data_dir().map(|path| path.join(network).join(API_KEY_FILE))
+/// Default admin macaroon path for this network.
+pub fn get_default_admin_macaroon_path(network: &str) -> Option<PathBuf> {
+	get_default_data_dir()
+		.map(|path| path.join(network).join(MACAROONS_DIR).join(ADMIN_MACAROON_FILE))
 }
 
-/// Path of the network-scoped API key file inside the given storage directory.
-pub fn api_key_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
-	PathBuf::from(storage_dir).join(network).join(API_KEY_FILE)
+/// Admin macaroon path for this storage directory and network.
+pub fn admin_macaroon_path_for_storage_dir(storage_dir: &str, network: &str) -> PathBuf {
+	PathBuf::from(storage_dir).join(network).join(MACAROONS_DIR).join(ADMIN_MACAROON_FILE)
 }
 
 /// Path of the server's TLS certificate inside the given storage directory.
@@ -153,62 +154,40 @@ pub fn resolve_base_url(override_url: Option<String>, config: Option<&Config>) -
 		.unwrap_or_else(default_grpc_service_address)
 }
 
-/// Resolves the API key used to authenticate against the `ldk-server` gRPC endpoint.
+/// Find the macaroon to use for requests.
 ///
-/// Prefers `override_key`. Otherwise, reads the API key file from the configured storage
-/// directory when one is set, or from the OS-specific default data directory when one is not.
-/// A failed read from a configured storage directory does not fall back to the default data
-/// directory. The raw bytes read from disk are lower-hex encoded before being returned.
-///
-/// Returns an error if the configured network is unsupported, or if a candidate API key file
-/// exists but cannot be read or does not contain exactly 32 bytes.
-pub fn resolve_api_key(
-	override_key: Option<String>, config: Option<&Config>,
+/// Use `override_macaroon` if supplied. Otherwise, read `admin.macaroon` from the configured
+/// storage directory, or the default data directory if no storage directory is configured.
+/// Never fall back to a different instance when the selected file is missing.
+/// Return an error for an unsupported network or an unreadable, oversized, or invalid token.
+pub fn resolve_macaroon(
+	override_macaroon: Option<String>, config: Option<&Config>,
 ) -> Result<Option<String>, String> {
-	if override_key.is_some() {
-		return Ok(override_key);
+	if override_macaroon.is_some() {
+		return Ok(override_macaroon);
 	}
 
-	match resolve_api_key_path(config)? {
-		Some(path) => read_api_key(&path),
+	match resolve_macaroon_path(config)? {
+		Some(path) => read_admin_macaroon(&path),
 		None => Ok(None),
 	}
 }
 
-/// Resolves the API key file path selected by [`resolve_api_key`] when no override is given.
+/// Resolves the macaroon file path selected by [`resolve_macaroon`] when no override is given.
 ///
 /// Uses the configured storage directory when one is set. Uses the OS-specific default data
 /// directory only when no storage directory is configured.
 ///
 /// Returns an error if the configured network is unsupported.
-pub fn resolve_api_key_path(config: Option<&Config>) -> Result<Option<PathBuf>, String> {
+pub fn resolve_macaroon_path(config: Option<&Config>) -> Result<Option<PathBuf>, String> {
 	let network = match config {
 		Some(config) => config.network()?,
 		None => "bitcoin".to_string(),
 	};
 	Ok(match storage_dir(config) {
-		Some(dir) => Some(api_key_path_for_storage_dir(dir, &network)),
-		None => get_default_api_key_path(&network),
+		Some(dir) => Some(admin_macaroon_path_for_storage_dir(dir, &network)),
+		None => get_default_admin_macaroon_path(&network),
 	})
-}
-
-fn read_api_key(path: &Path) -> Result<Option<String>, String> {
-	let file = match std::fs::File::open(path) {
-		Ok(file) => file,
-		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-		Err(e) => return Err(format!("Failed to read API key file '{}': {e}", path.display())),
-	};
-	let mut bytes = Vec::with_capacity(API_KEY_LEN + 1);
-	file.take((API_KEY_LEN + 1) as u64)
-		.read_to_end(&mut bytes)
-		.map_err(|e| format!("Failed to read API key file '{}': {e}", path.display()))?;
-	if bytes.len() != API_KEY_LEN {
-		return Err(format!(
-			"API key file '{}' must contain exactly {API_KEY_LEN} bytes",
-			path.display()
-		));
-	}
-	Ok(Some(bytes.to_lower_hex_string()))
 }
 
 fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
@@ -227,6 +206,20 @@ fn read_with_limit(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
 fn read_to_string_with_limit(path: &Path, limit: usize) -> io::Result<String> {
 	String::from_utf8(read_with_limit(path, limit)?)
 		.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+fn read_admin_macaroon(path: &Path) -> Result<Option<String>, String> {
+	let contents = match read_to_string_with_limit(path, MACAROON_FILE_SIZE_LIMIT) {
+		Ok(contents) => contents,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(error) => {
+			return Err(format!("Failed to read macaroon file '{}': {error}", path.display()))
+		},
+	};
+	let token = contents.trim();
+	crate::macaroon::parse_reusable_macaroon(token)
+		.map_err(|error| format!("Invalid macaroon in '{}': {error}", path.display()))?;
+	Ok(Some(token.to_string()))
 }
 
 /// Resolves the path to the server's TLS certificate (PEM).
@@ -257,14 +250,16 @@ fn default_grpc_service_address() -> String {
 #[cfg(test)]
 mod tests {
 	use std::fs;
+	use std::sync::atomic::{AtomicU32, Ordering};
 	use std::sync::Mutex;
 	use std::time::{SystemTime, UNIX_EPOCH};
 
 	use super::{
-		get_default_api_key_path, load_config, read_tls_certificate, resolve_api_key,
-		resolve_api_key_path, resolve_base_url, Config, API_KEY_FILE, CONFIG_FILE_SIZE_LIMIT,
-		DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+		get_default_admin_macaroon_path, load_config, read_tls_certificate, resolve_base_url,
+		resolve_macaroon, resolve_macaroon_path, Config, ADMIN_MACAROON_FILE,
+		CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
 	};
+	static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 	static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -385,12 +380,16 @@ mod tests {
 	}
 
 	#[test]
-	fn resolve_api_key_rejects_unsupported_network() {
+	fn resolve_macaroon_rejects_unsupported_network() {
 		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 		let storage_dir = std::env::temp_dir()
 			.join(format!("ldk-server-client-invalid-network-{}-{nonce}", std::process::id()));
-		fs::create_dir_all(storage_dir.join("bitcoin")).unwrap();
-		fs::write(storage_dir.join("bitcoin").join(API_KEY_FILE), [0xAB; 32]).unwrap();
+		fs::create_dir_all(storage_dir.join("bitcoin").join("macaroons")).unwrap();
+		fs::write(
+			storage_dir.join("bitcoin").join("macaroons").join(ADMIN_MACAROON_FILE),
+			crate::macaroon::Macaroon::mint(b"test root", b"test id").unwrap().to_hex(),
+		)
+		.unwrap();
 
 		let config: Config = toml::from_str(&format!(
 			r#"
@@ -405,11 +404,11 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(
-			resolve_api_key_path(Some(&config)).unwrap_err(),
+			resolve_macaroon_path(Some(&config)).unwrap_err(),
 			"Unsupported network: invalid-network"
 		);
 		assert_eq!(
-			resolve_api_key(None, Some(&config)).unwrap_err(),
+			resolve_macaroon(None, Some(&config)).unwrap_err(),
 			"Unsupported network: invalid-network"
 		);
 
@@ -417,7 +416,7 @@ mod tests {
 	}
 
 	#[test]
-	fn resolve_api_key_does_not_cross_storage_instances() {
+	fn resolve_macaroon_does_not_cross_storage_instances() {
 		let _lock = ENV_LOCK.lock().unwrap();
 		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 		let temp_dir = std::env::temp_dir()
@@ -426,9 +425,13 @@ mod tests {
 		fs::create_dir_all(&configured_storage).unwrap();
 
 		let (default_dir_env_var, old_default_dir) = set_default_data_dir(&temp_dir);
-		let default_api_key = get_default_api_key_path("regtest").unwrap();
-		fs::create_dir_all(default_api_key.parent().unwrap()).unwrap();
-		fs::write(&default_api_key, [0xAB; 32]).unwrap();
+		let default_macaroon = get_default_admin_macaroon_path("regtest").unwrap();
+		fs::create_dir_all(default_macaroon.parent().unwrap()).unwrap();
+		fs::write(
+			&default_macaroon,
+			crate::macaroon::Macaroon::mint(b"test root", b"test id").unwrap().to_hex(),
+		)
+		.unwrap();
 
 		let config: Config = toml::from_str(&format!(
 			r#"
@@ -443,10 +446,10 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(
-			resolve_api_key_path(Some(&config)).unwrap(),
-			Some(configured_storage.join("regtest").join(API_KEY_FILE))
+			resolve_macaroon_path(Some(&config)).unwrap(),
+			Some(configured_storage.join("regtest").join("macaroons").join(ADMIN_MACAROON_FILE))
 		);
-		let resolved = resolve_api_key(None, Some(&config));
+		let resolved = resolve_macaroon(None, Some(&config));
 
 		restore_env_var(&default_dir_env_var, old_default_dir);
 		fs::remove_dir_all(temp_dir).unwrap();
@@ -475,5 +478,48 @@ mod tests {
 		assert!(error.contains("exceeds"));
 
 		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn resolve_macaroon_reads_scoped_admin_file() {
+		let count = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+		let directory = std::env::temp_dir()
+			.join(format!("ldk-server-client-config-test-{}-{count}", std::process::id()));
+		let admin_directory = directory.join("regtest").join("macaroons");
+		fs::create_dir_all(&admin_directory).unwrap();
+		let token = "0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429".to_string();
+		fs::write(admin_directory.join("admin.macaroon"), &token).unwrap();
+		let config: Config = toml::from_str(&format!(
+			r#"
+				[node]
+				network = "regtest"
+
+				[storage.disk]
+				dir_path = "{}"
+			"#,
+			directory.display()
+		))
+		.unwrap();
+
+		assert_eq!(resolve_macaroon(None, Some(&config)).unwrap(), Some(token.clone()));
+		let admin_path = admin_directory.join("admin.macaroon");
+		let bound =
+			crate::macaroon::bind_macaroon_to_request(&token, "GetNodeInfo", &[0; 5]).unwrap();
+		fs::write(&admin_path, &bound).unwrap();
+		let error = resolve_macaroon(None, Some(&config)).unwrap_err();
+		assert!(error.contains("request-bound macaroon cannot be used as a reusable credential"));
+		assert!(!error.contains(&bound));
+		for contents in [
+			"not hexadecimal".to_string(),
+			"deadbeef".to_string(),
+			"00".repeat(super::MACAROON_FILE_SIZE_LIMIT),
+		] {
+			fs::write(&admin_path, contents).unwrap();
+			assert!(resolve_macaroon(None, Some(&config)).is_err());
+		}
+		fs::remove_file(&admin_path).unwrap();
+		assert_eq!(super::read_admin_macaroon(&admin_path).unwrap(), None);
+
+		fs::remove_dir_all(directory).unwrap();
 	}
 }
