@@ -197,7 +197,7 @@ message Bolt11ReceiveForHashResponse {
 }
 
 // Manually claim a payment for a given payment ID with the corresponding preimage.
-// This should be used to claim payments created via `Bolt11ReceiveForHash`.
+// This should be used to claim payments created via `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash`.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.claim_for_id
 message Bolt11ClaimForIdRequest {
 
@@ -219,7 +219,7 @@ message Bolt11ClaimForIdRequest {
 message Bolt11ClaimForIdResponse {}
 
 // Manually fail a payment for a given payment ID.
-// This should be used to reject payments created via `Bolt11ReceiveForHash`.
+// This should be used to reject payments created via `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash`.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.fail_for_id
 message Bolt11FailForIdRequest {
 
@@ -280,6 +280,65 @@ message Bolt11ReceiveVariableAmountViaJitChannelResponse {
   string invoice = 1;
 }
 
+// Return a BOLT11 payable invoice for a given payment hash, received via an
+// LSPS2 just-in-time channel.
+// The inbound payment will NOT be automatically claimed upon arrival.
+// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+// or manually failed by calling `Bolt11FailForId`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_via_jit_channel_for_hash
+message Bolt11ReceiveViaJitChannelForHashRequest {
+  // The amount in millisatoshi to request.
+  uint64 amount_msat = 1;
+
+  // An optional description to attach along with the invoice.
+  // Will be set in the description field of the encoded payment request.
+  types.Bolt11InvoiceDescription description = 2;
+
+  // Invoice expiry time in seconds.
+  uint32 expiry_secs = 3;
+
+  // Optional upper bound for the total fee an LSP may deduct when opening the JIT channel.
+  optional uint64 max_total_lsp_fee_limit_msat = 4;
+
+  // The hex-encoded 32-byte payment hash to use for the invoice.
+  // Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
+  string payment_hash = 5;
+}
+
+// The response for the `Bolt11ReceiveViaJitChannelForHash` RPC. On failure, a gRPC error status is returned.
+message Bolt11ReceiveViaJitChannelForHashResponse {
+  // An invoice for a payment within the Lightning Network.
+  string invoice = 1;
+}
+
+// Return a variable-amount BOLT11 invoice for a given payment hash, received via an
+// LSPS2 just-in-time channel.
+// The inbound payment will NOT be automatically claimed upon arrival.
+// Instead, the payment will need to be manually claimed by calling `Bolt11ClaimForId`
+// or manually failed by calling `Bolt11FailForId`.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.receive_variable_amount_via_jit_channel_for_hash
+message Bolt11ReceiveVariableAmountViaJitChannelForHashRequest {
+  // An optional description to attach along with the invoice.
+  // Will be set in the description field of the encoded payment request.
+  types.Bolt11InvoiceDescription description = 1;
+
+  // Invoice expiry time in seconds.
+  uint32 expiry_secs = 2;
+
+  // Optional upper bound for the proportional fee, in parts-per-million millisatoshis, that an
+  // LSP may deduct when opening the JIT channel.
+  optional uint64 max_proportional_lsp_fee_limit_ppm_msat = 3;
+
+  // The hex-encoded 32-byte payment hash to use for the invoice.
+  // Use a new payment hash for each invoice. Reuse is unsafe and can cause loss of funds.
+  string payment_hash = 4;
+}
+
+// The response for the `Bolt11ReceiveVariableAmountViaJitChannelForHash` RPC. On failure, a gRPC error status is returned.
+message Bolt11ReceiveVariableAmountViaJitChannelForHashResponse {
+  // An invoice for a payment within the Lightning Network.
+  string invoice = 1;
+}
 
 // Send a payment for a BOLT11 invoice.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt11Payment.html#method.send
@@ -1168,6 +1227,10 @@ service LightningNode {
   rpc Bolt11ReceiveViaJitChannel(Bolt11ReceiveViaJitChannelRequest) returns (Bolt11ReceiveViaJitChannelResponse);
   // Return a variable-amount BOLT11 invoice for receiving via a JIT channel.
   rpc Bolt11ReceiveVariableAmountViaJitChannel(Bolt11ReceiveVariableAmountViaJitChannelRequest) returns (Bolt11ReceiveVariableAmountViaJitChannelResponse);
+  // Return a BOLT11 invoice for a given payment hash, received via a JIT channel.
+  rpc Bolt11ReceiveViaJitChannelForHash(Bolt11ReceiveViaJitChannelForHashRequest) returns (Bolt11ReceiveViaJitChannelForHashResponse);
+  // Return a variable-amount BOLT11 invoice for a given payment hash, received via a JIT channel.
+  rpc Bolt11ReceiveVariableAmountViaJitChannelForHash(Bolt11ReceiveVariableAmountViaJitChannelForHashRequest) returns (Bolt11ReceiveVariableAmountViaJitChannelForHashResponse);
   // Send a payment for a BOLT11 invoice.
   rpc Bolt11Send(Bolt11SendRequest) returns (Bolt11SendResponse);
   // Send part of the amount for a fixed-amount BOLT11 invoice.

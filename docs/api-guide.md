@@ -209,6 +209,8 @@ a channel just-in-time when the invoice is paid.
 |--------------------------------------------|-----------------------------------------------------------|
 | `Bolt11ReceiveViaJitChannel`               | Create a fixed-amount invoice with JIT channel opening    |
 | `Bolt11ReceiveVariableAmountViaJitChannel` | Create a variable-amount invoice with JIT channel opening |
+| `Bolt11ReceiveViaJitChannelForHash`        | Create a fixed-amount invoice with JIT channel opening for a given payment hash (manual claim required) |
+| `Bolt11ReceiveVariableAmountViaJitChannelForHash` | Create a variable-amount invoice with JIT channel opening for a given payment hash (manual claim required) |
 
 ### BOLT12 Offers and Refunds
 
@@ -363,7 +365,7 @@ Hodl invoices allow you to inspect and conditionally accept incoming payments:
 
 1. **Subscribe:** Call `SubscribeEvents` before you create or share the invoice. Events are not
    replayed.
-2. **Create the invoice:** Generate a new payment hash. Call `Bolt11ReceiveForHash` with this hash.
+2. **Create the invoice:** Generate a new payment hash. Call `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash` with this hash.
    Never reuse a payment hash. Reuse is unsafe and can cause loss of funds.
 3. **Handle each payment:** Save the payment ID from each `PaymentClaimable` event. A payer can pay
    the same invoice more than once. Each payment has a separate event and payment ID.

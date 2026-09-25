@@ -1832,6 +1832,182 @@ async fn test_hodl_invoice_fail() {
 	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_jit_hodl_invoice_claim() {
+	let bitcoind = TestBitcoind::new();
+
+	// A: normal payer node
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+
+	// Subscribe to events on A before any payments
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	// B: LSP node (all e2e servers include LSPS2 service config)
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	// Open channel A -> B (1M sats, larger for JIT forwarding)
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 1_000_000).await;
+
+	// Fund B additionally so it can open JIT channel to C
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_b, 1.0);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+
+	// C: JIT client
+	let lsp_pubkey = server_b.node_id().to_string();
+	let lsp_addr = format!("127.0.0.1:{}", server_b.p2p_port);
+	let server_c = LdkServerHandle::start_with_config(&bitcoind, |params| {
+		TestConfigBuilder::new(params).lsps_client(&lsp_pubkey, &lsp_addr, true).build()
+	})
+	.await;
+	let mut events_c = server_c.client().subscribe_events().await.unwrap();
+
+	let preimage_bytes_1 = [43u8; 32];
+	let preimage_hex_1 = preimage_bytes_1.to_lower_hex_string();
+	let payment_hash_1 = sha256::Hash::hash(&preimage_bytes_1);
+	let payment_hash_hex_1 = payment_hash_1.to_byte_array().to_lower_hex_string();
+
+	let preimage_bytes_2 = [44u8; 32];
+	let payment_hash_2 = sha256::Hash::hash(&preimage_bytes_2);
+	let payment_hash_hex_2 = payment_hash_2.to_byte_array().to_lower_hex_string();
+
+	// Create fixed amount hodl invoice on c
+	let invoice_resp_1 = run_cli(
+		&server_c,
+		&[
+			"bolt11-receive-via-jit-channel-for-hash",
+			&payment_hash_hex_1,
+			"100000000msat",
+			"-d",
+			"jit hodl test",
+			"-e",
+			"3600",
+		],
+	);
+	let invoice_1 = invoice_resp_1["invoice"].as_str().unwrap();
+	assert!(!invoice_1.is_empty());
+
+	// Create variable amount hodl invoice on c
+	let invoice_resp_2 = run_cli(
+		&server_c,
+		&[
+			"bolt11-receive-variable-amount-via-jit-channel-for-hash",
+			&payment_hash_hex_2,
+			"-d",
+			"jit variable hodl test",
+			"-e",
+			"3600",
+		],
+	);
+	let invoice_2 = invoice_resp_2["invoice"].as_str().unwrap();
+	assert!(!invoice_2.is_empty());
+
+	// Pay the hodl invoice from A
+	run_cli(&server_a, &["bolt11-send", invoice_1]);
+
+	// Wait for PaymentClaimable event on C (drain other events)
+	let claimable =
+		wait_for_event(&mut events_c, |e| matches!(e, Event::PaymentClaimable(_))).await;
+	let Some(Event::PaymentClaimable(claimable_event)) = &claimable.event else {
+		panic!("expected PaymentClaimable");
+	};
+	assert!(claimable_event.claim_deadline.is_some());
+	assert!(!claimable_event.payment_id.is_empty());
+
+	// Claim the payment on C
+	let claimable_amount = format!("{}msat", claimable_event.claimable_amount_msat);
+	let args: Vec<&str> = vec![
+		"bolt11-claim-for-id",
+		&claimable_event.payment_id,
+		&preimage_hex_1,
+		"-c",
+		&claimable_amount,
+	];
+
+	run_cli(&server_c, &args);
+
+	// Wait for PaymentSuccessful on A after claim (drain other events)
+	let successful =
+		wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
+	let Some(Event::PaymentSuccessful(event)) = &successful.event else {
+		panic!("expected PaymentSuccessful");
+	};
+	assert!(!event.payment.as_ref().unwrap().payment_id.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_jit_hodl_invoice_fail() {
+	let bitcoind = TestBitcoind::new();
+
+	// A: normal payer node
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+
+	// Subscribe to events on A before any payments
+	let mut events_a = server_a.client().subscribe_events().await.unwrap();
+
+	// B: LSP node (all e2e servers include LSPS2 service config)
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	// Open channel A -> B (1M sats, larger for JIT forwarding)
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 1_000_000).await;
+
+	// Fund B additionally so it can open JIT channel to C
+	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_b, 1.0);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+
+	// C: JIT client
+	let lsp_pubkey = server_b.node_id().to_string();
+	let lsp_addr = format!("127.0.0.1:{}", server_b.p2p_port);
+	let server_c = LdkServerHandle::start_with_config(&bitcoind, |params| {
+		TestConfigBuilder::new(params).lsps_client(&lsp_pubkey, &lsp_addr, true).build()
+	})
+	.await;
+	let mut events_c = server_c.client().subscribe_events().await.unwrap();
+
+	let preimage_bytes = [43u8; 32];
+	let payment_hash = sha256::Hash::hash(&preimage_bytes);
+	let payment_hash_hex = payment_hash.to_byte_array().to_lower_hex_string();
+
+	// Create fixed amount hodl invoice on c
+	let invoice_resp = run_cli(
+		&server_c,
+		&[
+			"bolt11-receive-via-jit-channel-for-hash",
+			&payment_hash_hex,
+			"100000000msat",
+			"-d",
+			"jit hodl test",
+			"-e",
+			"3600",
+		],
+	);
+	let invoice = invoice_resp["invoice"].as_str().unwrap();
+	assert!(!invoice.is_empty());
+
+	// Pay the hodl invoice from A
+	run_cli(&server_a, &["bolt11-send", invoice]);
+
+	// Wait for PaymentClaimable event on C (drain other events)
+	let claimable =
+		wait_for_event(&mut events_c, |e| matches!(e, Event::PaymentClaimable(_))).await;
+	let Some(Event::PaymentClaimable(claimable_event)) = &claimable.event else {
+		panic!("expected PaymentClaimable");
+	};
+	assert!(claimable_event.claim_deadline.is_some());
+	assert!(!claimable_event.payment_id.is_empty());
+
+	run_cli(&server_c, &["bolt11-fail-for-id", &claimable_event.payment_id]);
+
+	// Verify PaymentFailed on A and its failure reason.
+	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentFailed(_))).await;
+	let Some(Event::PaymentFailed(failed)) = &event_a.event else {
+		panic!("expected PaymentFailed");
+	};
+	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
+	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
+}
+
 #[tokio::test]
 async fn test_metrics_endpoint() {
 	let bitcoind = TestBitcoind::new();

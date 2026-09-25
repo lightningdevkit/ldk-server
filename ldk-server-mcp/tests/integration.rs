@@ -11,14 +11,16 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 50;
+const NUM_TOOLS: usize = 52;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
 	"bolt11_receive",
 	"bolt11_receive_for_hash",
 	"bolt11_receive_variable_amount_via_jit_channel",
+	"bolt11_receive_variable_amount_via_jit_channel_for_hash",
 	"bolt11_receive_via_jit_channel",
+	"bolt11_receive_via_jit_channel_for_hash",
 	"bolt11_send",
 	"bolt11_send_underpaying",
 	"bolt12_create_payer_proof",
@@ -320,6 +322,29 @@ fn test_bolt11_receive_for_hash_unreachable() {
 		"bolt11_receive_for_hash",
 		json!({
 			"payment_hash": "00".repeat(32),
+			"description": "test hodl"
+		}),
+	);
+}
+
+#[test]
+fn test_bolt11_receive_variable_amount_via_jit_channel_for_hash_unreachable() {
+	assert_unreachable_tool(
+		"bolt11_receive_variable_amount_via_jit_channel_for_hash",
+		json!({
+			"payment_hash": "00".repeat(32),
+			"description": "test hodl"
+		}),
+	);
+}
+
+#[test]
+fn test_bolt11_receive_via_jit_channel_for_hash_unreachable() {
+	assert_unreachable_tool(
+		"bolt11_receive_variable_amount_via_jit_channel_for_hash",
+		json!({
+			"payment_hash": "00".repeat(32),
+			"amount_msat": 1000,
 			"description": "test hodl"
 		}),
 	);

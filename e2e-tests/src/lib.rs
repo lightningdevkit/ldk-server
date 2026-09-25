@@ -194,6 +194,7 @@ pub struct TestConfigBuilder {
 	log: Option<(Option<String>, String)>,
 	tls_hosts: Option<Vec<String>>,
 	forwarded_payment_tracking_mode: Option<String>,
+	lsps_clients: Vec<(String, String, bool)>,
 }
 
 impl TestConfigBuilder {
@@ -217,6 +218,7 @@ impl TestConfigBuilder {
 			log: None,
 			tls_hosts: None,
 			forwarded_payment_tracking_mode: None,
+			lsps_clients: Vec::new(),
 		}
 	}
 
@@ -270,6 +272,12 @@ impl TestConfigBuilder {
 	/// Add a `[tls]` section advertising the given hosts.
 	pub fn tls_hosts(mut self, hosts: Vec<String>) -> Self {
 		self.tls_hosts = Some(hosts);
+		self
+	}
+
+	/// Add a `[[liquidity.lsps_client]]` section.
+	pub fn lsps_client(mut self, node_pubkey: &str, address: &str, trust_peer_0conf: bool) -> Self {
+		self.lsps_clients.push((node_pubkey.to_string(), address.to_string(), trust_peer_0conf));
 		self
 	}
 
@@ -355,6 +363,15 @@ poll_metrics_interval = 1{metrics_auth}
 
 		if let Some(hosts) = &self.tls_hosts {
 			config.push_str(&format!("\n[tls]\nhosts = {}\n", toml_string_array(hosts)));
+		}
+
+		for (node_pubkey, address, trust_peer_0conf) in &self.lsps_clients {
+			config.push_str(&format!(
+				"\n[[liquidity.lsps_client]]\n\
+				node_pubkey = \"{node_pubkey}\"\n\
+				address = \"{address}\"\n\
+				trust_peer_0conf = {trust_peer_0conf}\n"
+			));
 		}
 
 		config
