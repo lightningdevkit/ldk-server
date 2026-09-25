@@ -100,6 +100,8 @@ Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `me
 The `create_macaroon` tool returns a private token that may be saved in chat history or tool logs.
 To keep it out of that history, create it with the CLI and supply it through `LDK_MACAROON`.
 
+See the [API Guide](../docs/api-guide.md#endpoint-reference) for the available operations.
+
 ## MCP Protocol
 
 - **Protocol version**: `2025-11-25`

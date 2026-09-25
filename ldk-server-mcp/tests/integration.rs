@@ -11,7 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::{json, Value};
 
-const NUM_TOOLS: usize = 50;
+const NUM_TOOLS: usize = 52;
 const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt11_claim_for_id",
 	"bolt11_fail_for_id",
@@ -26,6 +26,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"bolt12_receive_refund",
 	"bolt12_send",
 	"bolt12_send_refund",
+	"bump_channel_funding_fee",
 	"close_channel",
 	"connect_peer",
 	"create_macaroon",
@@ -52,6 +53,7 @@ const EXPECTED_TOOLS: [&str; NUM_TOOLS] = [
 	"list_forwarded_payments",
 	"list_payments",
 	"list_peers",
+	"onchain_bump_fee",
 	"onchain_receive",
 	"onchain_send",
 	"open_channel",
@@ -210,6 +212,16 @@ fn test_tools_list() {
 		.collect();
 	unary_rpc_tools.sort();
 	assert_eq!(tool_names, unary_rpc_tools, "Every unary RPC must have an MCP tool");
+
+	let onchain = tools.iter().find(|tool| tool["name"] == "onchain_bump_fee").unwrap();
+	assert_eq!(onchain["inputSchema"]["required"], json!(["payment_id"]));
+	assert_eq!(onchain["inputSchema"]["properties"]["fee_rate_sat_per_vb"]["minimum"], 1);
+	let splice = tools.iter().find(|tool| tool["name"] == "bump_channel_funding_fee").unwrap();
+	assert_eq!(
+		splice["inputSchema"]["required"],
+		json!(["user_channel_id", "counterparty_node_id"])
+	);
+	assert_eq!(splice["inputSchema"]["properties"].as_object().unwrap().len(), 2);
 
 	for tool in tools {
 		assert!(tool["name"].is_string(), "Tool missing name");

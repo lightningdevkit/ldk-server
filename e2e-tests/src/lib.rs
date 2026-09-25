@@ -11,9 +11,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use corepc_node::Node;
+use ldk_node::bitcoin::Amount;
 use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::error::LdkServerErrorCode;
 use ldk_server_client::ldk_server_grpc::api::{GetNodeInfoRequest, GetNodeInfoResponse};
@@ -30,7 +31,7 @@ use ldk_server_grpc::types::{
 	ClaimableAwaitingConfirmations, ForwardedPayment, LightningBalance, Payment, PaymentDirection,
 	PaymentStatus,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -58,6 +59,8 @@ impl TestBitcoind {
 
 	fn with_extra_args(extra_args: &[&str]) -> Self {
 		let mut conf = corepc_node::Conf::default();
+		// Match the pinned LDK Node splice fixtures' 0.1 sat/vB relay fee increase.
+		conf.args.push("-incrementalrelayfee=0.00000100");
 		conf.args.extend_from_slice(extra_args);
 
 		let bitcoind = match std::env::var("BITCOIND_EXE") {
@@ -585,6 +588,17 @@ pub async fn wait_for_event(
 	.expect("Timed out waiting for event")
 }
 
+/// Wait for a negotiated splice and return its funding transaction ID.
+pub async fn splice_txid(events: &mut EventStream) -> String {
+	let event = wait_for_event(events, |e| matches!(e, Event::SpliceNegotiated(_))).await;
+	match event.event.unwrap() {
+		Event::SpliceNegotiated(splice) => {
+			splice.new_funding_txo.split(':').next().unwrap().to_string()
+		},
+		_ => unreachable!(),
+	}
+}
+
 /// Poll get_node_info until the server responds successfully.
 async fn wait_for_server_ready(handle: &LdkServerHandle, timeout: Duration) -> GetNodeInfoResponse {
 	let start = std::time::Instant::now();
@@ -770,6 +784,81 @@ pub async fn mine_and_sync(
 			tokio::time::sleep(Duration::from_millis(500)).await;
 		}
 	}
+}
+
+/// Wait for a transaction to enter the mempool and return its decoded details.
+pub async fn wait_for_transaction(bitcoind: &TestBitcoind, txid: &str) -> Value {
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+			if mempool.iter().any(|id| id == txid) {
+				return bitcoind
+					.bitcoind
+					.client
+					.call("getrawtransaction", &[json!(txid), json!(true)])
+					.unwrap();
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("transaction did not enter the mempool")
+}
+
+/// Wait for the on-chain wallet to complete another sync.
+///
+/// The pinned wallet records a replacement before its background sync sees the transaction.
+pub async fn wait_for_wallet_sync(server: &LdkServerHandle) {
+	let after = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let info = server.client().get_node_info(GetNodeInfoRequest {}).await.unwrap();
+			if info.latest_onchain_wallet_sync_timestamp.is_some_and(|timestamp| timestamp > after)
+			{
+				break;
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("wallet did not sync after the replacement");
+}
+
+/// Wait for a transaction to appear in the node's payment history.
+pub async fn payment_for_tx(server: &LdkServerHandle, txid: &str) -> Payment {
+	tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			for payment in list_payments(server).await {
+				if let Some(payment_kind::Kind::Onchain(onchain)) =
+					payment.kind.as_ref().and_then(|kind| kind.kind.as_ref())
+				{
+					if onchain.txid == txid {
+						return payment;
+					}
+				}
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("payment was not recorded")
+}
+
+/// Check that a replacement preserves the recipient amount.
+pub async fn assert_replacement(
+	bitcoind: &TestBitcoind, old: &str, new: &str, address: &str, amount: Amount,
+) {
+	assert_ne!(old, new);
+	let tx = wait_for_transaction(bitcoind, new).await;
+	let recipient = tx["vout"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|output| output["scriptPubKey"]["address"] == address)
+		.unwrap();
+	assert_eq!(Amount::from_btc(recipient["value"].as_f64().unwrap()).unwrap(), amount);
+	let mempool: Vec<String> = bitcoind.bitcoind.client.call("getrawmempool", &[]).unwrap();
+	assert!(!mempool.iter().any(|id| id == old));
 }
 
 /// Wait until the given client has at least one usable channel,

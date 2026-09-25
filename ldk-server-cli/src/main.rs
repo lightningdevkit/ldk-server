@@ -35,11 +35,12 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
 	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
 	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
-	Bolt12SendRequest, Bolt12SendResponse, CloseChannelRequest, CloseChannelResponse,
-	ConnectPeerRequest, ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse,
-	DecodeInvoiceRequest, DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse,
-	DisconnectPeerRequest, DisconnectPeerResponse, ExportPathfindingScoresRequest,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	Bolt12SendRequest, Bolt12SendResponse, BumpChannelFundingFeeRequest,
+	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest,
+	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
+	DisconnectPeerResponse, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
 	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
 	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
 	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
@@ -49,12 +50,13 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GraphListNodesRequest, GraphListNodesResponse, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListMacaroonsResponse, ListPaymentsRequest,
-	ListPeersRequest, ListPeersResponse, OnchainReceiveRequest, OnchainReceiveResponse,
-	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
-	RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
-	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
+	ListPeersRequest, ListPeersResponse, OnchainBumpFeeRequest, OnchainBumpFeeResponse,
+	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
+	OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse,
+	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest,
+	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
+	VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::permissions::MacaroonPreset;
 use ldk_server_client::ldk_server_grpc::types::{
@@ -134,6 +136,18 @@ enum Commands {
 		#[arg(
 			long,
 			help = "Fee rate in satoshis per virtual byte. If not set, a reasonable estimate will be used"
+		)]
+		fee_rate_sat_per_vb: Option<u64>,
+	},
+	#[command(about = "Replace an unconfirmed outbound on-chain payment using RBF")]
+	OnchainBumpFee {
+		#[arg(
+			help = "Payment ID from list-payments: 32 bytes encoded as hex, not the transaction ID"
+		)]
+		payment_id: String,
+		#[arg(
+			long,
+			help = "Absolute fee rate in sat/vB, not an increment. Must be positive and high enough for RBF. If omitted, LDK Node selects the rate"
 		)]
 		fee_rate_sat_per_vb: Option<u64>,
 	},
@@ -558,6 +572,15 @@ enum Commands {
 		)]
 		address: Option<String>,
 	},
+	#[command(
+		about = "Bump a pending splice fee. Does not support general channel-opening fee bumping. LDK Node selects the fee rate; callers cannot set it"
+	)]
+	BumpChannelFundingFee {
+		#[arg(help = "The local user channel ID as a decimal u128 string")]
+		user_channel_id: String,
+		#[arg(help = "The hex-encoded public key of the channel's peer")]
+		counterparty_node_id: String,
+	},
 	#[command(about = "Return a list of known channels")]
 	ListChannels,
 	#[command(about = "Retrieve list of all payments")]
@@ -829,6 +852,13 @@ async fn main() {
 		Commands::OnchainReceive => {
 			handle_response_result::<_, OnchainReceiveResponse>(
 				client.onchain_receive(OnchainReceiveRequest {}).await,
+			);
+		},
+		Commands::OnchainBumpFee { payment_id, fee_rate_sat_per_vb } => {
+			handle_response_result::<_, OnchainBumpFeeResponse>(
+				client
+					.onchain_bump_fee(OnchainBumpFeeRequest { payment_id, fee_rate_sat_per_vb })
+					.await,
 			);
 		},
 		Commands::OnchainSend { address, amount, fee_rate_sat_per_vb } => {
@@ -1285,6 +1315,16 @@ async fn main() {
 					.await,
 			);
 		},
+		Commands::BumpChannelFundingFee { user_channel_id, counterparty_node_id } => {
+			handle_response_result::<_, BumpChannelFundingFeeResponse>(
+				client
+					.bump_channel_funding_fee(BumpChannelFundingFeeRequest {
+						user_channel_id,
+						counterparty_node_id,
+					})
+					.await,
+			);
+		},
 		Commands::ListChannels => {
 			handle_response_result::<_, ListChannelsResponse>(
 				client.list_channels(ListChannelsRequest {}).await,
@@ -1722,6 +1762,56 @@ mod tests {
 			.unwrap()
 			.to_string();
 		assert!(help.contains("[possible values: readonly, invoice, admin]"));
+	}
+
+	#[test]
+	fn onchain_bump_fee_arguments() {
+		for rate in [None, Some("12")] {
+			let mut args = vec!["ldk-server-cli", "onchain-bump-fee", "payment"];
+			if let Some(rate) = rate {
+				args.extend(["--fee-rate-sat-per-vb", rate]);
+			}
+			let cli = Cli::try_parse_from(args).unwrap();
+			match cli.command {
+				Commands::OnchainBumpFee { payment_id, fee_rate_sat_per_vb } => {
+					assert_eq!(payment_id, "payment");
+					assert_eq!(fee_rate_sat_per_vb, rate.map(|r| r.parse().unwrap()));
+				},
+				_ => panic!("wrong command"),
+			}
+		}
+		for rate in ["-1", "1.5", "18446744073709551616"] {
+			assert!(Cli::try_parse_from([
+				"ldk-server-cli",
+				"onchain-bump-fee",
+				"payment",
+				"--fee-rate-sat-per-vb",
+				rate
+			])
+			.is_err());
+		}
+	}
+
+	#[test]
+	fn bump_channel_funding_fee_arguments() {
+		let cli = Cli::try_parse_from(["ldk-server-cli", "bump-channel-funding-fee", "42", "peer"])
+			.unwrap();
+		match cli.command {
+			Commands::BumpChannelFundingFee { user_channel_id, counterparty_node_id } => {
+				assert_eq!(user_channel_id, "42");
+				assert_eq!(counterparty_node_id, "peer");
+			},
+			_ => panic!("wrong command"),
+		}
+		assert!(Cli::try_parse_from([
+			"ldk-server-cli",
+			"bump-channel-funding-fee",
+			"42",
+			"peer",
+			"--fee-rate-sat-per-vb",
+			"10"
+		])
+		.is_err());
 	}
 
 	#[tokio::test]
