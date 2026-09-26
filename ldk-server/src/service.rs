@@ -7,9 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::collections::BTreeMap;
 use std::future::Future;
+use std::net::IpAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
@@ -108,9 +111,58 @@ const GRPC_SERVICE_PREFIX: &str = "/api.LightningNode/";
 
 // Maximum request body size: 10 MB
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+const MAX_CONCURRENT_BODY_READS: usize = 8;
+// Share this limit across all connections from the same source IP, after
+// authenticating the macaroon and checking method permissions.
+const MAX_BODY_READS_PER_PEER: usize = 2;
+// A client that stalls mid-body would otherwise hold one of the few body-read slots
+// indefinitely.
+const REQUEST_BODY_TIMEOUT: Duration = Duration::from_secs(30);
+static REQUEST_BODY_LIMITER: RequestBodyLimiter = RequestBodyLimiter::new();
+
+// Track only active reads; the map has at most MAX_CONCURRENT_BODY_READS entries.
+struct RequestBodyLimiter {
+	active: Mutex<BTreeMap<IpAddr, usize>>,
+}
+
+impl RequestBodyLimiter {
+	const fn new() -> Self {
+		Self { active: Mutex::new(BTreeMap::new()) }
+	}
+
+	fn try_acquire(&self, peer_ip: IpAddr) -> Result<RequestBodyPermit<'_>, GrpcStatus> {
+		// Treat IPv4 and its IPv4-mapped IPv6 representation as the same peer.
+		let peer_ip = peer_ip.to_canonical();
+		let mut active = self.active.lock().unwrap();
+		if active.get(&peer_ip).copied().unwrap_or(0) >= MAX_BODY_READS_PER_PEER
+			|| active.values().sum::<usize>() >= MAX_CONCURRENT_BODY_READS
+		{
+			return Err(GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "Too many concurrent requests"));
+		}
+		*active.entry(peer_ip).or_default() += 1;
+		Ok(RequestBodyPermit { limiter: self, peer_ip })
+	}
+}
+
+struct RequestBodyPermit<'a> {
+	limiter: &'a RequestBodyLimiter,
+	peer_ip: IpAddr,
+}
+
+impl Drop for RequestBodyPermit<'_> {
+	fn drop(&mut self) {
+		let mut active = self.limiter.active.lock().unwrap();
+		let count = active.get_mut(&self.peer_ip).unwrap();
+		*count -= 1;
+		if *count == 0 {
+			active.remove(&self.peer_ip);
+		}
+	}
+}
 
 #[derive(Clone)]
 pub(crate) struct NodeService {
+	peer_ip: IpAddr,
 	context: Arc<Context>,
 	macaroon_store: Arc<MacaroonStore>,
 	metrics: Option<Arc<Metrics>>,
@@ -123,10 +175,18 @@ impl NodeService {
 	pub(crate) fn new(
 		node: Arc<Node>, macaroon_store: Arc<MacaroonStore>, metrics: Option<Arc<Metrics>>,
 		metrics_auth_header: Option<String>, event_sender: broadcast::Sender<EventEnvelope>,
-		shutdown_rx: tokio::sync::watch::Receiver<bool>,
+		shutdown_rx: tokio::sync::watch::Receiver<bool>, peer_ip: IpAddr,
 	) -> Self {
 		let context = Arc::new(Context { node });
-		Self { context, macaroon_store, metrics, metrics_auth_header, event_sender, shutdown_rx }
+		Self {
+			context,
+			macaroon_store,
+			metrics,
+			metrics_auth_header,
+			event_sender,
+			shutdown_rx,
+			peer_ip,
+		}
 	}
 }
 
@@ -223,12 +283,15 @@ impl Service<Request<Incoming>> for NodeService {
 		let event_sender = self.event_sender.clone();
 		let shutdown_rx = self.shutdown_rx.clone();
 		let (request_parts, request_body) = req.into_parts();
+		let peer_ip = self.peer_ip;
 		let future: Self::Future = Box::pin(async move {
 			let (issuer, body_bytes) = match read_authorized_request(
 				&macaroon_store,
 				&method,
 				&request_parts.headers,
 				request_body,
+				peer_ip,
+				&REQUEST_BODY_LIMITER,
 			)
 			.await
 			{
@@ -587,7 +650,8 @@ fn validate_request_body_len(
 }
 
 async fn read_authorized_request<B>(
-	store: &MacaroonStore, method: &str, headers: &HeaderMap, body: B,
+	store: &MacaroonStore, method: &str, headers: &HeaderMap, body: B, peer_ip: IpAddr,
+	limiter: &RequestBodyLimiter,
 ) -> Result<(Arc<MacaroonInfo>, bytes::Bytes), GrpcStatus>
 where
 	B: hyper::body::Body<Data = bytes::Bytes>,
@@ -612,19 +676,37 @@ where
 		_ => {},
 	}
 	let content_length = request_content_length(headers)?;
-	let limited_body = Limited::new(body, MAX_BODY_SIZE);
-	let bytes = match limited_body.collect().await {
-		Ok(collected) => collected.to_bytes(),
-		Err(_) => {
-			return Err(GrpcStatus::new(
-				GRPC_STATUS_INVALID_ARGUMENT,
-				"Request body too large or failed to read",
-			));
-		},
-	};
-	validate_request_body_len(content_length, bytes.len())?;
+	let bytes = read_request_body(body, content_length, peer_ip, limiter).await?;
 	let info = store.finish_request(request, method, &bytes).map_err(ldk_error_to_grpc_status)?;
 	Ok((info, bytes))
+}
+
+async fn read_request_body<B>(
+	body: B, content_length: Option<u64>, peer_ip: IpAddr, limiter: &RequestBodyLimiter,
+) -> Result<bytes::Bytes, GrpcStatus>
+where
+	B: hyper::body::Body<Data = bytes::Bytes>,
+	B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+	let _permit = limiter.try_acquire(peer_ip)?;
+	tokio::time::timeout(REQUEST_BODY_TIMEOUT, async move {
+		let limited_body = Limited::new(body, MAX_BODY_SIZE);
+		let bytes = match limited_body.collect().await {
+			Ok(collected) => collected.to_bytes(),
+			Err(_) => {
+				return Err(GrpcStatus::new(
+					GRPC_STATUS_INVALID_ARGUMENT,
+					"Request body too large or failed to read",
+				));
+			},
+		};
+		validate_request_body_len(content_length, bytes.len())?;
+		Ok(bytes)
+	})
+	.await
+	.unwrap_or_else(|_| {
+		Err(GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "Timed out reading request body"))
+	})
 }
 
 /// Map an `LdkServerError` to a `GrpcStatus`.
@@ -644,6 +726,135 @@ mod tests {
 	use super::*;
 	use crate::macaroons::test_util::{admin_token, bind_request, test_store};
 
+	fn stalled_body(
+	) -> impl hyper::body::Body<Data = bytes::Bytes, Error = std::convert::Infallible> {
+		http_body_util::StreamBody::new(futures_util::stream::pending::<
+			Result<hyper::body::Frame<bytes::Bytes>, std::convert::Infallible>,
+		>())
+	}
+
+	#[test]
+	fn test_request_body_sustained_peer_saturation() {
+		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
+			async {
+				tokio::time::pause();
+				let limiter = RequestBodyLimiter::new();
+				let (_directory, store) = test_store("body-saturation");
+				let token = admin_token(&store);
+				let attacker = "192.0.2.1".parse().unwrap();
+				let client = "192.0.2.2".parse().unwrap();
+
+				// Refill the attacker's slots after each deadline, as replacement
+				// streams on either existing or new connections would do.
+				for _ in 0..10 {
+					let mut stalled = Vec::new();
+					for _ in 0..MAX_BODY_READS_PER_PEER {
+						let mut read =
+							Box::pin(read_request_body(stalled_body(), None, attacker, &limiter));
+						assert!(futures_util::poll!(&mut read).is_pending());
+						stalled.push(read);
+					}
+					for _ in 0..MAX_CONCURRENT_BODY_READS {
+						let err = read_request_body(stalled_body(), None, attacker, &limiter)
+							.await
+							.unwrap_err();
+						assert_eq!(err.code, GRPC_STATUS_UNAVAILABLE);
+						assert_eq!(err.message, "Too many concurrent requests");
+					}
+
+					// A correctly signed request can still collect its body and
+					// authenticate while the attacker's bodies remain unfinished.
+					let body = encode_grpc_frame(&[]);
+					let timestamp = std::time::SystemTime::now()
+						.duration_since(std::time::UNIX_EPOCH)
+						.unwrap()
+						.as_secs();
+					let bound = bind_request(&token, GET_NODE_INFO_PATH, &body, timestamp);
+					let mut headers = HeaderMap::new();
+					headers.insert("macaroon", bound.parse().unwrap());
+					let (_, received) = read_authorized_request(
+						&store,
+						GET_NODE_INFO_PATH,
+						&headers,
+						http_body_util::Full::new(body.clone()),
+						client,
+						&limiter,
+					)
+					.await
+					.unwrap();
+					assert_eq!(received, body);
+
+					tokio::time::advance(REQUEST_BODY_TIMEOUT).await;
+					for read in stalled {
+						let err = read.await.unwrap_err();
+						assert_eq!(err.code, GRPC_STATUS_UNAVAILABLE);
+						assert_eq!(err.message, "Timed out reading request body");
+					}
+					assert!(limiter.active.lock().unwrap().is_empty());
+				}
+			},
+		);
+	}
+
+	#[test]
+	fn test_request_body_global_limit_and_peer_cleanup() {
+		let limiter = RequestBodyLimiter::new();
+		let mut permits = Vec::new();
+		for i in 1..=MAX_CONCURRENT_BODY_READS {
+			permits.push(limiter.try_acquire(IpAddr::from([192, 0, 2, i as u8])).unwrap());
+		}
+		let next_peer = "192.0.2.100".parse().unwrap();
+		assert!(limiter.try_acquire(next_peer).is_err());
+		assert_eq!(limiter.active.lock().unwrap().len(), MAX_CONCURRENT_BODY_READS);
+		permits.pop();
+		permits.push(limiter.try_acquire(next_peer).unwrap());
+		drop(permits);
+		assert!(limiter.active.lock().unwrap().is_empty());
+
+		let peer = "192.0.2.1".parse().unwrap();
+		let mapped_peer = "::ffff:192.0.2.1".parse().unwrap();
+		let _first = limiter.try_acquire(peer).unwrap();
+		let _second = limiter.try_acquire(mapped_peer).unwrap();
+		assert!(limiter.try_acquire(peer).is_err());
+		assert!(limiter.try_acquire(mapped_peer).is_err());
+	}
+
+	#[test]
+	fn test_request_body_releases_slots_on_cancel_and_error() {
+		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
+			async {
+				let limiter = RequestBodyLimiter::new();
+				let peer = "192.0.2.1".parse().unwrap();
+				let mut read = Box::pin(read_request_body(stalled_body(), None, peer, &limiter));
+				assert!(futures_util::poll!(&mut read).is_pending());
+				drop(read);
+				assert!(limiter.active.lock().unwrap().is_empty());
+
+				let err = read_request_body(
+					http_body_util::Full::new(bytes::Bytes::from_static(b"short")),
+					Some(10),
+					peer,
+					&limiter,
+				)
+				.await
+				.unwrap_err();
+				assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+				assert!(limiter.active.lock().unwrap().is_empty());
+
+				let err = read_request_body(
+					http_body_util::Full::new(bytes::Bytes::from(vec![0; MAX_BODY_SIZE + 1])),
+					None,
+					peer,
+					&limiter,
+				)
+				.await
+				.unwrap_err();
+				assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+				assert!(limiter.active.lock().unwrap().is_empty());
+			},
+		);
+	}
+
 	struct UnreadBody;
 	impl hyper::body::Body for UnreadBody {
 		type Data = bytes::Bytes;
@@ -657,6 +868,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn macaroon_request_clock_skew() {
+		let limiter = RequestBodyLimiter::new();
+		let peer_ip = "192.0.2.200".parse().unwrap();
 		use ldk_server_grpc::grpc::GRPC_STATUS_OK;
 
 		let (_directory, store) = test_store("http-clock-skew");
@@ -684,20 +897,30 @@ mod tests {
 			let mut headers = HeaderMap::new();
 			headers.insert("macaroon", bound.parse().unwrap());
 			let body = http_body_util::Full::new(bytes::Bytes::copy_from_slice(&bytes));
-			let status =
-				match read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body).await {
-					Ok((_, received)) => {
-						assert_eq!(received.as_ref(), &bytes);
-						GRPC_STATUS_OK
-					},
-					Err(error) => error.code,
-				};
+			let status = match read_authorized_request(
+				&store,
+				GET_NODE_INFO_PATH,
+				&headers,
+				body,
+				peer_ip,
+				&limiter,
+			)
+			.await
+			{
+				Ok((_, received)) => {
+					assert_eq!(received.as_ref(), &bytes);
+					GRPC_STATUS_OK
+				},
+				Err(error) => error.code,
+			};
 			assert_eq!(status, expected, "timestamp offset: {offset}");
 		}
 	}
 
 	#[tokio::test]
 	async fn rejected_requests_do_not_poll_the_body() {
+		let limiter = RequestBodyLimiter::new();
+		let peer_ip = "192.0.2.200".parse().unwrap();
 		let (_directory, store) = test_store("http-admission");
 		let token = admin_token(&store);
 		let admin = store.authenticate(CREATE_MACAROON_PATH, Some(&token)).unwrap();
@@ -708,6 +931,10 @@ mod tests {
 		let unknown = bind_request(&token, "UnmappedMethod", b"", timestamp);
 		let stale = bind_request(&token, GET_NODE_INFO_PATH, b"", timestamp - 61);
 		let wrong_method = bind_request(&token, GET_BALANCES_PATH, b"", timestamp);
+		// Authentication errors must take precedence even when all body slots are held.
+		let permits: Vec<_> = (1..=MAX_CONCURRENT_BODY_READS)
+			.map(|i| limiter.try_acquire(IpAddr::from([192, 0, 2, i as u8])).unwrap())
+			.collect();
 		for (credential, method, expected) in [
 			(None, GET_NODE_INFO_PATH, GRPC_STATUS_UNAUTHENTICATED),
 			(None, GET_PERMISSIONS_PATH, GRPC_STATUS_UNAUTHENTICATED),
@@ -723,46 +950,74 @@ mod tests {
 				headers.insert("macaroon", token.parse().unwrap());
 			}
 			let error =
-				read_authorized_request(&store, method, &headers, UnreadBody).await.unwrap_err();
+				read_authorized_request(&store, method, &headers, UnreadBody, peer_ip, &limiter)
+					.await
+					.unwrap_err();
 			assert_eq!(error.code, expected);
 		}
+		drop(permits);
 		let mut headers = HeaderMap::new();
 		let bound = bind_request(&reader.token, GET_NODE_INFO_PATH, b"request", timestamp);
 		headers.insert("macaroon", bound.parse().unwrap());
 		let body = http_body_util::Full::new(bytes::Bytes::from_static(b"request"));
 		let (_, bytes) =
-			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body).await.unwrap();
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body, peer_ip, &limiter)
+				.await
+				.unwrap();
 		assert_eq!(bytes.as_ref(), b"request");
 		let changed_body = http_body_util::Full::new(bytes::Bytes::from_static(b"changed"));
 		assert_eq!(
-			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, changed_body)
-				.await
-				.unwrap_err()
-				.code,
+			read_authorized_request(
+				&store,
+				GET_NODE_INFO_PATH,
+				&headers,
+				changed_body,
+				peer_ip,
+				&limiter
+			)
+			.await
+			.unwrap_err()
+			.code,
 			GRPC_STATUS_UNAUTHENTICATED
 		);
 		// Authorized requests still have both declared and actual body-size limits.
 		headers.insert("content-length", (MAX_BODY_SIZE + 1).to_string().parse().unwrap());
 		assert_eq!(
-			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, UnreadBody)
-				.await
-				.unwrap_err()
-				.code,
+			read_authorized_request(
+				&store,
+				GET_NODE_INFO_PATH,
+				&headers,
+				UnreadBody,
+				peer_ip,
+				&limiter
+			)
+			.await
+			.unwrap_err()
+			.code,
 			GRPC_STATUS_INVALID_ARGUMENT
 		);
 		headers.remove("content-length");
 		let oversized = http_body_util::Full::new(bytes::Bytes::from(vec![0; MAX_BODY_SIZE + 1]));
 		assert_eq!(
-			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, oversized)
-				.await
-				.unwrap_err()
-				.code,
+			read_authorized_request(
+				&store,
+				GET_NODE_INFO_PATH,
+				&headers,
+				oversized,
+				peer_ip,
+				&limiter
+			)
+			.await
+			.unwrap_err()
+			.code,
 			GRPC_STATUS_INVALID_ARGUMENT
 		);
 	}
 
 	#[tokio::test]
 	async fn malformed_macaroon_headers_are_rejected_before_reading_the_body() {
+		let limiter = RequestBodyLimiter::new();
+		let peer_ip = "192.0.2.200".parse().unwrap();
 		use hyper::header::HeaderValue;
 		use ldk_server_macaroons::MAX_MACAROON_BYTES;
 
@@ -779,6 +1034,8 @@ mod tests {
 			GET_NODE_INFO_PATH,
 			&headers,
 			http_body_util::Full::new(bytes::Bytes::from_static(body)),
+			peer_ip,
+			&limiter,
 		)
 		.await
 		.unwrap();
@@ -800,15 +1057,24 @@ mod tests {
 			if let Some(header) = header {
 				headers.insert("macaroon", HeaderValue::from_bytes(&header).unwrap());
 			}
-			let error = read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, UnreadBody)
-				.await
-				.unwrap_err();
+			let error = read_authorized_request(
+				&store,
+				GET_NODE_INFO_PATH,
+				&headers,
+				UnreadBody,
+				peer_ip,
+				&limiter,
+			)
+			.await
+			.unwrap_err();
 			assert_eq!(error.code, GRPC_STATUS_UNAUTHENTICATED, "header case: {case}");
 		}
 	}
 
 	#[tokio::test]
 	async fn policy_expiry_during_body_read_is_rejected() {
+		let limiter = RequestBodyLimiter::new();
+		let peer_ip = "192.0.2.200".parse().unwrap();
 		use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 		let (_directory, store) = test_store("http-expiry");
@@ -828,6 +1094,8 @@ mod tests {
 			GET_NODE_INFO_PATH,
 			&headers,
 			http_body_util::Full::new(bytes.clone()),
+			peer_ip,
+			&limiter,
 		)
 		.await
 		.unwrap();
@@ -842,7 +1110,7 @@ mod tests {
 		}));
 		let error = tokio::time::timeout(
 			Duration::from_secs(10),
-			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body),
+			read_authorized_request(&store, GET_NODE_INFO_PATH, &headers, body, peer_ip, &limiter),
 		)
 		.await
 		.unwrap()

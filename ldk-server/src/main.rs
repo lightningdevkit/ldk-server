@@ -39,7 +39,7 @@ use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
 use tokio::signal::unix::SignalKind;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 
 use crate::api::node_to_proto_custom_tlv;
 use crate::macaroons::MacaroonStore;
@@ -54,6 +54,9 @@ use crate::util::{systemd, write_new};
 const LDK_NODE_POSTGRES_LOCK_FILE: &str = "ldk_node_postgres.lock";
 pub(crate) const FULL_VERSION: &str =
 	concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
+const MAX_CONCURRENT_HTTP2_STREAMS: u32 = 32;
+const MAX_PENDING_TLS_HANDSHAKES: usize = 64;
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn get_default_data_dir() -> Option<PathBuf> {
 	#[cfg(target_os = "macos")]
@@ -397,6 +400,7 @@ fn main() {
 			}
 		};
 		let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+		let tls_handshake_semaphore = Arc::new(Semaphore::new(MAX_PENDING_TLS_HANDSHAKES));
 		info!("gRPC service listening on {}", config_file.grpc_service_addr);
 
 		systemd::notify_ready();
@@ -712,7 +716,15 @@ fn main() {
 				},
 				res = grpc_listener.accept() => {
 					match res {
-						Ok((stream, _)) => {
+						Ok((stream, peer_addr)) => {
+							let handshake_permit =
+								match Arc::clone(&tls_handshake_semaphore).try_acquire_owned() {
+									Ok(permit) => permit,
+									Err(_) => {
+										debug!("TLS handshake limit reached, rejecting connection");
+										continue;
+									},
+								};
 							let node_service = NodeService::new(
 								Arc::clone(&node),
 								Arc::clone(&macaroon_store),
@@ -720,17 +732,30 @@ fn main() {
 								metrics_auth_header.clone(),
 								event_sender.clone(),
 								shutdown_rx.clone(),
+								peer_addr.ip(),
 							);
 							let acceptor = tls_acceptor.clone();
 							runtime.spawn(async move {
-								match acceptor.accept(stream).await {
-									Ok(tls_stream) => {
+								match tokio::time::timeout(
+									TLS_HANDSHAKE_TIMEOUT,
+									acceptor.accept(stream),
+								)
+								.await
+								{
+									Ok(Ok(tls_stream)) => {
+										// Only the handshake holds a slot. Holding it for the whole
+										// connection would let an unauthenticated peer block new
+										// connections by keeping established ones idle.
+										drop(handshake_permit);
 										let io_stream = TokioIo::new(tls_stream);
-										if let Err(err) = http2::Builder::new(TokioExecutor::new()).serve_connection(io_stream, node_service).await {
+										let mut builder = http2::Builder::new(TokioExecutor::new());
+										builder.max_concurrent_streams(MAX_CONCURRENT_HTTP2_STREAMS);
+										if let Err(err) = builder.serve_connection(io_stream, node_service).await {
 											error!("Failed to serve TLS connection: {err}");
 										}
 									},
-									Err(e) => error!("TLS handshake failed: {e}"),
+									Ok(Err(e)) => error!("TLS handshake failed: {e}"),
+									Err(_) => debug!("TLS handshake timed out"),
 								}
 							});
 						},
