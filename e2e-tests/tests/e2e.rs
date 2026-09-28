@@ -866,6 +866,86 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_closed() {
 }
 
 #[tokio::test]
+async fn test_subscribe_channel_and_payment_events() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	let mut channel_events = server_a.client().subscribe_channel_events().await.unwrap();
+	let mut payment_events = server_a.client().subscribe_payment_events().await.unwrap();
+
+	let user_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+	let payment_id = send_bolt11_payment(&server_a, &server_b, 10_000_000).await;
+	close_channel(&server_a, &server_b, &user_channel_id).await;
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+
+	// The channel opened before the payment was sent, so the first payment stream event shows
+	// that channel events were filtered out.
+	let event = wait_for_event(&mut payment_events, |_| true).await;
+	match event.event {
+		Some(Event::PaymentSuccessful(e)) => assert_eq!(e.payment_id, payment_id),
+		other => panic!("expected PaymentSuccessful event, got {other:?}"),
+	}
+
+	// The payment was sent between the channel open and close, so it must have been filtered out.
+	let mut states = Vec::new();
+	while states.last() != Some(&(ChannelState::Closed as i32)) {
+		let event = wait_for_event(&mut channel_events, |_| true).await;
+		match event.event {
+			Some(Event::ChannelStateChanged(e)) => {
+				assert_eq!(e.user_channel_id, user_channel_id);
+				states.push(e.state);
+			},
+			other => panic!("expected ChannelStateChanged event, got {other:?}"),
+		}
+	}
+	assert_eq!(
+		states,
+		[ChannelState::Pending as i32, ChannelState::Ready as i32, ChannelState::Closed as i32]
+	);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_subscribe_forwarding_events() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	let server_c = LdkServerHandle::start(&bitcoind).await;
+
+	let mut forwarding_events = server_b.client().subscribe_forwarding_events().await.unwrap();
+	let mut payment_events = server_b.client().subscribe_payment_events().await.unwrap();
+
+	// A -> B -> C
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 1_000_000).await;
+	setup_funded_channel(&bitcoind, &server_b, &server_c, 1_000_000).await;
+	wait_for_usable_channel(server_c.client(), &bitcoind, Duration::from_secs(60)).await;
+	wait_for_channels(&server_b, 2, Duration::from_secs(60)).await;
+	wait_for_gossip(&server_a, 2, Duration::from_secs(60)).await;
+
+	// B's own payments are sent before and after the forward so each stream must skip the other.
+	let first_payment_id = send_bolt11_payment(&server_b, &server_c, 10_000_000).await;
+	send_bolt11_payment(&server_a, &server_c, 10_000_000).await;
+	let second_payment_id = send_bolt11_payment(&server_b, &server_c, 10_000_000).await;
+
+	let event = wait_for_event(&mut forwarding_events, |_| true).await;
+	match event.event {
+		Some(Event::PaymentForwarded(e)) => {
+			assert_eq!(e.prev_htlcs.len(), 1);
+			assert_eq!(e.next_htlcs.len(), 1);
+		},
+		other => panic!("expected PaymentForwarded event, got {other:?}"),
+	}
+
+	for payment_id in [first_payment_id, second_payment_id] {
+		let event = wait_for_event(&mut payment_events, |_| true).await;
+		match event.event {
+			Some(Event::PaymentSuccessful(e)) => assert_eq!(e.payment_id, payment_id),
+			other => panic!("expected PaymentSuccessful event, got {other:?}"),
+		}
+	}
+}
+
+#[tokio::test]
 async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_closed() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;

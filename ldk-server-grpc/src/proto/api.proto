@@ -1189,6 +1189,27 @@ message DecodeOfferResponse {
 // Node automatically fails the HTLC backward at its claim_deadline.
 message SubscribeEventsRequest {}
 
+// Subscribe to a best-effort stream of new channel events.
+//
+// Only `ChannelStateChanged`, `SpliceNegotiated`, and `SpliceNegotiationFailed` events are
+// delivered. The same delivery guarantees as `SubscribeEventsRequest` apply.
+message SubscribeChannelEventsRequest {}
+
+// Subscribe to a best-effort stream of new payment events.
+//
+// Only `PaymentReceived`, `PaymentSuccessful`, `PaymentFailed`, and `PaymentClaimable` events are
+// delivered. The same delivery guarantees as `SubscribeEventsRequest` apply.
+//
+// If a PaymentClaimable event is missed and the payment is not otherwise claimed or failed, LDK
+// Node automatically fails the HTLC backward at its claim_deadline.
+message SubscribePaymentEventsRequest {}
+
+// Subscribe to a best-effort stream of new payment forwarding events.
+//
+// Only `PaymentForwarded` events are delivered. The same delivery guarantees as
+// `SubscribeEventsRequest` apply.
+message SubscribeForwardingEventsRequest {}
+
 // Macaroon details, without the token or root key.
 message MacaroonInfo {
   // The hex ID used to revoke this macaroon.
@@ -1350,6 +1371,12 @@ service LightningNode {
   rpc GraphGetNode(GraphGetNodeRequest) returns (GraphGetNodeResponse);
   // Subscribe to a stream of server events.
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream events.EventEnvelope);
+  // Subscribe to a stream of channel events.
+  rpc SubscribeChannelEvents(SubscribeChannelEventsRequest) returns (stream events.EventEnvelope);
+  // Subscribe to a stream of payment events.
+  rpc SubscribePaymentEvents(SubscribePaymentEventsRequest) returns (stream events.EventEnvelope);
+  // Subscribe to a stream of payment forwarding events.
+  rpc SubscribeForwardingEvents(SubscribeForwardingEventsRequest) returns (stream events.EventEnvelope);
   // Create a macaroon. Requires macaroons:manage or admin permission.
   rpc CreateMacaroon(CreateMacaroonRequest) returns (CreateMacaroonResponse);
   // List macaroons. Requires macaroons:manage or admin permission.
