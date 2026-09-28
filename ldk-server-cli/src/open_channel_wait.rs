@@ -28,7 +28,7 @@ use crate::{handle_error, print_response, sanitize_for_terminal};
 pub(crate) async fn open_channel_and_wait(
 	client: &LdkServerClient, request: OpenChannelRequest, timeout: Option<Duration>,
 ) {
-	let mut events = client.subscribe_events().await.unwrap_or_else(|e| handle_error(e));
+	let mut events = client.subscribe_channel_events().await.unwrap_or_else(|e| handle_error(e));
 
 	let response = client.open_channel(request).await.unwrap_or_else(|e| handle_error(e));
 	let user_channel_id = response.user_channel_id;
