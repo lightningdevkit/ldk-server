@@ -443,51 +443,7 @@ impl Service<Request<Incoming>> for NodeService {
 				DECODE_OFFER_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_decode_offer_request).await
 				},
-				SUBSCRIBE_EVENTS_PATH => {
-					// Authorization applies when the subscription starts; revocation does not close it.
-					let mut shutdown_rx = shutdown_rx;
-					let mut rx = event_sender.subscribe();
-					let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
-					tokio::spawn(async move {
-						loop {
-							tokio::select! {
-								biased;
-								_ = shutdown_rx.changed() => {
-									let _ = tx
-										.send(Err(GrpcStatus::new(
-											GRPC_STATUS_UNAVAILABLE,
-											"server shutting down",
-										)))
-										.await;
-									break;
-								},
-								result = rx.recv() => {
-									match result {
-										Ok(event) => {
-											let frame = encode_grpc_frame(&event.encode_to_vec());
-											if tx.send(Ok(frame)).await.is_err() {
-												break; // client disconnected
-											}
-										},
-										Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-											continue; // skip missed events, keep streaming
-										},
-										Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-											let _ = tx
-												.send(Err(GrpcStatus::new(
-													GRPC_STATUS_UNAVAILABLE,
-													"server shutting down",
-											)))
-											.await;
-											break;
-										},
-									}
-								}
-							}
-						}
-					});
-					Ok(grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false }))
-				},
+				SUBSCRIBE_EVENTS_PATH => Ok(handle_grpc_event_stream(event_sender, shutdown_rx)),
 				CREATE_MACAROON_PATH => {
 					let store = Arc::clone(&macaroon_store);
 					handle_grpc_unary(context, body_bytes, move |_context, request| {
@@ -573,6 +529,56 @@ async fn handle_grpc_unary<
 		},
 		Err(e) => Ok(grpc_error_response(ldk_error_to_grpc_status(e))),
 	}
+}
+
+/// Streams events from the broadcast channel to the client.
+///
+/// Authorization applies when the subscription starts; revocation does not close it.
+fn handle_grpc_event_stream(
+	event_sender: broadcast::Sender<EventEnvelope>,
+	mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> Response<GrpcBody> {
+	let mut rx = event_sender.subscribe();
+	let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
+	tokio::spawn(async move {
+		loop {
+			tokio::select! {
+				biased;
+				_ = shutdown_rx.changed() => {
+					let _ = tx
+						.send(Err(GrpcStatus::new(
+							GRPC_STATUS_UNAVAILABLE,
+							"server shutting down",
+						)))
+						.await;
+					break;
+				},
+				result = rx.recv() => {
+					match result {
+						Ok(event) => {
+							let frame = encode_grpc_frame(&event.encode_to_vec());
+							if tx.send(Ok(frame)).await.is_err() {
+								break; // client disconnected
+							}
+						},
+						Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+							continue; // skip missed events, keep streaming
+						},
+						Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+							let _ = tx
+								.send(Err(GrpcStatus::new(
+									GRPC_STATUS_UNAVAILABLE,
+									"server shutting down",
+								)))
+								.await;
+							break;
+						},
+					}
+				}
+			}
+		}
+	});
+	grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false })
 }
 
 fn request_content_length(headers: &HeaderMap) -> Result<Option<u64>, GrpcStatus> {
