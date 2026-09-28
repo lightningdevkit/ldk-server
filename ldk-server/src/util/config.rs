@@ -580,8 +580,7 @@ impl ConfigBuilder {
 			self.log_max_size_mb.unwrap_or(DEFAULT_LOG_MAX_SIZE_MB) * 1024 * 1024;
 		let log_rotation_interval_secs =
 			self.log_rotation_interval_hours.unwrap_or(DEFAULT_LOG_ROTATION_INTERVAL_HOURS)
-				* 60
-				* 60;
+				* 60 * 60;
 		let log_max_files = self.log_max_files.unwrap_or(DEFAULT_LOG_MAX_FILES);
 		let log_to_file = self.log_to_file.unwrap_or(true);
 
