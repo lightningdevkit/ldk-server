@@ -46,9 +46,10 @@ use ldk_server_grpc::api::{
 	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
 	OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest,
 	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest,
-	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeChannelEventsRequest,
+	SubscribeEventsRequest, SubscribeForwardingEventsRequest, SubscribePaymentEventsRequest,
+	UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -67,7 +68,8 @@ use ldk_server_grpc::endpoints::{
 	LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH,
 	LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH,
 	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_CHANNEL_EVENTS_PATH, SUBSCRIBE_EVENTS_PATH,
+	SUBSCRIBE_FORWARDING_EVENTS_PATH, SUBSCRIBE_PAYMENT_EVENTS_PATH, UNIFIED_SEND_PATH,
 	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
@@ -561,6 +563,33 @@ impl LdkServerClient {
 	/// Returns an [`EventStream`] that yields [`EventEnvelope`] messages as they arrive.
 	pub async fn subscribe_events(&self) -> Result<EventStream, LdkServerError> {
 		self.grpc_server_streaming(&SubscribeEventsRequest {}, SUBSCRIBE_EVENTS_PATH).await
+	}
+
+	/// Subscribe to a stream of channel events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that only yields channel state change and splice events.
+	pub async fn subscribe_channel_events(&self) -> Result<EventStream, LdkServerError> {
+		self.grpc_server_streaming(&SubscribeChannelEventsRequest {}, SUBSCRIBE_CHANNEL_EVENTS_PATH)
+			.await
+	}
+
+	/// Subscribe to a stream of payment events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that only yields payment events.
+	pub async fn subscribe_payment_events(&self) -> Result<EventStream, LdkServerError> {
+		self.grpc_server_streaming(&SubscribePaymentEventsRequest {}, SUBSCRIBE_PAYMENT_EVENTS_PATH)
+			.await
+	}
+
+	/// Subscribe to a stream of payment forwarding events via server-streaming gRPC.
+	///
+	/// Returns an [`EventStream`] that only yields payment forwarded events.
+	pub async fn subscribe_forwarding_events(&self) -> Result<EventStream, LdkServerError> {
+		self.grpc_server_streaming(
+			&SubscribeForwardingEventsRequest {},
+			SUBSCRIBE_FORWARDING_EVENTS_PATH,
+		)
+		.await
 	}
 
 	fn request_macaroon(&self, method: &str, body: &[u8]) -> Result<String, LdkServerError> {
