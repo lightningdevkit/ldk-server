@@ -14,12 +14,18 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
+      - name: Install stable and nightly rustfmt
+        run: rustup toolchain install stable nightly --profile minimal --component rustfmt
       - name: Run Nightly rustfmt
-        # Run the formatter and manually remove trailing whitespace.
-        run: cargo +nightly fmt && cargo +nightly fmt --manifest-path e2e-tests/Cargo.toml && git ls-files -- '*.rs' -z | xargs sed -E -i'' -e 's/[[:space:]]+$//'
+        # Run nightly to apply the nightly-only options (e.g. import grouping),
+        # then stable so the result matches the stable `--check` in CI, and
+        # manually remove trailing whitespace.
+        run: |
+          cargo +nightly fmt --all
+          cargo +nightly fmt --manifest-path e2e-tests/Cargo.toml --all
+          cargo +stable fmt --all
+          cargo +stable fmt --manifest-path e2e-tests/Cargo.toml --all
+          git ls-files -- '*.rs' -z | xargs -0 sed -E -i'' -e 's/[[:space:]]+$//'
       - name: Get the current date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
       - name: Create Pull Request
