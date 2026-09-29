@@ -196,8 +196,8 @@ to register several LSPs. Each LSP's supported protocols are discovered on start
 [bLIP-50 / LSPS0](https://github.com/lightning/blips/blob/master/blip-0050.md). LDK Server
 currently supports LSPS2 only, so an LSP that does not advertise it is registered but unused.
 
-When at least one LSPS2-capable LSP is configured, the `Bolt11ReceiveViaJitChannel` and
-`Bolt11ReceiveVariableAmountViaJitChannel` RPCs become available, and the cheapest fee offer
+When at least one LSPS2-capable LSP is configured, the `Bolt11ReceiveViaJitChannel`, 
+`Bolt11ReceiveVariableAmountViaJitChannel`, `Bolt11ReceiveViaJitChannelForHash` and `Bolt11ReceiveVariableAmountViaJitChannelForHash` RPCs become available, and the cheapest fee offer
 across all LSPS2-capable LSPs is selected per invoice.
 
 Requires each LSP's public key and address. Some LSPs also require an authentication token.

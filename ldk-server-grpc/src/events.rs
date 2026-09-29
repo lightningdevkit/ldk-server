@@ -241,7 +241,7 @@ pub struct PaymentFailed {
 	pub reason: ::core::option::Option<i32>,
 }
 /// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.
-/// This event is only emitted for payments created via `Bolt11ReceiveForHash`.
+/// This event is only emitted for payments created via `Bolt11ReceiveForHash`, `Bolt11ReceiveViaJitChannelForHash` or `Bolt11ReceiveVariableAmountViaJitChannelForHash`.
 /// Handle every event by its payment ID before `claim_deadline`.
 /// The same invoice can produce more than one event. Fail unexpected duplicate or late payments.
 /// Delivery through SubscribeEvents is best-effort and is not replayed. If the event is missed and
