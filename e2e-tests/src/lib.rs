@@ -11,6 +11,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use corepc_node::Node;
@@ -115,7 +116,7 @@ impl TestBitcoind {
 
 /// Handle to a running ldk-server child process.
 pub struct LdkServerHandle {
-	child: Option<Child>,
+	child: ServerProcess,
 	pub grpc_port: u16,
 	pub p2p_port: u16,
 	pub storage_dir: PathBuf,
@@ -124,6 +125,24 @@ pub struct LdkServerHandle {
 	pub tls_cert_path: PathBuf,
 	pub node_id: String,
 	client: LdkServerClient,
+}
+
+/// Reap the process even if startup fails before a server handle can be constructed.
+struct ServerProcess(Child);
+
+impl ServerProcess {
+	fn assert_running(&mut self) {
+		if let Some(status) = self.0.try_wait().expect("Failed to check ldk-server process") {
+			panic!("ldk-server exited during startup with {status}; see server output above");
+		}
+	}
+}
+
+impl Drop for ServerProcess {
+	fn drop(&mut self) {
+		let _ = self.0.kill();
+		let _ = self.0.wait();
+	}
 }
 
 #[derive(Default)]
@@ -385,8 +404,9 @@ impl LdkServerHandle {
 	pub async fn start_with_config(
 		config_bitcoind: &TestBitcoind, config: impl FnOnce(&TestServerParams) -> String,
 	) -> Self {
-		let (mut child, params, config_path) = spawn_server(config_bitcoind, config);
-		forward_server_output(&mut child);
+		let (child, params, config_path) = spawn_server(config_bitcoind, config);
+		let mut child = ServerProcess(child);
+		forward_server_output(&mut child.0);
 		let TestServerParams { grpc_port, p2p_port, storage_dir, .. } = params;
 
 		// Wait for the admin macaroon and TLS certificate files to appear.
@@ -394,8 +414,15 @@ impl LdkServerHandle {
 		let macaroon_path = network_dir.join("macaroons").join("admin.macaroon");
 		let tls_cert_path = storage_dir.join("tls.crt");
 
-		wait_for_file(&macaroon_path, Duration::from_secs(30)).await;
-		wait_for_file(&tls_cert_path, Duration::from_secs(30)).await;
+		let start = Instant::now();
+		while !macaroon_path.exists() || !tls_cert_path.exists() {
+			child.assert_running();
+			assert!(
+				start.elapsed() < Duration::from_secs(30),
+				"Timed out waiting for credentials in {storage_dir:?}"
+			);
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
 
 		let macaroon = std::fs::read_to_string(&macaroon_path).unwrap().trim().to_string();
 
@@ -406,7 +433,7 @@ impl LdkServerHandle {
 		let client = LdkServerClient::new(base_url, macaroon.clone(), &tls_cert_pem).unwrap();
 
 		let mut handle = Self {
-			child: Some(child),
+			child,
 			grpc_port,
 			p2p_port,
 			storage_dir,
@@ -418,7 +445,7 @@ impl LdkServerHandle {
 		};
 
 		// Wait for server to be ready and get node info
-		let node_info = wait_for_server_ready(&handle, Duration::from_secs(60)).await;
+		let node_info = wait_for_server_ready(&mut handle, Duration::from_secs(60)).await;
 		handle.node_id = node_info.node_id;
 
 		handle
@@ -426,12 +453,10 @@ impl LdkServerHandle {
 
 	/// Kill and restart the server with the same config and storage to test crash recovery.
 	pub async fn restart(&mut self) {
-		let mut child = self.child.take().expect("Server is not running");
-		child.kill().expect("Failed to kill ldk-server");
-		child.wait().expect("Failed to reap ldk-server");
-		let mut child = spawn_server_process(&self.config_path);
-		forward_server_output(&mut child);
-		self.child = Some(child);
+		self.child.0.kill().expect("Failed to kill ldk-server");
+		self.child.0.wait().expect("Failed to reap ldk-server");
+		self.child = ServerProcess(spawn_server_process(&self.config_path));
+		forward_server_output(&mut self.child.0);
 		let info = wait_for_server_ready(self, Duration::from_secs(60)).await;
 		assert_eq!(info.node_id, self.node_id, "Node identity changed after restart");
 	}
@@ -449,23 +474,16 @@ impl LdkServerHandle {
 	}
 }
 
-impl Drop for LdkServerHandle {
-	fn drop(&mut self) {
-		if let Some(mut child) = self.child.take() {
-			let _ = child.kill();
-			let _ = child.wait();
-		}
-	}
-}
-
 /// Prepare test server params and spawn the ldk-server process.
 fn spawn_server(
 	bitcoind: &TestBitcoind, config_fn: impl FnOnce(&TestServerParams) -> String,
 ) -> (Child, TestServerParams, PathBuf) {
 	#[allow(deprecated)]
 	let storage_dir = tempfile::tempdir().unwrap().into_path();
-	let grpc_port = find_available_port();
-	let p2p_port = find_available_port();
+	let grpc_listener = reserve_port();
+	let p2p_listener = reserve_port();
+	let grpc_port = grpc_listener.local_addr().unwrap().port();
+	let p2p_port = p2p_listener.local_addr().unwrap().port();
 
 	let (rpc_host, rpc_port_num, rpc_user, rpc_password) = bitcoind.rpc_details();
 	let rpc_address = format!("{rpc_host}:{rpc_port_num}");
@@ -478,6 +496,9 @@ fn spawn_server(
 	let config_path = params.storage_dir.join("config.toml");
 	std::fs::write(&config_path, &config_content).unwrap();
 
+	// Reserve both ports through config preparation, then release them before spawning.
+	// Another process can still claim them before the child binds.
+	drop((grpc_listener, p2p_listener));
 	let child = spawn_server_process(&config_path);
 	(child, params, config_path)
 }
@@ -531,6 +552,7 @@ pub fn start_expect_failure(
 			Ok(None) => {
 				if start.elapsed() > timeout {
 					let _ = child.kill();
+					let _ = child.wait();
 					panic!(
 						"Server did not exit within {:?} — it may have started successfully \
 						 instead of failing",
@@ -555,9 +577,24 @@ pub fn start_expect_failure(
 
 	String::from_utf8_lossy(&output.stderr).to_string()
 }
-/// Find an available TCP port by binding to port 0.
+/// Allocate distinct ports outside the default Linux/macOS ephemeral ranges.
+/// Allocate each port only once per test process, so stopped servers can restart.
+fn reserve_port() -> TcpListener {
+	static NEXT_PORT: AtomicU32 = AtomicU32::new(10_000);
+	loop {
+		let port = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
+		assert!(port < 30_000, "Exhausted test server ports");
+		match TcpListener::bind(("127.0.0.1", port as u16)) {
+			Ok(listener) => return listener,
+			Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
+			Err(error) => panic!("Failed to reserve test port {port}: {error}"),
+		}
+	}
+}
+
+/// Find an available port that will not be allocated to another server in this test process.
 pub fn find_available_port() -> u16 {
-	let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+	let listener = reserve_port();
 	listener.local_addr().unwrap().port()
 }
 
@@ -600,9 +637,12 @@ pub async fn splice_txid(events: &mut EventStream) -> String {
 }
 
 /// Poll get_node_info until the server responds successfully.
-async fn wait_for_server_ready(handle: &LdkServerHandle, timeout: Duration) -> GetNodeInfoResponse {
+async fn wait_for_server_ready(
+	handle: &mut LdkServerHandle, timeout: Duration,
+) -> GetNodeInfoResponse {
 	let start = std::time::Instant::now();
 	loop {
+		handle.child.assert_running();
 		match handle.client().get_node_info(GetNodeInfoRequest {}).await {
 			Ok(info) => return info,
 			Err(_) => {
