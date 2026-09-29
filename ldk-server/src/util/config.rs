@@ -2321,7 +2321,7 @@ mod tests {
 			r#"
 			[node]
 			network = "regtest"
-			
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
