@@ -40,4 +40,5 @@ default = []
 experimental-lsps2-support = []
 
 [dev-dependencies]
+tokio = { version = "1.38.0", default-features = false, features = ["test-util"] }
 futures-util = "0.3.31"
