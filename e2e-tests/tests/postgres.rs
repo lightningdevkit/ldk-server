@@ -98,9 +98,6 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 	// SQLite A -> PostgreSQL B -> SQLite C. B both accepts and initiates a channel.
 	let channel_ab = setup_funded_channel(&bitcoind, &sqlite_a, &postgres, 1_000_000).await;
 	let channel_bc = setup_funded_channel(&bitcoind, &postgres, &sqlite_c, 1_000_000).await;
-	// The shared helper waits for any usable channel on the funder; B already has A-B.
-	// Keep mining until C's only channel is confirmed, too.
-	wait_for_usable_channel(sqlite_c.client(), &bitcoind, TIMEOUT).await;
 	wait_for_channels(&sqlite_a, 1, TIMEOUT).await;
 	wait_for_channels(&postgres, 2, TIMEOUT).await;
 	wait_for_channels(&sqlite_c, 1, TIMEOUT).await;

@@ -978,11 +978,48 @@ pub async fn setup_funded_channel(
 		.await
 		.unwrap();
 
-	// Mine blocks to confirm the channel and wait for servers to sync
+	// Opening returns before funding is broadcast. Mining immediately can leave the
+	// funding transaction with fewer than the six confirmations required for gossip.
+	let funding_txo = tokio::time::timeout(Duration::from_secs(30), async {
+		loop {
+			let channels = server_a.client().list_channels(ListChannelsRequest {}).await.unwrap();
+			if let Some(txo) = channels
+				.channels
+				.iter()
+				.find(|channel| channel.user_channel_id == open_resp.user_channel_id)
+				.and_then(|channel| channel.funding_txo.clone())
+			{
+				break txo;
+			}
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	})
+	.await
+	.expect("Opened channel did not acquire a funding outpoint");
+	wait_for_transaction(bitcoind, &funding_txo.txid).await;
 	mine_and_sync(bitcoind, &[server_a, server_b], 6).await;
 
-	// Wait for channel to become usable (mines blocks periodically to trigger chain sync)
-	wait_for_usable_channel(server_a.client(), bitcoind, Duration::from_secs(60)).await;
+	// User channel IDs are local to each node. Match the shared funding outpoint
+	// instead, and never let an older usable channel satisfy this wait.
+	for server in [server_a, server_b] {
+		let start = Instant::now();
+		loop {
+			let channels = server.client().list_channels(ListChannelsRequest {}).await.unwrap();
+			if channels.channels.iter().any(|channel| {
+				channel.funding_txo.as_ref() == Some(&funding_txo)
+					&& channel.is_usable
+					&& channel.confirmations.is_some_and(|count| count >= 6)
+			}) {
+				break;
+			}
+			assert!(
+				start.elapsed() < Duration::from_secs(60),
+				"Waiting for confirmed channel {funding_txo:?} on {}: {channels:?}",
+				server.node_id()
+			);
+			tokio::time::sleep(Duration::from_millis(100)).await;
+		}
+	}
 
 	open_resp.user_channel_id
 }
@@ -1125,16 +1162,16 @@ pub async fn wait_for_settled_balance(
 	}
 }
 
-/// Wait for exactly `count` announced channels with both routing directions enabled.
+/// Wait for exactly `count` announced channels that are ready for routing.
+/// Local channels use live channel state, as in LDK's first-hop selection; remote
+/// channels require both routing directions in the graph to be enabled.
 pub async fn wait_for_gossip(server: &LdkServerHandle, count: usize, timeout: Duration) {
 	let start = Instant::now();
 	loop {
 		let graph = server.client().graph_list_channels(GraphListChannelsRequest {}).await.unwrap();
-		let mut ready = graph.short_channel_ids.len() == count;
+		let local_channels = server.client().list_channels(ListChannelsRequest {}).await.unwrap();
+		let mut channels = Vec::new();
 		for short_channel_id in graph.short_channel_ids {
-			if !ready {
-				break;
-			}
 			let channel = server
 				.client()
 				.graph_get_channel(GraphGetChannelRequest { short_channel_id })
@@ -1142,15 +1179,26 @@ pub async fn wait_for_gossip(server: &LdkServerHandle, count: usize, timeout: Du
 				.unwrap()
 				.channel
 				.unwrap();
-			ready = channel.one_to_two.is_some_and(|update| update.enabled)
-				&& channel.two_to_one.is_some_and(|update| update.enabled);
+			channels.push((short_channel_id, channel));
 		}
+		let ready = channels.len() == count
+			&& channels.iter().all(|(short_channel_id, channel)| {
+				if channel.node_one == server.node_id() || channel.node_two == server.node_id() {
+					// A peer's update can arrive before our own announcement and be dropped.
+					// The router overrides these graph entries with usable local channels.
+					return local_channels.channels.iter().any(|local| {
+						local.short_channel_id == Some(*short_channel_id) && local.is_usable
+					});
+				}
+				channel.one_to_two.as_ref().is_some_and(|update| update.enabled)
+					&& channel.two_to_one.as_ref().is_some_and(|update| update.enabled)
+			});
 		if ready {
 			return;
 		}
 		assert!(
 			start.elapsed() < timeout,
-			"Timed out waiting for {count} channel announcements with enabled routing updates"
+			"Timed out waiting for {count} routable channel announcements on {}: graph={channels:?}, local={local_channels:?}", server.node_id()
 		);
 		tokio::time::sleep(Duration::from_millis(200)).await;
 	}
