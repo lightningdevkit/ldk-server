@@ -20,6 +20,7 @@ use hex::FromHex;
 use ldk_server_grpc::endpoints::{CREATE_MACAROON_PATH, REVOKE_MACAROON_PATH};
 use ldk_server_grpc::permissions::ADMIN_PERMISSION;
 use ldk_server_macaroons::{Macaroon, RequestBinding, MAX_MACAROON_BYTES};
+use tokio::sync::watch;
 
 use super::persistence::{
 	compute_root_id, generate_secret, is_hex, record_from_stored, write_private_file,
@@ -55,6 +56,8 @@ pub(crate) struct MacaroonStore {
 	roots: RwLock<HashMap<String, Arc<RootRecord>>>,
 	management: Mutex<()>,
 	directory: PathBuf,
+	// Notified after a root is removed so open event streams can recheck their credential.
+	revocations: watch::Sender<()>,
 }
 
 impl MacaroonStore {
@@ -66,8 +69,12 @@ impl MacaroonStore {
 		create_dir_all_private(&directory)?;
 		fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
 
-		let mut store =
-			Self { roots: RwLock::new(HashMap::new()), management: Mutex::new(()), directory };
+		let mut store = Self {
+			roots: RwLock::new(HashMap::new()),
+			management: Mutex::new(()),
+			directory,
+			revocations: watch::Sender::new(()),
+		};
 		store.load_root_files()?;
 		if store.roots_mut()?.is_empty() {
 			store.create_initial_admin()?;
@@ -222,14 +229,36 @@ impl MacaroonStore {
 		}
 		// Reading the body may take time. Recheck revocation and caveat expiry before
 		// admitting the request, including before opening an event subscription.
-		if !self.roots.read().map_err(|_| store_lock_error())?.contains_key(&request.info.id) {
-			return Err(auth_error("Invalid macaroon credentials"));
+		self.check_still_authorized_at(&request.info, method, now)?;
+		Ok(request.info)
+	}
+
+	/// Recheck an admitted credential for revocation and caveat expiry.
+	///
+	/// Long-lived event streams call this before forwarding each event. It only takes the
+	/// `roots` read lock, never the `management` mutex.
+	pub(crate) fn check_still_authorized(
+		&self, info: &MacaroonInfo, method: &str,
+	) -> Result<(), LdkServerError> {
+		self.check_still_authorized_at(info, method, unix_time()?)
+	}
+
+	fn check_still_authorized_at(
+		&self, info: &MacaroonInfo, method: &str, now: u64,
+	) -> Result<(), LdkServerError> {
+		if !self.roots.read().map_err(|_| store_lock_error())?.contains_key(&info.id) {
+			return Err(auth_error("Macaroon revoked"));
 		}
-		let mut permissions = request.info.permissions.clone();
-		for caveat in &request.info.caveats {
+		let mut permissions = info.permissions.clone();
+		for caveat in &info.caveats {
 			check_caveat_at(caveat, method, &mut permissions, now)?;
 		}
-		Ok(request.info)
+		Ok(())
+	}
+
+	/// Returns a receiver that is notified each time a root is revoked.
+	pub(crate) fn subscribe_revocations(&self) -> watch::Receiver<()> {
+		self.revocations.subscribe()
 	}
 
 	fn authenticate_caveats(
@@ -366,6 +395,7 @@ impl MacaroonStore {
 			Err(error) => return Err(internal_error(error)),
 		}
 		self.roots.write().map_err(|_| store_lock_error())?.remove(&id);
+		self.revocations.send_replace(());
 		File::open(&self.directory)
 			.and_then(|directory| directory.sync_all())
 			.map_err(internal_error)?;
