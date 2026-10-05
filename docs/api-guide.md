@@ -81,8 +81,9 @@ all the caller's restrictions. Revoking the caller's token does not revoke these
 Copies made with `derive-macaroon` share the original token's ID. Revoking that ID blocks
 all those copies. The server cannot list copies made locally.
 
-Revocation and expiry block new requests. Existing event streams stay open until the client
-disconnects or the server stops. Reconnecting requires a valid token.
+Revocation and expiry block new requests. They also end existing event streams: the server
+closes the stream with `UNAUTHENTICATED` ("Macaroon revoked" or "Macaroon expired") and does
+not send later events. Reconnecting requires a valid token.
 
 See [Macaroon Management](#macaroon-management) for the RPCs and
 [Operations](operations.md#macaroons) for storage and recovery.
