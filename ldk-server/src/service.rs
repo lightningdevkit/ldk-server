@@ -10,6 +10,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
@@ -46,7 +47,7 @@ use ldk_server_grpc::grpc::{
 	GRPC_STATUS_UNIMPLEMENTED,
 };
 use prost::Message;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::api::bolt11_claim_for_id::handle_bolt11_claim_for_id_request;
 use crate::api::bolt11_fail_for_id::handle_bolt11_fail_for_id_request;
@@ -450,20 +451,34 @@ impl Service<Request<Incoming>> for NodeService {
 				DECODE_OFFER_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_decode_offer_request).await
 				},
-				SUBSCRIBE_EVENTS_PATH => {
-					Ok(handle_grpc_event_stream(event_sender, shutdown_rx, None))
-				},
+				SUBSCRIBE_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					macaroon_store,
+					issuer,
+					SUBSCRIBE_EVENTS_PATH,
+					event_sender,
+					shutdown_rx,
+					None,
+				)),
 				SUBSCRIBE_CHANNEL_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					macaroon_store,
+					issuer,
+					SUBSCRIBE_CHANNEL_EVENTS_PATH,
 					event_sender,
 					shutdown_rx,
 					Some(EventKind::Channel),
 				)),
 				SUBSCRIBE_PAYMENT_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					macaroon_store,
+					issuer,
+					SUBSCRIBE_PAYMENT_EVENTS_PATH,
 					event_sender,
 					shutdown_rx,
 					Some(EventKind::Payment),
 				)),
 				SUBSCRIBE_FORWARDING_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					macaroon_store,
+					issuer,
+					SUBSCRIBE_FORWARDING_EVENTS_PATH,
 					event_sender,
 					shutdown_rx,
 					Some(EventKind::Forwarding),
@@ -558,53 +573,81 @@ async fn handle_grpc_unary<
 /// Streams events from the broadcast channel to the client. If `kind` is set, only events of that
 /// kind are sent.
 ///
-/// Authorization applies when the subscription starts; revocation does not close it.
+/// The subscriber's credential is rechecked before each event is sent, after any root is revoked,
+/// when its earliest `time-before` caveat passes, and after the subscriber lags. If the check
+/// fails, the stream ends with UNAUTHENTICATED.
 fn handle_grpc_event_stream(
-	event_sender: broadcast::Sender<EventEnvelope>,
-	mut shutdown_rx: tokio::sync::watch::Receiver<bool>, kind: Option<EventKind>,
+	store: Arc<MacaroonStore>, issuer: Arc<MacaroonInfo>, method: &'static str,
+	event_sender: broadcast::Sender<EventEnvelope>, mut shutdown_rx: watch::Receiver<bool>,
+	kind: Option<EventKind>,
 ) -> Response<GrpcBody> {
 	let mut rx = event_sender.subscribe();
 	let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
+	// Subscribe before the first check so a revocation between the two is not missed.
+	let mut revocations = store.subscribe_revocations();
+	// An expiry too far away to represent never fires; per-event checks still apply.
+	let until_expiry = issuer
+		.expiry()
+		.and_then(|expiry| UNIX_EPOCH.checked_add(Duration::from_secs(expiry)))
+		.map(|expiry| expiry.duration_since(SystemTime::now()).unwrap_or_default());
 	tokio::spawn(async move {
+		let expiry_timer = tokio::time::sleep(until_expiry.unwrap_or_default());
+		tokio::pin!(expiry_timer);
+		let check = || {
+			store.check_still_authorized(&issuer, method).map_err(|error| match error.error_code {
+				LdkServerErrorCode::AuthError | LdkServerErrorCode::AuthorizationError => {
+					GrpcStatus::new(GRPC_STATUS_UNAUTHENTICATED, error.message)
+				},
+				_ => ldk_error_to_grpc_status(error),
+			})
+		};
+		if let Err(status) = check() {
+			let _ = tx.send(Err(status)).await;
+			return;
+		}
 		loop {
-			tokio::select! {
+			let event = tokio::select! {
 				biased;
 				_ = shutdown_rx.changed() => {
 					let _ = tx
-						.send(Err(GrpcStatus::new(
-							GRPC_STATUS_UNAVAILABLE,
-							"server shutting down",
-						)))
+						.send(Err(GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "server shutting down")))
 						.await;
 					break;
 				},
 				// Filtered events are never sent, so a failed send cannot be relied on to detect
 				// a disconnected client.
 				_ = tx.closed() => break,
-				result = rx.recv() => {
-					match result {
-						Ok(event) => {
-							if kind.is_some() && event.event.as_ref().map(event_kind) != kind {
-								continue;
-							}
-							let frame = encode_grpc_frame(&event.encode_to_vec());
-							if tx.send(Ok(frame)).await.is_err() {
-								break; // client disconnected
-							}
-						},
-						Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-							continue; // skip missed events, keep streaming
-						},
-						Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-							let _ = tx
-								.send(Err(GrpcStatus::new(
-									GRPC_STATUS_UNAVAILABLE,
-									"server shutting down",
-								)))
-								.await;
-							break;
-						},
-					}
+				Ok(()) = revocations.changed() => None,
+				() = &mut expiry_timer, if until_expiry.is_some() => {
+					// Wall-clock time may lag the timer; retry until the caveat fails.
+					expiry_timer.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(1));
+					None
+				},
+				result = rx.recv() => match result {
+					Ok(event) => {
+						if kind.is_some() && event.event.as_ref().map(event_kind) != kind {
+							continue;
+						}
+						Some(event)
+					},
+					// Skip missed events, but recheck the credential before continuing.
+					Err(broadcast::error::RecvError::Lagged(_)) => None,
+					Err(broadcast::error::RecvError::Closed) => {
+						let _ = tx
+							.send(Err(GrpcStatus::new(GRPC_STATUS_UNAVAILABLE, "server shutting down")))
+							.await;
+						break;
+					},
+				},
+			};
+			if let Err(status) = check() {
+				let _ = tx.send(Err(status)).await;
+				break;
+			}
+			if let Some(event) = event {
+				let frame = encode_grpc_frame(&event.encode_to_vec());
+				if tx.send(Ok(frame)).await.is_err() {
+					break; // client disconnected
 				}
 			}
 		}
@@ -930,6 +973,99 @@ mod tests {
 		assert_eq!(error.message, "Macaroon expired");
 	}
 
+	type EventStreamReceiver = mpsc::Receiver<Result<bytes::Bytes, GrpcStatus>>;
+
+	const SUBSCRIPTIONS: [(&str, Option<EventKind>); 4] = [
+		(SUBSCRIBE_EVENTS_PATH, None),
+		(SUBSCRIBE_CHANNEL_EVENTS_PATH, Some(EventKind::Channel)),
+		(SUBSCRIBE_PAYMENT_EVENTS_PATH, Some(EventKind::Payment)),
+		(SUBSCRIBE_FORWARDING_EVENTS_PATH, Some(EventKind::Forwarding)),
+	];
+
+	fn open_event_stream(
+		store: &Arc<MacaroonStore>, credential: &str,
+		event_sender: &broadcast::Sender<EventEnvelope>, method: &'static str,
+		kind: Option<EventKind>,
+	) -> (watch::Sender<bool>, EventStreamReceiver) {
+		let issuer = store.authenticate(method, Some(credential)).unwrap();
+		let (shutdown_tx, shutdown_rx) = watch::channel(false);
+		let response = handle_grpc_event_stream(
+			Arc::clone(store),
+			issuer,
+			method,
+			event_sender.clone(),
+			shutdown_rx,
+			kind,
+		);
+		let GrpcBody::Stream { rx, .. } = response.into_body() else {
+			panic!("Event subscriptions must return a streaming body");
+		};
+		(shutdown_tx, rx)
+	}
+
+	async fn next_status(stream: &mut EventStreamReceiver) -> GrpcStatus {
+		tokio::time::timeout(Duration::from_secs(10), stream.recv())
+			.await
+			.expect("Timed out waiting for the stream to end")
+			.expect("Stream closed without a status")
+			.expect_err("Stream forwarded an event after its credential became invalid")
+	}
+
+	#[tokio::test]
+	async fn revoking_a_root_ends_its_event_streams() {
+		use ldk_server_grpc::permissions::EVENTS_READ_PERMISSION;
+
+		let (_directory, store) = test_store("stream-revocation");
+		let store = Arc::new(store);
+		let admin = store.authenticate(CREATE_MACAROON_PATH, Some(&admin_token(&store))).unwrap();
+		let reader =
+			store.create_root("reader", vec![EVENTS_READ_PERMISSION.into()], &admin).unwrap();
+		let (event_sender, _) = broadcast::channel(16);
+		let mut streams: Vec<_> = SUBSCRIPTIONS
+			.into_iter()
+			.map(|(method, kind)| {
+				open_event_stream(&store, &reader.token, &event_sender, method, kind)
+			})
+			.collect();
+		event_sender.send(EventEnvelope::default()).unwrap();
+		let (_, unfiltered) = &mut streams[0];
+		unfiltered.recv().await.unwrap().unwrap();
+
+		// Idle streams of every kind end on revocation without waiting for another event.
+		store.revoke_root(&reader.info.id, &admin).unwrap();
+		for ((method, _), (_, stream)) in SUBSCRIPTIONS.into_iter().zip(&mut streams) {
+			let status = next_status(stream).await;
+			assert_eq!(status.code, GRPC_STATUS_UNAUTHENTICATED, "{method}");
+			assert_eq!(status.message, "Macaroon revoked", "{method}");
+		}
+		let _ = event_sender.send(EventEnvelope::default());
+		for (_, stream) in &mut streams {
+			assert!(stream.recv().await.is_none());
+		}
+	}
+
+	#[tokio::test]
+	async fn expired_credentials_end_their_event_streams() {
+		use crate::macaroons::test_util::{now, restrict};
+
+		let (_directory, store) = test_store("stream-expiry");
+		let store = Arc::new(store);
+		let expiry = now() + 2;
+		let credential = restrict(&admin_token(&store), &[&format!("time-before = {expiry}")]);
+		let (event_sender, _) = broadcast::channel(16);
+		let (_shutdown_tx, mut stream) =
+			open_event_stream(&store, &credential, &event_sender, SUBSCRIBE_EVENTS_PATH, None);
+		event_sender.send(EventEnvelope::default()).unwrap();
+		stream.recv().await.unwrap().unwrap();
+
+		let status = next_status(&mut stream).await;
+		assert!(now() >= expiry, "Stream ended before its credential expired");
+		assert_eq!(status.code, GRPC_STATUS_UNAUTHENTICATED);
+		assert_eq!(status.message, "Macaroon expired");
+		let _ = event_sender.send(EventEnvelope::default());
+		assert!(stream.recv().await.is_none());
+	}
+
 	#[test]
 	fn test_request_content_length_missing() {
 		let headers = HeaderMap::new();
@@ -983,10 +1119,19 @@ mod tests {
 
 	#[tokio::test]
 	async fn filtered_event_stream_stops_when_client_disconnects() {
+		let (_directory, store) = test_store("stream-disconnect");
+		let issuer =
+			store.authenticate(SUBSCRIBE_CHANNEL_EVENTS_PATH, Some(&admin_token(&store))).unwrap();
 		let (event_sender, _) = broadcast::channel(16);
 		let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-		let response =
-			handle_grpc_event_stream(event_sender.clone(), shutdown_rx, Some(EventKind::Channel));
+		let response = handle_grpc_event_stream(
+			Arc::new(store),
+			issuer,
+			SUBSCRIBE_CHANNEL_EVENTS_PATH,
+			event_sender.clone(),
+			shutdown_rx,
+			Some(EventKind::Channel),
+		);
 		assert_eq!(event_sender.receiver_count(), 1);
 
 		// Dropping the response disconnects the client. Filtered events are never sent, so the

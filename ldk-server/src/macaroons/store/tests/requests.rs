@@ -279,6 +279,38 @@ fn revocation_and_freshness_are_rechecked_after_reading_the_body() {
 	);
 }
 
+#[test]
+fn admitted_credentials_are_rechecked_for_revocation_and_expiry() {
+	let (_directory, store) = test_store("still-authorized");
+	let admin = store.authenticate(CREATE_MACAROON_PATH, Some(&admin_token(&store))).unwrap();
+	let reader = store.create_root("reader", vec![EVENTS_READ_PERMISSION.into()], &admin).unwrap();
+	let expiry = now() + 3600;
+	let credential = restrict(
+		&reader.token,
+		&[&format!("time-before = {}", expiry + 60), &format!("time-before = {expiry}")],
+	);
+	let info = store.authenticate(SUBSCRIBE_EVENTS_PATH, Some(&credential)).unwrap();
+	assert_eq!(info.expiry(), Some(expiry));
+	store.check_still_authorized(&info, SUBSCRIBE_EVENTS_PATH).unwrap();
+	store.check_still_authorized_at(&info, SUBSCRIBE_EVENTS_PATH, expiry - 1).unwrap();
+	let expired =
+		store.check_still_authorized_at(&info, SUBSCRIBE_EVENTS_PATH, expiry).unwrap_err();
+	assert_eq!(expired.error_code, LdkServerErrorCode::AuthorizationError);
+	assert_eq!(expired.message, "Macaroon expired");
+
+	let mut revocations = store.subscribe_revocations();
+	assert!(!revocations.has_changed().unwrap());
+	store.revoke_root(&reader.info.id, &admin).unwrap();
+	assert!(revocations.has_changed().unwrap());
+	revocations.mark_unchanged();
+	let revoked = store.check_still_authorized(&info, SUBSCRIBE_EVENTS_PATH).unwrap_err();
+	assert_eq!(revoked.error_code, LdkServerErrorCode::AuthError);
+	assert_eq!(revoked.message, "Macaroon revoked");
+	// Revoking one root does not affect credentials from other roots.
+	store.check_still_authorized(&admin, SUBSCRIBE_EVENTS_PATH).unwrap();
+	assert!(!revocations.has_changed().unwrap());
+}
+
 // Deliberately bypass reusable-token checks to test rejection of multiple proofs.
 fn append_request_proof(token: &str, method: &str, body: &[u8], timestamp: u64) -> String {
 	let proof = RequestBinding::new(method, body, timestamp);

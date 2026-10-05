@@ -37,6 +37,14 @@ impl MacaroonInfo {
 	pub(crate) fn allows(&self, permission: &str) -> bool {
 		self.is_admin() || self.permissions.contains(permission)
 	}
+
+	/// The earliest `time-before` caveat, in seconds since the Unix epoch.
+	pub(crate) fn expiry(&self) -> Option<u64> {
+		self.caveats
+			.iter()
+			.filter_map(|caveat| caveat.strip_prefix("time-before = ")?.parse().ok())
+			.min()
+	}
 }
 
 pub(super) fn mint_token(info: &MacaroonInfo, secret: &str) -> Result<String, &'static str> {

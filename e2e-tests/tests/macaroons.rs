@@ -12,7 +12,7 @@ use std::time::Duration;
 use e2e_tests::{
 	mine_and_sync, run_cli, setup_funded_channel, wait_for_event, LdkServerHandle, TestBitcoind,
 };
-use ldk_server_client::client::LdkServerClient;
+use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, AuthorizationError, InvalidRequestError,
 };
@@ -213,7 +213,7 @@ async fn test_macaroon_expiry() {
 		.unwrap()
 		.caveats
 		.contains(&expiry_caveat));
-	let events = expiring.subscribe_events().await.unwrap();
+	let mut events = expiring.subscribe_events().await.unwrap();
 	tokio::time::sleep(expiry.duration_since(std::time::SystemTime::now()).unwrap_or_default())
 		.await;
 	assert_eq!(
@@ -221,7 +221,8 @@ async fn test_macaroon_expiry() {
 		AuthorizationError
 	);
 	assert_eq!(expiring.subscribe_events().await.err().unwrap().error_code, AuthorizationError);
-	drop(events);
+	// The open stream ends at expiry instead of waiting for the client to disconnect.
+	assert_stream_ends_without_events(&mut events, "Macaroon expired").await;
 }
 
 #[tokio::test]
@@ -307,7 +308,7 @@ fn test_offline_macaroon_derivation() {
 }
 
 #[tokio::test]
-async fn test_revoking_a_root_keeps_existing_event_streams_open() {
+async fn test_revoking_a_root_ends_existing_event_streams() {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -316,6 +317,7 @@ async fn test_revoking_a_root_keeps_existing_event_streams_open() {
 		run_cli(&server_a, &["create-macaroon", "reader", "--permissions", "events:read"]);
 	let client = client_with_macaroon(&server_a, created["token"].as_str().unwrap().to_string());
 	let mut events = client.subscribe_events().await.unwrap();
+	let mut admin_events = server_a.client().subscribe_events().await.unwrap();
 
 	run_cli(&server_a, &["revoke-macaroon", created["macaroon"]["id"].as_str().unwrap()]);
 	assert_eq!(
@@ -323,10 +325,10 @@ async fn test_revoking_a_root_keeps_existing_event_streams_open() {
 		AuthError
 	);
 
-	// An event created after revocation must still reach the existing subscription.
+	// An event created after revocation must not reach the existing subscription.
 	run_cli(&server_a, &["close-channel", &channel_id, server_b.node_id()]);
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
-	wait_for_event(&mut events, |event| {
+	wait_for_event(&mut admin_events, |event| {
 		matches!(
 			event,
 			Event::ChannelStateChanged(channel_event)
@@ -335,4 +337,20 @@ async fn test_revoking_a_root_keeps_existing_event_streams_open() {
 		)
 	})
 	.await;
+	assert_stream_ends_without_events(&mut events, "Macaroon revoked").await;
+}
+
+async fn assert_stream_ends_without_events(events: &mut EventStream, message: &str) {
+	tokio::time::timeout(Duration::from_secs(10), async {
+		let error = events
+			.next_message()
+			.await
+			.expect("Stream must end with an error status")
+			.expect_err("Stream must not forward events after its macaroon is invalid");
+		assert_eq!(error.error_code, AuthError);
+		assert_eq!(error.message, message);
+		assert!(events.next_message().await.is_none());
+	})
+	.await
+	.expect("Timed out waiting for the event stream to end");
 }
