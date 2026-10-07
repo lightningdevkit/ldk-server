@@ -100,6 +100,9 @@ const MAX_GRPC_UNARY_RESPONSE_LEN: usize = 10 * 1024 * 1024;
 // constrained by this limit.
 const MAX_GRPC_STREAM_MESSAGE_LEN: usize = 4 * 1024 * 1024;
 
+// Applies to the complete Prometheus metrics response body.
+const MAX_METRICS_RESPONSE_LEN: usize = 10 * 1024 * 1024;
+
 /// Client to access a hosted instance of LDK Server via gRPC.
 ///
 /// The client requires the server's TLS certificate to be provided for verification.
@@ -156,7 +159,7 @@ impl LdkServerClient {
 		if let (Some(u), Some(p)) = (username, password) {
 			builder = builder.basic_auth(u, Some(p));
 		}
-		let response = builder.send().await.map_err(|e| {
+		let mut response = builder.send().await.map_err(|e| {
 			LdkServerError::new(InternalError, format!("HTTP request failed: {}", e))
 		})?;
 		if !response.status().is_success() {
@@ -165,10 +168,30 @@ impl LdkServerClient {
 				format!("Metrics request failed with status {}", response.status()),
 			));
 		}
-		let payload = response.bytes().await.map_err(|e| {
+		let too_large = || {
+			LdkServerError::new(
+				InternalError,
+				format!(
+					"Metrics response exceeds maximum size of {} bytes",
+					MAX_METRICS_RESPONSE_LEN
+				),
+			)
+		};
+		let capacity = match response.content_length() {
+			Some(len) if len > MAX_METRICS_RESPONSE_LEN as u64 => return Err(too_large()),
+			Some(len) => len as usize,
+			None => 0,
+		};
+		let mut payload = Vec::with_capacity(capacity);
+		while let Some(chunk) = response.chunk().await.map_err(|e| {
 			LdkServerError::new(InternalError, format!("Failed to read response body: {}", e))
-		})?;
-		String::from_utf8(payload.to_vec()).map_err(|e| {
+		})? {
+			if payload.len() + chunk.len() > MAX_METRICS_RESPONSE_LEN {
+				return Err(too_large());
+			}
+			payload.extend_from_slice(&chunk);
+		}
+		String::from_utf8(payload).map_err(|e| {
 			LdkServerError::new(
 				InternalError,
 				format!("Failed to decode metrics response as string: {}", e),
