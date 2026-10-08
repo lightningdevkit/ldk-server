@@ -291,7 +291,7 @@ fn hex_val(b: u8) -> Option<u8> {
 /// `H` (hours), `M` (minutes), `S` (seconds), `m` (milliseconds),
 /// `u` (microseconds), `n` (nanoseconds).
 pub fn parse_grpc_timeout(value: &str) -> Result<std::time::Duration, GrpcStatus> {
-	if !(2..=9).contains(&value.len()) {
+	if !value.is_ascii() || !(2..=9).contains(&value.len()) {
 		return Err(GrpcStatus::new(GRPC_STATUS_INVALID_ARGUMENT, "Invalid grpc-timeout header"));
 	}
 
@@ -544,6 +544,10 @@ mod tests {
 		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
 
 		let err = parse_grpc_timeout("18446744073709551615H").unwrap_err();
+		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
+
+		// A multi-byte final character must not split mid-codepoint.
+		let err = parse_grpc_timeout("5\u{20ac}").unwrap_err();
 		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
 	}
 
