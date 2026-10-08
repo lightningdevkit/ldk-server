@@ -11,7 +11,7 @@ use std::io;
 use std::path::Path;
 use std::str::FromStr;
 
-use ldk_node::bip39::Mnemonic;
+use ldk_node::bip39::{Mnemonic, WordCount};
 use ldk_node::entropy::NodeEntropy;
 use log::info;
 
@@ -34,7 +34,7 @@ pub(crate) fn load_or_generate_node_entropy(storage_dir: &Path) -> io::Result<No
 			if let Some(parent) = mnemonic_path.parent() {
 				create_dir_all_private(parent)?;
 			}
-			let mnemonic = Mnemonic::generate(24).map_err(io::Error::other)?;
+			let mnemonic = Mnemonic::generate(WordCount::Words24).map_err(io::Error::other)?;
 			write_new(&mnemonic_path, format!("{}\n", mnemonic).as_bytes(), 0o600)?;
 			info!(
 				"Generated new BIP39 mnemonic at {}. Back up this file securely — it is required to recover on-chain funds.",
