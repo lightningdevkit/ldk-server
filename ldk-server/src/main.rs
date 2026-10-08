@@ -15,7 +15,7 @@ mod util;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -33,7 +33,7 @@ use ldk_node::{Builder, CustomTlvRecord, Event, Node};
 use ldk_server_grpc::events;
 use ldk_server_grpc::events::{event_envelope, EventEnvelope};
 use ldk_server_grpc::types::{HtlcLocator, Payment};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 #[cfg(test)]
 use prost::Message;
 use tokio::net::TcpListener;
@@ -52,6 +52,10 @@ use crate::util::tls::get_or_generate_tls_config;
 use crate::util::{systemd, write_new};
 
 const LDK_NODE_POSTGRES_LOCK_FILE: &str = "ldk_node_postgres.lock";
+// LDK Node's PostgreSQL lease outlives a process that exits without releasing it, so on
+// startup we wait for a stale lease to expire instead of failing immediately.
+const KV_STORE_IN_USE_RETRY_TIMEOUT: Duration = Duration::from_secs(60);
+const KV_STORE_IN_USE_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 pub(crate) const FULL_VERSION: &str =
 	concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_HASH"), ")");
 
@@ -288,12 +292,22 @@ fn main() {
 
 	let uses_postgres =
 		matches!(config_file.ldk_node_storage, LdkNodeStorageConfig::Postgres { .. });
-	let node = match build_node(builder, node_entropy, config_file.ldk_node_storage) {
-		Ok(node) => node,
-		Err(e) => {
-			error!("Failed to build LDK Node: {e}");
-			std::process::exit(-1);
-		},
+	let build_deadline = Instant::now() + KV_STORE_IN_USE_RETRY_TIMEOUT;
+	let node = loop {
+		match build_node(&builder, node_entropy, &config_file.ldk_node_storage) {
+			Ok(node) => break node,
+			Err(ldk_node::BuildError::KVStoreAlreadyInUse) if Instant::now() < build_deadline => {
+				warn!(
+					"LDK Node storage is in use by another node, retrying in {}s.",
+					KV_STORE_IN_USE_RETRY_INTERVAL.as_secs()
+				);
+				std::thread::sleep(KV_STORE_IN_USE_RETRY_INTERVAL);
+			},
+			Err(e) => {
+				error!("Failed to build LDK Node: {e}");
+				std::process::exit(-1);
+			},
+		}
 	};
 	if uses_postgres {
 		if let Err(e) = persist_postgres_storage_lock(&network_dir) {
@@ -806,8 +820,8 @@ fn persist_postgres_storage_lock(network_dir: &Path) -> Result<(), String> {
 }
 
 fn build_node(
-	builder: Builder, node_entropy: ldk_node::entropy::NodeEntropy,
-	ldk_node_storage: LdkNodeStorageConfig,
+	builder: &Builder, node_entropy: ldk_node::entropy::NodeEntropy,
+	ldk_node_storage: &LdkNodeStorageConfig,
 ) -> Result<Node, ldk_node::BuildError> {
 	match ldk_node_storage {
 		LdkNodeStorageConfig::Sqlite => builder.build(node_entropy),
@@ -818,10 +832,10 @@ fn build_node(
 			certificate_pem,
 		} => builder.build_with_postgres_store(
 			node_entropy,
-			connection_string,
-			db_name,
-			kv_table_name,
-			certificate_pem,
+			connection_string.clone(),
+			db_name.clone(),
+			kv_table_name.clone(),
+			certificate_pem.clone(),
 		),
 	}
 }
