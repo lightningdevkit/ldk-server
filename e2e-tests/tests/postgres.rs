@@ -7,7 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::time::Duration;
+use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use e2e_tests::{
 	assert_recovered_balance, close_channel, expected_onchain_balance, list_payments,
@@ -18,17 +19,96 @@ use e2e_tests::{
 };
 use ldk_server_grpc::api::{
 	open_channel_request, ConnectPeerRequest, DisconnectPeerRequest, ForceCloseChannelRequest,
-	GetBalancesRequest, GetNodeInfoRequest, ListChannelForwardingStatsRequest,
+	GetBalancesRequest, GetBalancesResponse, GetNodeInfoRequest, ListChannelForwardingStatsRequest,
 	OnchainReceiveRequest, OpenChannelRequest,
 };
 use ldk_server_grpc::types::{lightning_balance, payment_kind, BalanceSource, PaymentStatus};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Wait until all funds are claimable on the expected open channels, without outstanding
+/// outgoing HTLC claims or dust rounding. An inbound HTLC with a known preimage can still
+/// be in the commitment at this point; its value is already included in the claimable amount.
+async fn open_channel_balances(server: &LdkServerHandle, count: usize) -> GetBalancesResponse {
+	let start = Instant::now();
+	loop {
+		let balances = server.client().get_balances(GetBalancesRequest {}).await.unwrap();
+		if balances.lightning_balances.len() == count
+			&& balances.pending_balances_from_channel_closures.is_empty()
+			&& balances.lightning_balances.iter().all(|balance| {
+				matches!(
+					balance.balance_type.as_ref(),
+					Some(lightning_balance::BalanceType::ClaimableOnChannelClose(claim))
+						if claim.outbound_payment_htlc_rounded_msat == 0
+							&& claim.outbound_forwarded_htlc_rounded_msat == 0
+							&& claim.inbound_claiming_htlc_rounded_msat == 0
+							&& claim.inbound_htlc_rounded_msat == 0
+				)
+			}) {
+			return balances;
+		}
+		assert!(
+			start.elapsed() < TIMEOUT,
+			"Waiting for {count} open channel balances: {balances:?}"
+		);
+		tokio::time::sleep(Duration::from_millis(100)).await;
+	}
+}
+
+/// Compare funds, including commitment fees, independently for each channel. Removing an
+/// already-claimed inbound HTLC reduces the commitment fee and increases the claimable
+/// amount by the same value. That may finish during restart without changing our funds.
+fn channel_funds(balances: &GetBalancesResponse) -> BTreeMap<String, u64> {
+	let mut total_claimable = 0;
+	let mut funds = BTreeMap::new();
+	for balance in &balances.lightning_balances {
+		let Some(lightning_balance::BalanceType::ClaimableOnChannelClose(claim)) =
+			&balance.balance_type
+		else {
+			panic!("Expected open channel balance: {balance:?}");
+		};
+		total_claimable += claim.amount_satoshis;
+		assert!(funds
+			.insert(
+				claim.channel_id.clone(),
+				claim.amount_satoshis + claim.transaction_fee_satoshis
+			)
+			.is_none());
+	}
+	assert_eq!(balances.total_lightning_balance_sats, total_claimable);
+	funds
+}
+
+#[test]
+fn test_channel_funds_preserve_exact_value_across_fee_changes() {
+	let balances = |amount_satoshis, transaction_fee_satoshis| GetBalancesResponse {
+		total_lightning_balance_sats: amount_satoshis,
+		lightning_balances: vec![ldk_server_grpc::types::LightningBalance {
+			balance_type: Some(lightning_balance::BalanceType::ClaimableOnChannelClose(
+				ldk_server_grpc::types::ClaimableOnChannelClose {
+					channel_id: "channel".to_string(),
+					amount_satoshis,
+					transaction_fee_satoshis,
+					..Default::default()
+				},
+			)),
+		}],
+		..Default::default()
+	};
+	// Reproduce the observed 43-sat change when the final HTLC leaves the commitment.
+	let before = channel_funds(&balances(919_014, 327));
+	assert_eq!(before, BTreeMap::from([("channel".to_string(), 919_341)]));
+	assert_eq!(before, channel_funds(&balances(919_057, 284)));
+	// A real one-satoshi loss must still fail the persistence comparison.
+	assert_ne!(before, channel_funds(&balances(919_056, 284)));
+}
+
 async fn start_postgres(bitcoind: &TestBitcoind, connection_string: &str) -> LdkServerHandle {
 	let server = LdkServerHandle::start_with_config(bitcoind, |params| {
 		// Each server gets its own table, even when sharing the same test database.
-		let table_name = format!("node_{}", params.grpc_port);
+		// Ports may be reused by a later test process against the same database.
+		let directory = params.storage_dir.file_name().unwrap().to_str().unwrap();
+		let table_name = format!("node_{}", directory.replace('.', "_"));
 		TestConfigBuilder::new(params)
 			.postgres(connection_string, &table_name)
 			.forwarded_payment_tracking_mode("detailed")
@@ -96,9 +176,6 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 	// SQLite A -> PostgreSQL B -> SQLite C. B both accepts and initiates a channel.
 	let channel_ab = setup_funded_channel(&bitcoind, &sqlite_a, &postgres, 1_000_000).await;
 	let channel_bc = setup_funded_channel(&bitcoind, &postgres, &sqlite_c, 1_000_000).await;
-	// The shared helper waits for any usable channel on the funder; B already has A-B.
-	// Keep mining until C's only channel is confirmed, too.
-	wait_for_usable_channel(sqlite_c.client(), &bitcoind, TIMEOUT).await;
 	wait_for_channels(&sqlite_a, 1, TIMEOUT).await;
 	wait_for_channels(&postgres, 2, TIMEOUT).await;
 	wait_for_channels(&sqlite_c, 1, TIMEOUT).await;
@@ -139,7 +216,8 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 		4
 	);
 	let saved_channels = wait_for_channels(&postgres, 2, TIMEOUT).await;
-	let saved_balances = postgres.client().get_balances(GetBalancesRequest {}).await.unwrap();
+	let saved_balances = open_channel_balances(&postgres, 2).await;
+	let saved_channel_funds = channel_funds(&saved_balances);
 	assert!(saved_balances.total_onchain_balance_sats > 0);
 	assert!(saved_balances.total_lightning_balance_sats > 0);
 	let saved_stats = postgres
@@ -170,15 +248,13 @@ async fn test_postgres_persistence_and_sqlite_interoperability() {
 		assert_eq!(restored.funding_txo, saved.funding_txo);
 		assert_eq!(restored.channel_value_sats, saved.channel_value_sats);
 	}
-	let restored_balances = postgres.client().get_balances(GetBalancesRequest {}).await.unwrap();
+	let restored_balances = open_channel_balances(&postgres, 2).await;
 	assert_eq!(
 		restored_balances.total_onchain_balance_sats,
 		saved_balances.total_onchain_balance_sats
 	);
-	assert_eq!(
-		restored_balances.total_lightning_balance_sats,
-		saved_balances.total_lightning_balance_sats
-	);
+	assert_eq!(channel_funds(&restored_balances), saved_channel_funds,
+		"Channel funds changed across restart: before={saved_balances:?}, after={restored_balances:?}");
 	assert_eq!(list_payments(&postgres).await, saved_payments);
 	assert_eq!(wait_for_forwarded_payments(&postgres, 2, TIMEOUT).await, saved_forwards);
 	let restored_stats = postgres

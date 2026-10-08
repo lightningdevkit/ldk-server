@@ -870,6 +870,9 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
+	// Keep the peer connection alive when the target channel closes. LDK Node otherwise
+	// reconnects after closing the last channel, racing delivery of the force-close error.
+	let remaining_channel_id = setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
 	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
 	let addr_b = server_b.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
@@ -939,8 +942,11 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert!(pending_b.reason.is_none());
 	assert_eq!(pending_b.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 
+	let (funding_txid, _) = pending_a.funding_txo.as_ref().unwrap().split_once(':').unwrap();
+	wait_for_transaction(&bitcoind, funding_txid).await;
 	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
-	wait_for_usable_channel(server_a.client(), &bitcoind, Duration::from_secs(60)).await;
+	wait_for_channels(&server_a, 2, Duration::from_secs(60)).await;
+	wait_for_channels(&server_b, 2, Duration::from_secs(60)).await;
 
 	let ready_a = wait_for_event(&mut events_a, |e| {
 		matches!(
@@ -982,7 +988,7 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 	assert_eq!(ready_b.closure_initiator, ChannelClosureInitiator::Unspecified as i32);
 
 	run_cli(&server_a, &["force-close-channel", &open_resp.user_channel_id, server_b.node_id()]);
-	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	// Observe the peer notification before mining, so an on-chain close cannot win the race.
 
 	let closed_a = wait_for_event(&mut events_a, |e| {
 		matches!(
@@ -1030,6 +1036,11 @@ async fn test_subscribe_events_channel_state_lifecycle_pending_ready_force_close
 		Some(ChannelStateChangeReasonKind::CounterpartyForceClosed)
 	);
 	assert_eq!(closed_b.closure_initiator, ChannelClosureInitiator::Remote as i32);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	let remaining_a = wait_for_channels(&server_a, 1, Duration::from_secs(60)).await;
+	let remaining_b = wait_for_channels(&server_b, 1, Duration::from_secs(60)).await;
+	assert_eq!(remaining_a[0].user_channel_id, remaining_channel_id);
+	assert_eq!(remaining_a[0].channel_id, remaining_b[0].channel_id);
 }
 
 #[tokio::test]
