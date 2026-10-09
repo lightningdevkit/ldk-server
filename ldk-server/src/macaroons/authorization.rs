@@ -26,8 +26,9 @@ use ldk_server_grpc::endpoints::{
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
 	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	SPONTANEOUS_SEND_PATH, SUBSCRIBE_CHANNEL_EVENTS_PATH, SUBSCRIBE_EVENTS_PATH,
+	SUBSCRIBE_FORWARDING_EVENTS_PATH, SUBSCRIBE_PAYMENT_EVENTS_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::permissions::{
 	CHANNELS_FORCE_CLOSE_PERMISSION, CHANNELS_MANAGE_PERMISSION, CHANNELS_READ_PERMISSION,
@@ -105,7 +106,10 @@ pub(crate) fn method_authorization(method: &str) -> MethodAuthorization {
 		DECODE_INVOICE_PATH | DECODE_OFFER_PATH => {
 			MethodAuthorization::Permission(UTILITIES_READ_PERMISSION)
 		},
-		SUBSCRIBE_EVENTS_PATH => MethodAuthorization::Permission(EVENTS_READ_PERMISSION),
+		SUBSCRIBE_EVENTS_PATH
+		| SUBSCRIBE_CHANNEL_EVENTS_PATH
+		| SUBSCRIBE_PAYMENT_EVENTS_PATH
+		| SUBSCRIBE_FORWARDING_EVENTS_PATH => MethodAuthorization::Permission(EVENTS_READ_PERMISSION),
 		CREATE_MACAROON_PATH | LIST_MACAROONS_PATH | REVOKE_MACAROON_PATH => {
 			MethodAuthorization::Permission(MACAROONS_MANAGE_PERMISSION)
 		},
@@ -178,6 +182,9 @@ mod tests {
 			("GraphListNodes", Some("graph:read")),
 			("GraphGetNode", Some("graph:read")),
 			("SubscribeEvents", Some("events:read")),
+			("SubscribeChannelEvents", Some("events:read")),
+			("SubscribePaymentEvents", Some("events:read")),
+			("SubscribeForwardingEvents", Some("events:read")),
 			("CreateMacaroon", Some("macaroons:manage")),
 			("ListMacaroons", Some("macaroons:manage")),
 			("RevokeMacaroon", Some("macaroons:manage")),
