@@ -339,17 +339,33 @@ enum Commands {
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
 	},
-	#[command(about = "Return a BOLT12 offer for receiving payments")]
+	#[command(
+		about = "Create a reusable BOLT12 offer for receiving payments",
+		long_about = "Create a reusable BOLT12 offer for receiving payments.\n\n\
+			A BOLT12 offer can be paid any number of times, by any number of payers, until it \
+			expires. Without --expiry-secs the offer never expires, so it can be shared publicly \
+			(e.g. for donations or a static payment code). Omit the amount to let each payer \
+			choose how much to send."
+	)]
 	Bolt12Receive {
-		#[arg(help = "Description to attach along with the offer")]
-		description: String,
 		#[arg(
-			help = "Amount to request, e.g. 50sat or 50000msat. If unset, a variable-amount offer is returned"
+			help = "Amount to request per item, e.g. 50sat or 50000msat. If unset, a variable-amount offer is returned"
 		)]
 		amount: Option<Amount>,
-		#[arg(long, help = "Offer expiry time in seconds")]
+		#[arg(short, long, help = "Description to attach along with the offer")]
+		description: Option<String>,
+		#[arg(
+			short,
+			long,
+			help = "Offer expiry time in seconds. If unset, the offer never expires"
+		)]
 		expiry_secs: Option<u32>,
-		#[arg(long, help = "Number of items requested. Can only be set for fixed-amount offers")]
+		#[arg(
+			short,
+			long,
+			requires = "amount",
+			help = "Maximum number of items a payer may buy per payment. Only for fixed-amount offers"
+		)]
 		quantity: Option<u64>,
 	},
 	#[command(about = "Send a payment for a BOLT12 offer")]
@@ -1112,12 +1128,12 @@ async fn main() {
 					.await,
 			);
 		},
-		Commands::Bolt12Receive { description, amount, expiry_secs, quantity } => {
+		Commands::Bolt12Receive { amount, description, expiry_secs, quantity } => {
 			let amount_msat = amount.map(|a| a.to_msat());
 			handle_response_result::<_, Bolt12ReceiveResponse>(
 				client
 					.bolt12_receive(Bolt12ReceiveRequest {
-						description,
+						description: description.unwrap_or_default(),
 						amount_msat,
 						expiry_secs,
 						quantity,
