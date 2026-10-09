@@ -1692,6 +1692,39 @@ pub struct DecodeOfferResponse {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeEventsRequest {}
+/// Subscribe to a best-effort stream of new channel events.
+///
+/// Only `ChannelStateChanged`, `SpliceNegotiated`, and `SpliceNegotiationFailed` events are
+/// delivered. The same delivery guarantees as `SubscribeEventsRequest` apply.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeChannelEventsRequest {}
+/// Subscribe to a best-effort stream of new payment events.
+///
+/// Only `PaymentReceived`, `PaymentSuccessful`, `PaymentFailed`, and `PaymentClaimable` events are
+/// delivered. The same delivery guarantees as `SubscribeEventsRequest` apply.
+///
+/// If a PaymentClaimable event is missed and the payment is not otherwise claimed or failed, LDK
+/// Node automatically fails the HTLC backward at its claim_deadline.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribePaymentEventsRequest {}
+/// Subscribe to a best-effort stream of new payment forwarding events.
+///
+/// Only `PaymentForwarded` events are delivered. The same delivery guarantees as
+/// `SubscribeEventsRequest` apply.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeForwardingEventsRequest {}
 /// Macaroon details, without the token or root key.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
