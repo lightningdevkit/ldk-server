@@ -537,6 +537,8 @@ pub struct Bolt11SendUnderpayingResponse {
 }
 /// Returns a BOLT12 offer for the given amount, if specified.
 ///
+/// The offer is reusable: it can be paid any number of times until it expires.
+///
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive>
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.receive_variable_amount>
@@ -550,13 +552,15 @@ pub struct Bolt12ReceiveRequest {
 	/// Will be set in the description field of the encoded offer.
 	#[prost(string, tag = "1")]
 	pub description: ::prost::alloc::string::String,
-	/// The amount in millisatoshi to send. If unset, a "zero-amount" or variable-amount offer is returned.
+	/// The amount in millisatoshi to request per item. If unset, a "zero-amount" or variable-amount
+	/// offer is returned.
 	#[prost(uint64, optional, tag = "2")]
 	pub amount_msat: ::core::option::Option<u64>,
-	/// Offer expiry time in seconds.
+	/// Offer expiry time in seconds. If unset, the offer never expires.
 	#[prost(uint32, optional, tag = "3")]
 	pub expiry_secs: ::core::option::Option<u32>,
-	/// If set, it represents the number of items requested, can only be set for fixed-amount offers.
+	/// If set, the maximum number of items a payer may request in a single payment. This does not
+	/// limit how many times the offer can be paid. Can only be set for fixed-amount offers.
 	#[prost(uint64, optional, tag = "4")]
 	pub quantity: ::core::option::Option<u64>,
 }

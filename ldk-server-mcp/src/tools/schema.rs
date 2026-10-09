@@ -430,18 +430,17 @@ pub fn bolt12_receive_schema() -> Value {
 			},
 			"amount_msat": {
 				"type": "integer",
-				"description": "Amount in millisatoshis. If unset, a variable-amount offer is returned"
+				"description": "Amount in millisatoshis to request per item. If unset, a variable-amount offer is returned"
 			},
 			"expiry_secs": {
 				"type": "integer",
-				"description": "Offer expiry time in seconds"
+				"description": "Offer expiry time in seconds. If unset, the offer never expires"
 			},
 			"quantity": {
 				"type": "integer",
-				"description": "Number of items requested. Can only be set for fixed-amount offers"
+				"description": "Maximum number of items a payer may request in a single payment. Does not limit how many times the offer can be paid. Can only be set for fixed-amount offers"
 			}
-		},
-		"required": ["description"]
+		}
 	})
 }
 

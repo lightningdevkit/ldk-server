@@ -329,13 +329,25 @@ async fn test_cli_bolt12_receive() {
 	// BOLT12 offers need announced channels for blinded reply paths
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	let output = run_cli(&server_a, &["bolt12-receive", "test offer"]);
+	let output = run_cli(&server_a, &["bolt12-receive", "-d", "test offer"]);
 	let offer_str = output["offer"].as_str().unwrap();
 	assert!(offer_str.starts_with("lno"), "Expected lno prefix, got: {}", offer_str);
 
 	let offer: Offer = offer_str.parse().unwrap();
 	let offer_id = <[u8; 32]>::from_hex(output["offer_id"].as_str().unwrap()).unwrap();
 	assert_eq!(offer.id().0, offer_id);
+
+	let error = server_a
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "variable amount".to_string(),
+			amount_msat: None,
+			expiry_secs: None,
+			quantity: Some(3),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
 }
 
 #[tokio::test]
@@ -347,7 +359,7 @@ async fn test_cli_decode_offer() {
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
 	// Create a BOLT12 offer with known parameters
-	let output = run_cli(&server_a, &["bolt12-receive", "decode offer test"]);
+	let output = run_cli(&server_a, &["bolt12-receive", "-d", "decode offer test"]);
 	let offer_str = output["offer"].as_str().unwrap();
 
 	// Decode it
@@ -378,21 +390,21 @@ async fn test_cli_decode_offer() {
 	assert!(decoded.get("amount").is_none() || decoded["amount"].is_null());
 
 	// Test a fixed-amount offer
-	let output_fixed = run_cli(&server_a, &["bolt12-receive", "fixed amount", "50000sat"]);
+	let output_fixed = run_cli(&server_a, &["bolt12-receive", "50000sat", "-d", "fixed amount"]);
 	let decoded_fixed =
 		run_cli(&server_a, &["decode-offer", output_fixed["offer"].as_str().unwrap()]);
 	assert_eq!(decoded_fixed["amount"]["amount"]["bitcoin_amount_msats"], 50_000_000);
 
 	// Test that ANSI escape sequences cannot reach the terminal via CLI output.
 	let desc_with_ansi = "offer\x1b[31m RED \x1b[0m";
-	let output_ansi = run_cli(&server_a, &["bolt12-receive", desc_with_ansi]);
+	let output_ansi = run_cli(&server_a, &["bolt12-receive", "-d", desc_with_ansi]);
 	let raw_decoded =
 		run_cli_raw(&server_a, &["decode-offer", output_ansi["offer"].as_str().unwrap()]);
 	assert!(!raw_decoded.contains('\x1b'), "Raw CLI output must not contain ANSI escape bytes");
 
 	// Test that Unicode bidi override characters in the description are escaped
 	let desc_with_bidi = "offer\u{202E}evil";
-	let output_bidi = run_cli(&server_a, &["bolt12-receive", desc_with_bidi]);
+	let output_bidi = run_cli(&server_a, &["bolt12-receive", "-d", desc_with_bidi]);
 	let raw_bidi =
 		run_cli_raw(&server_a, &["decode-offer", output_bidi["offer"].as_str().unwrap()]);
 	// LDK exposes offer descriptions through PrintableString, which may replace

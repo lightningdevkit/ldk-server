@@ -193,7 +193,7 @@ pub fn build_tool_registry() -> ToolRegistry {
 		),
 		tool_spec(
 			"bolt12_receive",
-			"Create a BOLT12 offer for receiving Lightning payments",
+			"Create a reusable BOLT12 offer for receiving Lightning payments",
 			schema::bolt12_receive_schema,
 			|client, args| Box::pin(handlers::handle_bolt12_receive(client, args)),
 		),
