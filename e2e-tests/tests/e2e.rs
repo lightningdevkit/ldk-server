@@ -336,6 +336,18 @@ async fn test_cli_bolt12_receive() {
 	let offer: Offer = offer_str.parse().unwrap();
 	let offer_id = <[u8; 32]>::from_hex(output["offer_id"].as_str().unwrap()).unwrap();
 	assert_eq!(offer.id().0, offer_id);
+
+	let error = server_a
+		.client()
+		.bolt12_receive(Bolt12ReceiveRequest {
+			description: "variable amount".to_string(),
+			amount_msat: None,
+			expiry_secs: None,
+			quantity: Some(3),
+		})
+		.await
+		.unwrap_err();
+	assert_eq!(error.error_code, InvalidRequestError);
 }
 
 #[tokio::test]
