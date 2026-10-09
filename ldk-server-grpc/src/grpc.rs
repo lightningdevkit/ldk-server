@@ -402,8 +402,10 @@ mod tests {
 			let s = String::from(b as char);
 			let encoded = percent_encode(&s);
 			let is_unreserved = b.is_ascii_alphanumeric()
-				|| b == b'-' || b == b'_'
-				|| b == b'.' || b == b'~'
+				|| b == b'-'
+				|| b == b'_'
+				|| b == b'.'
+				|| b == b'~'
 				|| b == b' ';
 			if is_unreserved {
 				assert_eq!(encoded, s, "byte {b:#04x} ({}) should pass through", b as char);
