@@ -56,8 +56,10 @@ cargo fmt --all
 2. Regenerate protos (see above)
 3. Create handler in `ldk-server/src/api/` (follow existing patterns)
 4. Add route in `ldk-server/src/service.rs`
-5. Map the RPC to its required permission in `method_authorization` in `ldk-server/src/macaroons/authorization.rs`.
-   Unmapped methods return `UNIMPLEMENTED`, even for admin tokens.
+5. Map the RPC to its required permission in `method_authorization` in
+   `ldk-server-grpc/src/permissions.rs` and update the test table in
+   `ldk-server/src/macaroons/authorization.rs`. Unmapped methods return `UNIMPLEMENTED`, even for
+   admin tokens, and are not listed by the MCP server.
 6. Add CLI command in `ldk-server-cli/src/main.rs`
 7. For a unary RPC, add the MCP tool in `ldk-server-mcp/src/tools/` and update the tool list test
    in `ldk-server-mcp/tests/integration.rs`. Add a live test in `e2e-tests/tests/mcp.rs` if applicable.
