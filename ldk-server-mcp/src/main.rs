@@ -13,7 +13,7 @@ mod protocol;
 mod tools;
 
 use ldk_server_client::client::LdkServerClient;
-use ldk_server_client::ldk_server_grpc::api::GetNodeInfoRequest;
+use ldk_server_client::ldk_server_grpc::api::GetPermissionsRequest;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -60,15 +60,20 @@ async fn main() {
 		},
 	};
 
-	// Probe the server so misconfiguration surfaces on startup rather than on
-	// the first tool call. We warn instead of exiting so the MCP protocol loop
-	// still answers `initialize` and `tools/list` even when the server is
-	// temporarily unreachable.
-	if let Err(e) = client.get_node_info(GetNodeInfoRequest {}).await {
-		eprintln!("Warning: Failed to reach ldk-server on startup: {e}");
-	}
+	let mut registry = build_tool_registry();
 
-	let registry = build_tool_registry();
+	// Ask the server what this macaroon may do, and only list the tools it can call so the model
+	// is not offered tools that would be denied. This also surfaces misconfiguration on startup
+	// rather than on the first tool call. On failure we warn and list every tool instead of
+	// exiting, so the MCP protocol loop still answers `initialize` and `tools/list` even when the
+	// server is temporarily unreachable.
+	match client.get_permissions(GetPermissionsRequest {}).await {
+		Ok(response) => match response.macaroon {
+			Some(macaroon) => registry.retain_allowed_tools(&macaroon),
+			None => eprintln!("Warning: ldk-server returned no macaroon permissions"),
+		},
+		Err(e) => eprintln!("Warning: Failed to reach ldk-server on startup: {e}"),
+	}
 
 	eprintln!("ldk-server-mcp: ready, waiting for JSON-RPC requests on stdin");
 
