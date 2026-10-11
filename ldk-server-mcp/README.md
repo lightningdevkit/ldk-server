@@ -95,6 +95,10 @@ Add to your Claude Code MCP settings (`.claude/settings.json`):
 
 All unary LDK Server RPCs are exposed as MCP tools. Use `tools/list` to discover the current set.
 
+On startup the server calls `get_permissions` and only lists the tools the configured macaroon is
+allowed to call, so a restricted macaroon is not offered tools the server would deny. If the
+permissions cannot be fetched, every tool is listed.
+
 Streaming RPCs such as `subscribe_events` and non-RPC HTTP endpoints such as `metrics` are not exposed as tools.
 
 The `create_macaroon` tool returns a private token that may be saved in chat history or tool logs.

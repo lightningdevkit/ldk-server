@@ -47,6 +47,20 @@ async fn test_mcp_macaroon_lifecycle_and_error_categories() {
 	assert!(listed["macaroons"].as_array().unwrap().iter().any(|key| key["id"] == id));
 	assert!(!listed.to_string().contains(secret));
 	let mut reader = McpHandle::start_with_macaroon(&server, secret);
+	let tools = reader.call(0, "tools/list", json!({}));
+	let mut tool_names: Vec<_> = tools["result"]["tools"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.map(|tool| tool["name"].as_str().unwrap())
+		.collect();
+	tool_names.sort();
+	assert_eq!(
+		tool_names,
+		["export_pathfinding_scores", "get_balances", "get_node_info", "get_permissions"]
+	);
+	let admin_tools = admin.call(4, "tools/list", json!({}));
+	assert!(admin_tools["result"]["tools"].as_array().unwrap().len() > tool_names.len());
 	let permissions =
 		reader.call(1, "tools/call", json!({"name": "get_permissions", "arguments": {}}));
 	let permissions = tool_result_json(&permissions);
