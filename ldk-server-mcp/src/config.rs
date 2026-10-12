@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::env::VarError;
 use std::path::PathBuf;
 
 use ldk_server_client::config::{
@@ -20,10 +21,20 @@ pub struct ResolvedConfig {
 	pub tls_cert_pem: Vec<u8>,
 }
 
+/// Reads an environment variable, treating a set but non-UTF-8 value as an
+/// error rather than as unset so it cannot trigger a fallback.
+fn read_env_var(name: &str) -> Result<Option<String>, String> {
+	match std::env::var(name) {
+		Ok(value) => Ok(Some(value)),
+		Err(VarError::NotPresent) => Ok(None),
+		Err(VarError::NotUnicode(_)) => Err(format!("{name} is set but is not valid UTF-8")),
+	}
+}
+
 pub fn resolve_config(config_path: Option<String>) -> Result<ResolvedConfig, String> {
-	let env_base_url = std::env::var("LDK_BASE_URL").ok();
-	let env_macaroon = std::env::var("LDK_MACAROON").ok();
-	let env_tls_cert_path = std::env::var("LDK_TLS_CERT_PATH").ok().map(PathBuf::from);
+	let env_base_url = read_env_var("LDK_BASE_URL")?;
+	let env_macaroon = read_env_var("LDK_MACAROON")?;
+	let env_tls_cert_path = read_env_var("LDK_TLS_CERT_PATH")?.map(PathBuf::from);
 	let env_overrides_complete =
 		env_base_url.is_some() && env_macaroon.is_some() && env_tls_cert_path.is_some();
 
@@ -334,5 +345,71 @@ mod tests {
 		assert_eq!(error, "Unsupported network: invalid-network");
 
 		std::fs::remove_dir_all(temp_dir).unwrap();
+	}
+
+	#[cfg(unix)]
+	fn assert_non_utf8_env_var_rejected(name: &str, test_name: &str) {
+		use std::ffi::OsStr;
+		use std::os::unix::ffi::OsStrExt;
+
+		let _lock = ENV_LOCK.lock().unwrap();
+
+		let temp_dir = std::env::temp_dir().join(format!(
+			"ldk-server-mcp-non-utf8-{}-{}",
+			test_name,
+			std::process::id()
+		));
+		let storage_dir = temp_dir.join("storage");
+		let macaroons_dir = storage_dir.join("regtest").join("macaroons");
+		std::fs::create_dir_all(&macaroons_dir).unwrap();
+
+		// Valid credentials exist on disk, so any fallback would succeed.
+		let cert_path = storage_dir.join("tls.crt");
+		std::fs::write(&cert_path, b"storage-cert").unwrap();
+		std::fs::write(macaroons_dir.join("admin.macaroon"), "0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429").unwrap();
+
+		let config_path = temp_dir.join("config.toml");
+		std::fs::write(
+			&config_path,
+			format!(
+				r#"
+					[node]
+					network = "regtest"
+
+					[storage.disk]
+					dir_path = "{}"
+				"#,
+				storage_dir.display()
+			),
+		)
+		.unwrap();
+
+		std::env::remove_var("LDK_MACAROON");
+		std::env::remove_var("LDK_TLS_CERT_PATH");
+		std::env::remove_var("LDK_BASE_URL");
+		std::env::set_var(name, OsStr::from_bytes(b"\xff\xfe"));
+		let result = resolve_config(Some(config_path.display().to_string()));
+		std::env::remove_var(name);
+
+		std::fs::remove_dir_all(temp_dir).unwrap();
+		assert_eq!(result.err().unwrap(), format!("{name} is set but is not valid UTF-8"));
+	}
+
+	#[test]
+	#[cfg(unix)]
+	fn resolve_config_rejects_non_utf8_macaroon() {
+		assert_non_utf8_env_var_rejected("LDK_MACAROON", "macaroon");
+	}
+
+	#[test]
+	#[cfg(unix)]
+	fn resolve_config_rejects_non_utf8_base_url() {
+		assert_non_utf8_env_var_rejected("LDK_BASE_URL", "base-url");
+	}
+
+	#[test]
+	#[cfg(unix)]
+	fn resolve_config_rejects_non_utf8_tls_cert_path() {
+		assert_non_utf8_env_var_rejected("LDK_TLS_CERT_PATH", "tls-cert-path");
 	}
 }
