@@ -225,8 +225,8 @@ fn read_admin_macaroon(path: &Path) -> Result<Option<String>, String> {
 /// Resolves the path to the server's TLS certificate (PEM).
 ///
 /// Prefers `override_path`, falls back to `tls.cert_path` in the configuration file, then to the
-/// certificate inside the configured storage directory (if present), and finally to the
-/// OS-specific default path.
+/// certificate inside the configured storage directory, and finally to the OS-specific default
+/// path.
 pub fn resolve_cert_path(
 	override_path: Option<PathBuf>, config: Option<&Config>,
 ) -> Option<PathBuf> {
@@ -235,7 +235,7 @@ pub fn resolve_cert_path(
 			config
 				.and_then(|c| c.tls.as_ref().and_then(|t| t.cert_path.as_ref().map(PathBuf::from)))
 		})
-		.or_else(|| storage_dir(config).map(cert_path_for_storage_dir).filter(|p| p.exists()))
+		.or_else(|| storage_dir(config).map(cert_path_for_storage_dir))
 		.or_else(get_default_cert_path)
 }
 
@@ -255,9 +255,10 @@ mod tests {
 	use std::time::{SystemTime, UNIX_EPOCH};
 
 	use super::{
-		get_default_admin_macaroon_path, load_config, read_tls_certificate, resolve_base_url,
-		resolve_macaroon, resolve_macaroon_path, Config, ADMIN_MACAROON_FILE,
-		CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS, TLS_CERT_FILE_SIZE_LIMIT,
+		get_default_admin_macaroon_path, get_default_cert_path, load_config, read_tls_certificate,
+		resolve_base_url, resolve_cert_path, resolve_macaroon, resolve_macaroon_path, Config,
+		ADMIN_MACAROON_FILE, CONFIG_FILE_SIZE_LIMIT, DEFAULT_GRPC_SERVICE_ADDRESS,
+		TLS_CERT_FILE_SIZE_LIMIT,
 	};
 	static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -416,7 +417,7 @@ mod tests {
 	}
 
 	#[test]
-	fn resolve_macaroon_does_not_cross_storage_instances() {
+	fn resolve_credentials_do_not_cross_storage_instances() {
 		let _lock = ENV_LOCK.lock().unwrap();
 		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 		let temp_dir = std::env::temp_dir()
@@ -432,6 +433,9 @@ mod tests {
 			crate::macaroon::Macaroon::mint(b"test root", b"test id").unwrap().to_hex(),
 		)
 		.unwrap();
+		let default_cert = get_default_cert_path().unwrap();
+		fs::write(&default_cert, b"default-cert").unwrap();
+		let without_storage = resolve_cert_path(None, None);
 
 		let config: Config = toml::from_str(&format!(
 			r#"
@@ -450,10 +454,17 @@ mod tests {
 			Some(configured_storage.join("regtest").join("macaroons").join(ADMIN_MACAROON_FILE))
 		);
 		let resolved = resolve_macaroon(None, Some(&config));
+		let cert_path = resolve_cert_path(None, Some(&config)).unwrap();
+		let certificate = read_tls_certificate(&cert_path);
 
 		restore_env_var(&default_dir_env_var, old_default_dir);
 		fs::remove_dir_all(temp_dir).unwrap();
+
 		assert!(resolved.unwrap().is_none());
+		assert_eq!(without_storage, Some(default_cert));
+		let expected_path = configured_storage.join("tls.crt");
+		assert_eq!(cert_path, expected_path);
+		assert!(certificate.unwrap_err().contains(&expected_path.display().to_string()));
 	}
 
 	#[test]
