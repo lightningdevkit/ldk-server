@@ -1184,6 +1184,124 @@ pub struct ListChannelPairForwardingStatsResponse {
 	#[prost(string, optional, tag = "2")]
 	pub next_page_token: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Lifetime earnings and on-chain costs for one open channel.
+///
+/// Revenue comes from LDK Node's per-channel forwarding counters. On-chain cost is
+/// `fee_paid_msat` from recorded payments whose transaction type names this channel.
+/// A transaction that names several channels has its fee split evenly across them, with
+/// any leftover millisatoshis assigned to the first channel in that list.
+/// `skimmed_fee_msat` is already included in `fee_earned_msat`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChannelEarnings {
+	/// The channel id in hex-encoded form.
+	#[prost(string, tag = "1")]
+	pub channel_id: ::prost::alloc::string::String,
+	/// The hex-encoded public key of the channel counterparty.
+	#[prost(string, tag = "2")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+	/// The local `user_channel_id` as a decimal u128 string. `channel_id` can change once, when the funding
+	/// transaction is negotiated.
+	#[prost(string, tag = "3")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	/// The value, in satoshis, of this channel as it appears in the funding output.
+	#[prost(uint64, tag = "4")]
+	pub channel_value_sats: u64,
+	/// Forwards where this was the incoming channel. Fees are attributed to this side.
+	/// A forward is also counted on the outgoing channel, so summing this with
+	/// `outbound_forwards` across channels counts each forward twice.
+	#[prost(uint64, tag = "5")]
+	pub inbound_forwards: u64,
+	/// Forwards where this was the outgoing channel.
+	#[prost(uint64, tag = "6")]
+	pub outbound_forwards: u64,
+	/// Unset when the fee is not known for every recorded forward.
+	#[prost(uint64, optional, tag = "7")]
+	pub fee_earned_msat: ::core::option::Option<u64>,
+	/// Total skimmed fees earned through this channel, in millisatoshis.
+	///
+	/// This is the share of `fee_earned_msat` that was withheld in addition to the
+	/// forwarding fee, not an amount earned on top of it. Adding the two would double-count.
+	#[prost(uint64, tag = "8")]
+	pub skimmed_fee_msat: u64,
+	/// One entry per transaction type that contributed a non-zero fee.
+	#[prost(message, repeated, tag = "9")]
+	pub onchain_costs: ::prost::alloc::vec::Vec<OnchainCost>,
+	/// Sum of `onchain_costs`.
+	#[prost(uint64, tag = "10")]
+	pub onchain_cost_msat: u64,
+	/// `fee_earned_msat` minus `onchain_cost_msat`. Unset when `fee_earned_msat` is unset.
+	#[prost(int64, optional, tag = "11")]
+	pub net_msat: ::core::option::Option<i64>,
+}
+/// Miner fee attributed to a channel for one on-chain transaction type.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OnchainCost {
+	/// The on-chain transaction type this fee came from.
+	#[prost(enumeration = "OnchainCostKind", tag = "1")]
+	pub kind: i32,
+	/// This channel's share of the miner fee for that transaction type, in millisatoshis.
+	#[prost(uint64, tag = "2")]
+	pub fee_paid_msat: u64,
+}
+/// Sum of the channel rows in the same response.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChannelEarningsTotals {
+	#[prost(uint64, tag = "1")]
+	pub channel_count: u64,
+	#[prost(uint64, tag = "2")]
+	pub inbound_forwards: u64,
+	#[prost(uint64, tag = "3")]
+	pub outbound_forwards: u64,
+	/// Unset when any channel's `fee_earned_msat` is unset.
+	#[prost(uint64, optional, tag = "4")]
+	pub fee_earned_msat: ::core::option::Option<u64>,
+	#[prost(uint64, tag = "5")]
+	pub skimmed_fee_msat: u64,
+	#[prost(message, repeated, tag = "6")]
+	pub onchain_costs: ::prost::alloc::vec::Vec<OnchainCost>,
+	#[prost(uint64, tag = "7")]
+	pub onchain_cost_msat: u64,
+	/// Unset when `fee_earned_msat` is unset.
+	#[prost(int64, optional, tag = "8")]
+	pub net_msat: ::core::option::Option<i64>,
+	#[prost(uint64, tag = "9")]
+	pub total_channel_value_sats: u64,
+}
+/// Lifetime profitability of each open channel.
+///
+/// Closed channels are omitted. A time range is not accepted: per-channel forwarding
+/// stats are lifetime counters. Costs that name only closed channels, and sweeps with
+/// no channel id, are omitted. `totals` is the sum of `channels`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelEarningsRequest {}
+/// The response for the `ListChannelEarnings` RPC. On failure, a gRPC error status is returned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChannelEarningsResponse {
+	#[prost(message, repeated, tag = "1")]
+	pub channels: ::prost::alloc::vec::Vec<ChannelEarnings>,
+	#[prost(message, optional, tag = "2")]
+	pub totals: ::core::option::Option<ChannelEarningsTotals>,
+}
 /// Retrieves a paginated list of forwarded payments from LDK Node's detailed history.
 /// LDK Node retains records for the current and previous one-hour buckets, then aggregates them
 /// into hourly channel-pair statistics and removes the individual records.
@@ -1785,4 +1903,51 @@ pub struct GetPermissionsRequest {}
 pub struct GetPermissionsResponse {
 	#[prost(message, optional, tag = "1")]
 	pub macaroon: ::core::option::Option<MacaroonInfo>,
+}
+/// Matches `types.TransactionType`, without the channel ids that type also carries.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum OnchainCostKind {
+	Unspecified = 0,
+	Funding = 1,
+	CooperativeClose = 2,
+	UnilateralClose = 3,
+	AnchorBump = 4,
+	Claim = 5,
+	Sweep = 6,
+	InteractiveFunding = 7,
+}
+impl OnchainCostKind {
+	/// String value of the enum field names used in the ProtoBuf definition.
+	///
+	/// The values are not transformed in any way and thus are considered stable
+	/// (if the ProtoBuf definition does not change) and safe for programmatic use.
+	pub fn as_str_name(&self) -> &'static str {
+		match self {
+			OnchainCostKind::Unspecified => "ONCHAIN_COST_KIND_UNSPECIFIED",
+			OnchainCostKind::Funding => "ONCHAIN_COST_KIND_FUNDING",
+			OnchainCostKind::CooperativeClose => "ONCHAIN_COST_KIND_COOPERATIVE_CLOSE",
+			OnchainCostKind::UnilateralClose => "ONCHAIN_COST_KIND_UNILATERAL_CLOSE",
+			OnchainCostKind::AnchorBump => "ONCHAIN_COST_KIND_ANCHOR_BUMP",
+			OnchainCostKind::Claim => "ONCHAIN_COST_KIND_CLAIM",
+			OnchainCostKind::Sweep => "ONCHAIN_COST_KIND_SWEEP",
+			OnchainCostKind::InteractiveFunding => "ONCHAIN_COST_KIND_INTERACTIVE_FUNDING",
+		}
+	}
+	/// Creates an enum from field names used in the ProtoBuf definition.
+	pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+		match value {
+			"ONCHAIN_COST_KIND_UNSPECIFIED" => Some(Self::Unspecified),
+			"ONCHAIN_COST_KIND_FUNDING" => Some(Self::Funding),
+			"ONCHAIN_COST_KIND_COOPERATIVE_CLOSE" => Some(Self::CooperativeClose),
+			"ONCHAIN_COST_KIND_UNILATERAL_CLOSE" => Some(Self::UnilateralClose),
+			"ONCHAIN_COST_KIND_ANCHOR_BUMP" => Some(Self::AnchorBump),
+			"ONCHAIN_COST_KIND_CLAIM" => Some(Self::Claim),
+			"ONCHAIN_COST_KIND_SWEEP" => Some(Self::Sweep),
+			"ONCHAIN_COST_KIND_INTERACTIVE_FUNDING" => Some(Self::InteractiveFunding),
+			_ => None,
+		}
+	}
 }

@@ -839,6 +839,103 @@ message ListChannelPairForwardingStatsResponse {
   optional string next_page_token = 2;
 }
 
+// Lifetime earnings and on-chain costs for one open channel.
+//
+// Revenue comes from LDK Node's per-channel forwarding counters. On-chain cost is
+// `fee_paid_msat` from recorded payments whose transaction type names this channel.
+// A transaction that names several channels has its fee split evenly across them, with
+// any leftover millisatoshis assigned to the first channel in that list.
+// `skimmed_fee_msat` is already included in `fee_earned_msat`.
+message ChannelEarnings {
+  // The channel id in hex-encoded form.
+  string channel_id = 1;
+
+  // The hex-encoded public key of the channel counterparty.
+  string counterparty_node_id = 2;
+
+  // The local `user_channel_id` as a decimal u128 string. `channel_id` can change once, when the funding
+  // transaction is negotiated.
+  string user_channel_id = 3;
+
+  // The value, in satoshis, of this channel as it appears in the funding output.
+  uint64 channel_value_sats = 4;
+
+  // Forwards where this was the incoming channel. Fees are attributed to this side.
+  // A forward is also counted on the outgoing channel, so summing this with
+  // `outbound_forwards` across channels counts each forward twice.
+  uint64 inbound_forwards = 5;
+
+  // Forwards where this was the outgoing channel.
+  uint64 outbound_forwards = 6;
+
+  // Unset when the fee is not known for every recorded forward.
+  optional uint64 fee_earned_msat = 7;
+
+  // Total skimmed fees earned through this channel, in millisatoshis.
+  //
+  // This is the share of `fee_earned_msat` that was withheld in addition to the
+  // forwarding fee, not an amount earned on top of it. Adding the two would double-count.
+  uint64 skimmed_fee_msat = 8;
+
+  // One entry per transaction type that contributed a non-zero fee.
+  repeated OnchainCost onchain_costs = 9;
+
+  // Sum of `onchain_costs`.
+  uint64 onchain_cost_msat = 10;
+
+  // `fee_earned_msat` minus `onchain_cost_msat`. Unset when `fee_earned_msat` is unset.
+  optional int64 net_msat = 11;
+}
+
+// Miner fee attributed to a channel for one on-chain transaction type.
+message OnchainCost {
+  // The on-chain transaction type this fee came from.
+  OnchainCostKind kind = 1;
+
+  // This channel's share of the miner fee for that transaction type, in millisatoshis.
+  uint64 fee_paid_msat = 2;
+}
+
+// Matches `types.TransactionType`, without the channel ids that type also carries.
+enum OnchainCostKind {
+  ONCHAIN_COST_KIND_UNSPECIFIED = 0;
+  ONCHAIN_COST_KIND_FUNDING = 1;
+  ONCHAIN_COST_KIND_COOPERATIVE_CLOSE = 2;
+  ONCHAIN_COST_KIND_UNILATERAL_CLOSE = 3;
+  ONCHAIN_COST_KIND_ANCHOR_BUMP = 4;
+  ONCHAIN_COST_KIND_CLAIM = 5;
+  ONCHAIN_COST_KIND_SWEEP = 6;
+  ONCHAIN_COST_KIND_INTERACTIVE_FUNDING = 7;
+}
+
+// Sum of the channel rows in the same response.
+message ChannelEarningsTotals {
+  uint64 channel_count = 1;
+  uint64 inbound_forwards = 2;
+  uint64 outbound_forwards = 3;
+  // Unset when any channel's `fee_earned_msat` is unset.
+  optional uint64 fee_earned_msat = 4;
+  uint64 skimmed_fee_msat = 5;
+  repeated OnchainCost onchain_costs = 6;
+  uint64 onchain_cost_msat = 7;
+  // Unset when `fee_earned_msat` is unset.
+  optional int64 net_msat = 8;
+  uint64 total_channel_value_sats = 9;
+}
+
+// Lifetime profitability of each open channel.
+//
+// Closed channels are omitted. A time range is not accepted: per-channel forwarding
+// stats are lifetime counters. Costs that name only closed channels, and sweeps with
+// no channel id, are omitted. `totals` is the sum of `channels`.
+message ListChannelEarningsRequest {}
+
+// The response for the `ListChannelEarnings` RPC. On failure, a gRPC error status is returned.
+message ListChannelEarningsResponse {
+  repeated ChannelEarnings channels = 1;
+  ChannelEarningsTotals totals = 2;
+}
+
 // Retrieves a paginated list of forwarded payments from LDK Node's detailed history.
 // LDK Node retains records for the current and previous one-hour buckets, then aggregates them
 // into hourly channel-pair statistics and removes the individual records.
@@ -1323,6 +1420,9 @@ service LightningNode {
 
   // List channel-pair forwarding statistics (paginated).
   rpc ListChannelPairForwardingStats(ListChannelPairForwardingStatsRequest) returns (ListChannelPairForwardingStatsResponse);
+
+  // Lifetime profitability of each open channel.
+  rpc ListChannelEarnings(ListChannelEarningsRequest) returns (ListChannelEarningsResponse);
 
   // List forwarded payments.
   rpc ListForwardedPayments(ListForwardedPaymentsRequest) returns (ListForwardedPaymentsResponse);

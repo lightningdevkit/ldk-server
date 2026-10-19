@@ -62,6 +62,7 @@ mod tests {
 			("GetChannelForwardingStats", Some("payments:read")),
 			("ListChannelForwardingStats", Some("payments:read")),
 			("ListChannelPairForwardingStats", Some("payments:read")),
+			("ListChannelEarnings", Some("payments:read")),
 			("ConnectPeer", Some("peers:manage")),
 			("DisconnectPeer", Some("peers:manage")),
 			("ListPeers", Some("peers:read")),
