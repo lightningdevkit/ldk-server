@@ -1,8 +1,7 @@
 # ldk-server-client
 
 Async Rust client library for communicating with an [LDK Server](https://github.com/lightningdevkit/ldk-server)
-node over gRPC. Uses `reqwest` for unary RPCs and `hyper` for server-streaming (event
-subscriptions).
+node over gRPC. Uses `reqwest` for both unary and server-streaming (event subscription) RPCs.
 
 ## Usage
 
