@@ -81,6 +81,7 @@ pub struct Metrics {
 	pub rgs_snapshot_timestamp_seconds: AtomicU64,
 	pub pathfinding_scores_sync_timestamp_seconds: AtomicU64,
 	pub node_announcement_broadcast_timestamp_seconds: AtomicU64,
+	pub connected_peers: AtomicI64,
 }
 
 /// `None` is stored as 0. Zero is not a real sample: ldk-node only records a
@@ -111,12 +112,16 @@ impl Metrics {
 			rgs_snapshot_timestamp_seconds: AtomicU64::new(0),
 			pathfinding_scores_sync_timestamp_seconds: AtomicU64::new(0),
 			node_announcement_broadcast_timestamp_seconds: AtomicU64::new(0),
+			connected_peers: AtomicI64::new(0),
 		}
 	}
 
 	fn update_peer_count(&self, node: &Node) {
-		let total_peers_count = node.list_peers().len() as i64;
+		let list_peers = node.list_peers();
+		let total_peers_count = list_peers.len() as i64;
+		let connect_peers = list_peers.iter().filter(|e| e.is_connected).count() as i64;
 		self.total_peers_count.store(total_peers_count, Ordering::Relaxed);
+		self.connected_peers.store(connect_peers, Ordering::Relaxed);
 	}
 
 	fn update_node_status_metrics(&self, node: &Node) {
@@ -245,9 +250,17 @@ impl Metrics {
 		format_metric(
 			&mut buffer,
 			"ldk_server_total_peers_count",
-			"Total number of peers",
+			"Number of known peers, including persisted peers that are disconnected.",
 			"gauge",
 			self.total_peers_count.load(Ordering::Relaxed),
+		);
+
+		format_metric(
+			&mut buffer,
+			"ldk_server_connected_peers",
+			"Number of peers with an active connection.",
+			"gauge",
+			self.connected_peers.load(Ordering::Relaxed),
 		);
 
 		format_metric(
@@ -421,6 +434,7 @@ mod tests {
 		assert!(!result.contains("ldk_server_rgs_snapshot_timestamp_seconds"));
 		assert!(!result.contains("ldk_server_pathfinding_scores_sync_timestamp_seconds"));
 		assert!(!result.contains("ldk_server_node_announcement_broadcast_timestamp_seconds"));
+		assert!(result.contains("ldk_server_connected_peers 0"));
 	}
 
 	#[test]
@@ -450,14 +464,21 @@ mod tests {
 			.node_announcement_broadcast_timestamp_seconds
 			.store(1_700_000_000, Ordering::Relaxed);
 
+		metrics.connected_peers.store(2, Ordering::Relaxed);
+
 		let result = metrics.gather_metrics();
 
 		// Check that output contains updated values and correct Prometheus format
-		assert!(result.contains("# HELP ldk_server_total_peers_count Total number of peers"));
+		assert!(result.contains("# HELP ldk_server_total_peers_count Number of known peers, including persisted peers that are disconnected."));
+		assert!(result.contains(
+			"# HELP ldk_server_connected_peers Number of peers with an active connection."
+		));
 		assert!(result.contains("# TYPE ldk_server_total_peers_count gauge"));
+		assert!(result.contains("# TYPE ldk_server_connected_peers gauge"));
 		assert!(result.contains("# HELP ldk_server_best_block_height Height of the best block the Lightning wallet is synced to."));
 		assert!(result.contains("# TYPE ldk_server_best_block_height gauge"));
 		assert!(result.contains("ldk_server_total_peers_count 5"));
+		assert!(result.contains("ldk_server_connected_peers 2"));
 
 		assert!(result.contains("# TYPE ldk_server_lightning_wallet_sync_timestamp_seconds gauge"));
 		assert!(result.contains("# TYPE ldk_server_onchain_wallet_sync_timestamp_seconds gauge"));
