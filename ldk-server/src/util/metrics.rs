@@ -74,6 +74,19 @@ pub struct Metrics {
 	pub spendable_onchain_balance_sats: AtomicU64,
 	pub total_anchor_channels_reserve_sats: AtomicU64,
 	pub total_lightning_balance_sats: AtomicU64,
+	pub best_block_height: AtomicU64,
+	pub lightning_wallet_sync_timestamp_seconds: AtomicU64,
+	pub onchain_wallet_sync_timestamp_seconds: AtomicU64,
+	pub fee_rate_cache_update_timestamp_seconds: AtomicU64,
+	pub rgs_snapshot_timestamp_seconds: AtomicU64,
+	pub pathfinding_scores_sync_timestamp_seconds: AtomicU64,
+	pub node_announcement_broadcast_timestamp_seconds: AtomicU64,
+}
+
+/// `None` is stored as 0. Zero is not a real sample: ldk-node only records a
+/// timestamp after the Unix epoch, and `gather_metrics` omits a 0.
+fn store_optional_timestamp(atomic: &AtomicU64, timestamp: Option<u64>) {
+	atomic.store(timestamp.unwrap_or(0), Ordering::Relaxed);
 }
 
 impl Metrics {
@@ -91,12 +104,48 @@ impl Metrics {
 			spendable_onchain_balance_sats: AtomicU64::new(0),
 			total_anchor_channels_reserve_sats: AtomicU64::new(0),
 			total_lightning_balance_sats: AtomicU64::new(0),
+			best_block_height: AtomicU64::new(0),
+			lightning_wallet_sync_timestamp_seconds: AtomicU64::new(0),
+			onchain_wallet_sync_timestamp_seconds: AtomicU64::new(0),
+			fee_rate_cache_update_timestamp_seconds: AtomicU64::new(0),
+			rgs_snapshot_timestamp_seconds: AtomicU64::new(0),
+			pathfinding_scores_sync_timestamp_seconds: AtomicU64::new(0),
+			node_announcement_broadcast_timestamp_seconds: AtomicU64::new(0),
 		}
 	}
 
 	fn update_peer_count(&self, node: &Node) {
 		let total_peers_count = node.list_peers().len() as i64;
 		self.total_peers_count.store(total_peers_count, Ordering::Relaxed);
+	}
+
+	fn update_node_status_metrics(&self, node: &Node) {
+		let status = node.status();
+		self.best_block_height.store(status.current_best_block.height as u64, Ordering::Relaxed);
+		store_optional_timestamp(
+			&self.lightning_wallet_sync_timestamp_seconds,
+			status.latest_lightning_wallet_sync_timestamp,
+		);
+		store_optional_timestamp(
+			&self.onchain_wallet_sync_timestamp_seconds,
+			status.latest_onchain_wallet_sync_timestamp,
+		);
+		store_optional_timestamp(
+			&self.fee_rate_cache_update_timestamp_seconds,
+			status.latest_fee_rate_cache_update_timestamp,
+		);
+		store_optional_timestamp(
+			&self.rgs_snapshot_timestamp_seconds,
+			status.latest_rgs_snapshot_timestamp,
+		);
+		store_optional_timestamp(
+			&self.pathfinding_scores_sync_timestamp_seconds,
+			status.latest_pathfinding_scores_sync_timestamp,
+		);
+		store_optional_timestamp(
+			&self.node_announcement_broadcast_timestamp_seconds,
+			status.latest_node_announcement_broadcast_timestamp,
+		);
 	}
 
 	fn store_payment_counts(&self, counts: PaymentCounts) {
@@ -127,6 +176,7 @@ impl Metrics {
 
 		self.update_peer_count(node);
 		self.update_all_balances(node);
+		self.update_node_status_metrics(node);
 	}
 
 	fn update_channel_visibility_counts(&self, channels: &[ChannelDetails]) {
@@ -163,6 +213,7 @@ impl Metrics {
 
 		self.update_peer_count(node);
 		self.update_all_balances(node);
+		self.update_node_status_metrics(node);
 	}
 
 	/// Gathers all metrics and formats them into the Prometheus text-based format.
@@ -182,6 +233,13 @@ impl Metrics {
 			let _ = writeln!(buffer, "# HELP {} {}", name, help);
 			let _ = writeln!(buffer, "# TYPE {} {}", name, metric_type);
 			let _ = writeln!(buffer, "{} {}", name, value);
+		}
+
+		fn format_timestamp_metric(buffer: &mut String, name: &str, help: &str, value: u64) {
+			if value == 0 {
+				return;
+			}
+			format_metric(buffer, name, help, "gauge", value);
 		}
 
 		format_metric(
@@ -280,6 +338,56 @@ impl Metrics {
 			self.total_lightning_balance_sats.load(Ordering::Relaxed),
 		);
 
+		format_metric(
+			&mut buffer,
+			"ldk_server_best_block_height",
+			"Height of the best block the Lightning wallet is synced to.",
+			"gauge",
+			self.best_block_height.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_lightning_wallet_sync_timestamp_seconds",
+			"Unix time in seconds of the last successful Lightning wallet sync to the chain tip.",
+			self.lightning_wallet_sync_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_onchain_wallet_sync_timestamp_seconds",
+			"Unix time in seconds of the last successful on-chain wallet sync to the chain tip.",
+			self.onchain_wallet_sync_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_fee_rate_cache_update_timestamp_seconds",
+			"Unix time in seconds of the last successful fee-rate cache update.",
+			self.fee_rate_cache_update_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_rgs_snapshot_timestamp_seconds",
+			"Unix time in seconds when the last applied rapid gossip sync snapshot was generated.",
+			self.rgs_snapshot_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_pathfinding_scores_sync_timestamp_seconds",
+			"Unix time in seconds of the last successful merge of external pathfinding scores.",
+			self.pathfinding_scores_sync_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
+		format_timestamp_metric(
+			&mut buffer,
+			"ldk_server_node_announcement_broadcast_timestamp_seconds",
+			"Unix time in seconds of the last node announcement broadcast.",
+			self.node_announcement_broadcast_timestamp_seconds.load(Ordering::Relaxed),
+		);
+
 		buffer
 	}
 }
@@ -306,6 +414,13 @@ mod tests {
 		assert!(result.contains("ldk_server_spendable_onchain_balance_sats 0"));
 		assert!(result.contains("ldk_server_total_anchor_channels_reserve_sats 0"));
 		assert!(result.contains("ldk_server_total_lightning_balance_sats 0"));
+		assert!(result.contains("ldk_server_best_block_height 0"));
+		assert!(!result.contains("ldk_server_lightning_wallet_sync_timestamp_seconds"));
+		assert!(!result.contains("ldk_server_onchain_wallet_sync_timestamp_seconds"));
+		assert!(!result.contains("ldk_server_fee_rate_cache_update_timestamp_seconds"));
+		assert!(!result.contains("ldk_server_rgs_snapshot_timestamp_seconds"));
+		assert!(!result.contains("ldk_server_pathfinding_scores_sync_timestamp_seconds"));
+		assert!(!result.contains("ldk_server_node_announcement_broadcast_timestamp_seconds"));
 	}
 
 	#[test]
@@ -325,13 +440,34 @@ mod tests {
 		metrics.spendable_onchain_balance_sats.store(50_000, Ordering::Relaxed);
 		metrics.total_anchor_channels_reserve_sats.store(1_000, Ordering::Relaxed);
 		metrics.total_lightning_balance_sats.store(250_000, Ordering::Relaxed);
+		metrics.best_block_height.store(800_000, Ordering::Relaxed);
+		metrics.lightning_wallet_sync_timestamp_seconds.store(1_700_000_000, Ordering::Relaxed);
+		metrics.onchain_wallet_sync_timestamp_seconds.store(1_700_000_000, Ordering::Relaxed);
+		metrics.fee_rate_cache_update_timestamp_seconds.store(1_700_000_000, Ordering::Relaxed);
+		metrics.rgs_snapshot_timestamp_seconds.store(1_700_000_000, Ordering::Relaxed);
+		metrics.pathfinding_scores_sync_timestamp_seconds.store(1_700_000_000, Ordering::Relaxed);
+		metrics
+			.node_announcement_broadcast_timestamp_seconds
+			.store(1_700_000_000, Ordering::Relaxed);
 
 		let result = metrics.gather_metrics();
 
 		// Check that output contains updated values and correct Prometheus format
 		assert!(result.contains("# HELP ldk_server_total_peers_count Total number of peers"));
 		assert!(result.contains("# TYPE ldk_server_total_peers_count gauge"));
+		assert!(result.contains("# HELP ldk_server_best_block_height Height of the best block the Lightning wallet is synced to."));
+		assert!(result.contains("# TYPE ldk_server_best_block_height gauge"));
 		assert!(result.contains("ldk_server_total_peers_count 5"));
+
+		assert!(result.contains("# TYPE ldk_server_lightning_wallet_sync_timestamp_seconds gauge"));
+		assert!(result.contains("# TYPE ldk_server_onchain_wallet_sync_timestamp_seconds gauge"));
+		assert!(result.contains("# TYPE ldk_server_fee_rate_cache_update_timestamp_seconds gauge"));
+		assert!(result.contains("# TYPE ldk_server_rgs_snapshot_timestamp_seconds gauge"));
+		assert!(
+			result.contains("# TYPE ldk_server_pathfinding_scores_sync_timestamp_seconds gauge")
+		);
+		assert!(result
+			.contains("# TYPE ldk_server_node_announcement_broadcast_timestamp_seconds gauge"));
 
 		assert!(result.contains("ldk_server_total_payments_count 10"));
 		assert!(result.contains("ldk_server_total_pending_payments_count 1"));
@@ -344,5 +480,14 @@ mod tests {
 		assert!(result.contains("ldk_server_spendable_onchain_balance_sats 50000"));
 		assert!(result.contains("ldk_server_total_anchor_channels_reserve_sats 1000"));
 		assert!(result.contains("ldk_server_total_lightning_balance_sats 250000"));
+		assert!(result.contains("ldk_server_best_block_height 800000"));
+		assert!(result.contains("ldk_server_lightning_wallet_sync_timestamp_seconds 1700000000"));
+		assert!(result.contains("ldk_server_onchain_wallet_sync_timestamp_seconds 1700000000"));
+		assert!(result.contains("ldk_server_fee_rate_cache_update_timestamp_seconds 1700000000"));
+		assert!(result.contains("ldk_server_rgs_snapshot_timestamp_seconds 1700000000"));
+		assert!(result.contains("ldk_server_pathfinding_scores_sync_timestamp_seconds 1700000000"));
+		assert!(
+			result.contains("ldk_server_node_announcement_broadcast_timestamp_seconds 1700000000")
+		);
 	}
 }
