@@ -7,11 +7,10 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::io::Cursor;
+use std::future::poll_fn;
+use std::pin::Pin;
 
-use hyper::body::HttpBody as _;
-use hyper::{Body as HyperBody, Client as HyperClient, Request as HyperRequest, Version};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper::body::Body as _;
 use ldk_server_grpc::api::{
 	Bolt11ClaimForIdRequest, Bolt11ClaimForIdResponse, Bolt11FailForIdRequest,
 	Bolt11FailForIdResponse, Bolt11ReceiveForHashRequest, Bolt11ReceiveForHashResponse,
@@ -78,17 +77,13 @@ use ldk_server_grpc::grpc::{
 };
 use prost::Message;
 use reqwest::header::HeaderMap;
-use reqwest::{Certificate, Client};
-use rustls::{ClientConfig, RootCertStore};
-use rustls_pemfile::certs;
+use reqwest::{Body, Certificate, Client};
 
 use crate::error::LdkServerError;
 use crate::error::LdkServerErrorCode::{
 	AuthError, AuthorizationError, InternalError, InternalServerError, InvalidRequestError,
 	LightningError,
 };
-
-type StreamingClient = HyperClient<HttpsConnector<hyper::client::HttpConnector>, HyperBody>;
 
 const GRPC_FRAME_HEADER_LEN: usize = 5;
 
@@ -109,7 +104,6 @@ const MAX_GRPC_STREAM_MESSAGE_LEN: usize = 4 * 1024 * 1024;
 pub struct LdkServerClient {
 	base_url: String,
 	client: Client,
-	streaming_client: StreamingClient,
 	macaroon: String,
 }
 
@@ -123,16 +117,22 @@ impl LdkServerClient {
 	/// found at `<server_storage_dir>/tls.crt` after the server starts.
 	pub fn new(base_url: String, macaroon: String, server_cert_pem: &[u8]) -> Result<Self, String> {
 		crate::macaroon::parse_reusable_macaroon(&macaroon)?;
-		let cert = Certificate::from_pem(server_cert_pem)
+		let certs = Certificate::from_pem_bundle(server_cert_pem)
 			.map_err(|e| format!("Failed to parse server certificate: {e}"))?;
-		let streaming_client = build_streaming_client(server_cert_pem)?;
+		if certs.is_empty() {
+			return Err(
+				"Failed to parse server certificate: no certificates found in PEM".to_string()
+			);
+		}
 
-		let client = Client::builder()
-			.add_root_certificate(cert)
-			.build()
-			.map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+		// reqwest is built without bundled roots, so only the server's certificate is trusted.
+		let mut builder = Client::builder().https_only(true).http2_prior_knowledge();
+		for cert in certs {
+			builder = builder.add_root_certificate(cert);
+		}
+		let client = builder.build().map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-		Ok(Self { base_url, client, streaming_client, macaroon })
+		Ok(Self { base_url, client, macaroon })
 	}
 
 	/// Retrieve the latest node info like `node_id`, `current_best_block` etc.
@@ -621,31 +621,25 @@ impl LdkServerClient {
 		let auth_header = self.request_macaroon(method, &grpc_body)?;
 
 		let response = self
-			.streaming_client
-			.request(
-				HyperRequest::post(&url)
-					.version(Version::HTTP_2)
-					.header("content-type", "application/grpc+proto")
-					.header("content-length", content_length)
-					.header("te", "trailers")
-					.header("macaroon", auth_header)
-					.body(HyperBody::from(grpc_body))
-					.map_err(|e| {
-						LdkServerError::new(
-							InternalError,
-							format!("Failed to build gRPC request: {e}"),
-						)
-					})?,
-			)
+			.client
+			.post(&url)
+			.header("content-type", "application/grpc+proto")
+			.header("content-length", content_length)
+			.header("te", "trailers")
+			.header("macaroon", auth_header)
+			.body(grpc_body)
+			.send()
 			.await
 			.map_err(|e| {
 				LdkServerError::new(InternalError, format!("gRPC request failed: {}", e))
 			})?;
 
-		let (parts, body) = response.into_parts();
-		if let Some(error) = grpc_error_from_headers(&parts.headers) {
+		if let Some(error) = grpc_error_from_headers(response.headers()) {
 			return Err(error);
 		}
+
+		// Convert into an `http::Response` so the body exposes trailer frames.
+		let body = hyper::Response::<Body>::from(response).into_body();
 
 		Ok(GrpcStream {
 			body,
@@ -737,7 +731,7 @@ fn grpc_error_from_headers(headers: &HeaderMap) -> Option<LdkServerError> {
 ///
 /// Call [`next_message`](GrpcStream::next_message) to receive the next message from the server.
 pub struct GrpcStream<M: Message + Default> {
-	body: hyper::Body,
+	body: Body,
 	buf: Vec<u8>,
 	trailers_checked: bool,
 	_marker: std::marker::PhantomData<M>,
@@ -794,9 +788,17 @@ impl<M: Message + Default> GrpcStream<M> {
 				}
 			}
 
-			// Need more data — read the next chunk from the response body
-			match self.body.data().await {
-				Some(Ok(chunk)) => self.buf.extend_from_slice(&chunk),
+			// Need more data — read the next frame from the response body
+			match poll_fn(|cx| Pin::new(&mut self.body).poll_frame(cx)).await {
+				Some(Ok(frame)) => match frame.into_data() {
+					Ok(chunk) => self.buf.extend_from_slice(&chunk),
+					Err(frame) => {
+						if let Ok(trailers) = frame.into_trailers() {
+							self.trailers_checked = true;
+							return self.finish_stream(Some(&trailers));
+						}
+					},
+				},
 				Some(Err(e)) => {
 					return Some(Err(LdkServerError::new(
 						InternalError,
@@ -808,26 +810,15 @@ impl<M: Message + Default> GrpcStream<M> {
 						return None;
 					}
 					self.trailers_checked = true;
-					return self.finish_stream().await;
+					return self.finish_stream(None);
 				},
 			}
 		}
 	}
 
-	async fn finish_stream(&mut self) -> Option<Result<M, LdkServerError>> {
-		match self.body.trailers().await {
-			Ok(Some(trailers)) => {
-				if let Some(error) = grpc_error_from_headers(&trailers) {
-					return Some(Err(error));
-				}
-			},
-			Ok(None) => {},
-			Err(e) => {
-				return Some(Err(LdkServerError::new(
-					InternalError,
-					format!("Failed to read gRPC stream trailers: {}", e),
-				)));
-			},
+	fn finish_stream(&self, trailers: Option<&HeaderMap>) -> Option<Result<M, LdkServerError>> {
+		if let Some(error) = trailers.and_then(grpc_error_from_headers) {
+			return Some(Err(error));
 		}
 
 		if self.buf.is_empty() {
@@ -841,39 +832,38 @@ impl<M: Message + Default> GrpcStream<M> {
 	}
 }
 
-fn build_streaming_client(server_cert_pem: &[u8]) -> Result<StreamingClient, String> {
-	let mut pem_reader = Cursor::new(server_cert_pem);
-	let certs =
-		certs(&mut pem_reader).map_err(|e| format!("Failed to parse server certificate: {e}"))?;
-	if certs.is_empty() {
-		return Err("Failed to parse server certificate: no certificates found in PEM".to_string());
-	}
-
-	let mut roots = RootCertStore::empty();
-	let (added, _ignored) = roots.add_parsable_certificates(&certs);
-	if added == 0 {
-		return Err("Failed to build streaming client: certificate was not accepted".to_string());
-	}
-
-	let tls_config = ClientConfig::builder()
-		.with_safe_defaults()
-		.with_root_certificates(roots)
-		.with_no_client_auth();
-	let connector = HttpsConnectorBuilder::new()
-		.with_tls_config(tls_config)
-		.https_only()
-		.enable_http2()
-		.build();
-
-	Ok(HyperClient::builder().http2_only(true).build(connector))
-}
-
 #[cfg(test)]
 mod tests {
-	use hyper::Body;
+	use std::collections::VecDeque;
+	use std::convert::Infallible;
+	use std::task::{Context, Poll};
+
+	use hyper::body::Frame;
 	use reqwest::header::HeaderValue;
 
 	use super::*;
+
+	struct FramesBody(VecDeque<Frame<&'static [u8]>>);
+
+	impl hyper::body::Body for FramesBody {
+		type Data = &'static [u8];
+		type Error = Infallible;
+
+		fn poll_frame(
+			mut self: Pin<&mut Self>, _cx: &mut Context<'_>,
+		) -> Poll<Option<Result<Frame<&'static [u8]>, Infallible>>> {
+			Poll::Ready(self.0.pop_front().map(Ok))
+		}
+	}
+
+	fn event_stream(frames: Vec<Frame<&'static [u8]>>) -> EventStream {
+		GrpcStream {
+			body: Body::wrap(FramesBody(frames.into())),
+			buf: Vec::new(),
+			trailers_checked: false,
+			_marker: std::marker::PhantomData,
+		}
+	}
 
 	#[test]
 	fn test_grpc_error_from_headers_ignores_ok_status() {
@@ -921,19 +911,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_event_stream_surfaces_terminal_grpc_status() {
-		let (mut sender, body) = Body::channel();
 		let mut trailers = HeaderMap::new();
 		trailers.insert("grpc-status", HeaderValue::from_static("14"));
 		trailers.insert("grpc-message", HeaderValue::from_static("server%20restarting"));
-		sender.send_trailers(trailers).await.unwrap();
-		drop(sender);
-
-		let mut stream: EventStream = GrpcStream {
-			body,
-			buf: Vec::new(),
-			trailers_checked: false,
-			_marker: std::marker::PhantomData,
-		};
+		let mut stream = event_stream(vec![Frame::trailers(trailers)]);
 
 		let result = stream.next_message().await.unwrap().unwrap_err();
 		assert_eq!(result.error_code, InternalError);
@@ -943,16 +924,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_event_stream_rejects_oversized_frame_header() {
-		let (mut sender, body) = Body::channel();
-		sender.send_data(vec![0u8, 0xff, 0xff, 0xff, 0xff].into()).await.unwrap();
-		drop(sender);
-
-		let mut stream: EventStream = GrpcStream {
-			body,
-			buf: Vec::new(),
-			trailers_checked: false,
-			_marker: std::marker::PhantomData,
-		};
+		let mut stream = event_stream(vec![Frame::data(&[0u8, 0xff, 0xff, 0xff, 0xff])]);
 
 		let result = stream.next_message().await.unwrap().unwrap_err();
 		assert_eq!(result.error_code, InternalError);
@@ -967,20 +939,38 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_event_stream_rejects_compressed_frame() {
-		let (mut sender, body) = Body::channel();
-		sender.send_data(vec![1u8, 0, 0, 0, 0].into()).await.unwrap();
-		drop(sender);
-
-		let mut stream: EventStream = GrpcStream {
-			body,
-			buf: Vec::new(),
-			trailers_checked: false,
-			_marker: std::marker::PhantomData,
-		};
+		let mut stream = event_stream(vec![Frame::data(&[1u8, 0, 0, 0, 0])]);
 
 		let result = stream.next_message().await.unwrap().unwrap_err();
 		assert_eq!(result.error_code, InternalError);
 		assert_eq!(result.message, "gRPC stream compression is not supported");
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_ends_after_ok_trailers() {
+		let mut trailers = HeaderMap::new();
+		trailers.insert("grpc-status", HeaderValue::from_static("0"));
+		let mut stream = event_stream(vec![
+			// An uncompressed gRPC frame carrying an empty `EventEnvelope`.
+			Frame::data(&[0, 0, 0, 0, 0]),
+			Frame::trailers(trailers),
+		]);
+
+		assert_eq!(stream.next_message().await.unwrap().unwrap(), EventEnvelope::default());
+		assert!(stream.next_message().await.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_event_stream_rejects_incomplete_frame_before_trailers() {
+		let mut trailers = HeaderMap::new();
+		trailers.insert("grpc-status", HeaderValue::from_static("0"));
+		let mut stream =
+			event_stream(vec![Frame::data(&[0u8, 0, 0, 0, 2, 0]), Frame::trailers(trailers)]);
+
+		let result = stream.next_message().await.unwrap().unwrap_err();
+		assert_eq!(result.error_code, InternalError);
+		assert_eq!(result.message, "gRPC stream ended with an incomplete frame");
+		assert!(stream.next_message().await.is_none());
 	}
 
 	#[test]
