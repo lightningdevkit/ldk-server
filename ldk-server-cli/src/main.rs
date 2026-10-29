@@ -80,6 +80,7 @@ use types::{
 	CliPaginatedResponse, Preimage,
 };
 
+mod event_wait;
 mod pay_wait;
 mod types;
 
