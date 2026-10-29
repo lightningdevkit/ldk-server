@@ -46,7 +46,7 @@ fn exit_with_payment(code: i32, message: &str, payment: &GetPaymentDetailsRespon
 pub(crate) async fn pay_and_wait(
 	client: &LdkServerClient, request: UnifiedSendRequest, timeout: Option<Duration>,
 ) {
-	let mut events = client.subscribe_events().await.map_err(handle_error).unwrap();
+	let mut events = client.subscribe_payment_events().await.map_err(handle_error).unwrap();
 
 	let response = client.unified_send(request).await.map_err(handle_error).unwrap();
 

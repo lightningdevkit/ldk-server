@@ -33,10 +33,11 @@ use ldk_server_grpc::endpoints::{
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
 	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
 	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
-	VERIFY_SIGNATURE_PATH,
+	SPONTANEOUS_SEND_PATH, SUBSCRIBE_CHANNEL_EVENTS_PATH, SUBSCRIBE_EVENTS_PATH,
+	SUBSCRIBE_FORWARDING_EVENTS_PATH, SUBSCRIBE_PAYMENT_EVENTS_PATH, UNIFIED_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
-use ldk_server_grpc::events::EventEnvelope;
+use ldk_server_grpc::events::{event_envelope, EventEnvelope};
 use ldk_server_grpc::grpc::{
 	decode_grpc_body, encode_grpc_frame, grpc_error_response, grpc_response, parse_grpc_timeout,
 	validate_grpc_request, GrpcBody, GrpcStatus, GRPC_STATUS_DEADLINE_EXCEEDED,
@@ -221,7 +222,13 @@ impl Service<Request<Incoming>> for NodeService {
 			},
 		};
 
-		let is_streaming = method == SUBSCRIBE_EVENTS_PATH;
+		let is_streaming = matches!(
+			method.as_str(),
+			SUBSCRIBE_EVENTS_PATH
+				| SUBSCRIBE_CHANNEL_EVENTS_PATH
+				| SUBSCRIBE_PAYMENT_EVENTS_PATH
+				| SUBSCRIBE_FORWARDING_EVENTS_PATH
+		);
 		let macaroon_store = Arc::clone(&self.macaroon_store);
 		let event_sender = self.event_sender.clone();
 		let shutdown_rx = self.shutdown_rx.clone();
@@ -444,50 +451,23 @@ impl Service<Request<Incoming>> for NodeService {
 					handle_grpc_unary(context, body_bytes, handle_decode_offer_request).await
 				},
 				SUBSCRIBE_EVENTS_PATH => {
-					// Authorization applies when the subscription starts; revocation does not close it.
-					let mut shutdown_rx = shutdown_rx;
-					let mut rx = event_sender.subscribe();
-					let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
-					tokio::spawn(async move {
-						loop {
-							tokio::select! {
-								biased;
-								_ = shutdown_rx.changed() => {
-									let _ = tx
-										.send(Err(GrpcStatus::new(
-											GRPC_STATUS_UNAVAILABLE,
-											"server shutting down",
-										)))
-										.await;
-									break;
-								},
-								result = rx.recv() => {
-									match result {
-										Ok(event) => {
-											let frame = encode_grpc_frame(&event.encode_to_vec());
-											if tx.send(Ok(frame)).await.is_err() {
-												break; // client disconnected
-											}
-										},
-										Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-											continue; // skip missed events, keep streaming
-										},
-										Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-											let _ = tx
-												.send(Err(GrpcStatus::new(
-													GRPC_STATUS_UNAVAILABLE,
-													"server shutting down",
-											)))
-											.await;
-											break;
-										},
-									}
-								}
-							}
-						}
-					});
-					Ok(grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false }))
+					Ok(handle_grpc_event_stream(event_sender, shutdown_rx, None))
 				},
+				SUBSCRIBE_CHANNEL_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					event_sender,
+					shutdown_rx,
+					Some(EventKind::Channel),
+				)),
+				SUBSCRIBE_PAYMENT_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					event_sender,
+					shutdown_rx,
+					Some(EventKind::Payment),
+				)),
+				SUBSCRIBE_FORWARDING_EVENTS_PATH => Ok(handle_grpc_event_stream(
+					event_sender,
+					shutdown_rx,
+					Some(EventKind::Forwarding),
+				)),
 				CREATE_MACAROON_PATH => {
 					let store = Arc::clone(&macaroon_store);
 					handle_grpc_unary(context, body_bytes, move |_context, request| {
@@ -572,6 +552,85 @@ async fn handle_grpc_unary<
 			Ok(grpc_response(GrpcBody::Unary { data: Some(encoded), trailers_sent: false }))
 		},
 		Err(e) => Ok(grpc_error_response(ldk_error_to_grpc_status(e))),
+	}
+}
+
+/// Streams events from the broadcast channel to the client. If `kind` is set, only events of that
+/// kind are sent.
+///
+/// Authorization applies when the subscription starts; revocation does not close it.
+fn handle_grpc_event_stream(
+	event_sender: broadcast::Sender<EventEnvelope>,
+	mut shutdown_rx: tokio::sync::watch::Receiver<bool>, kind: Option<EventKind>,
+) -> Response<GrpcBody> {
+	let mut rx = event_sender.subscribe();
+	let (tx, mpsc_rx) = mpsc::channel::<Result<bytes::Bytes, GrpcStatus>>(64);
+	tokio::spawn(async move {
+		loop {
+			tokio::select! {
+				biased;
+				_ = shutdown_rx.changed() => {
+					let _ = tx
+						.send(Err(GrpcStatus::new(
+							GRPC_STATUS_UNAVAILABLE,
+							"server shutting down",
+						)))
+						.await;
+					break;
+				},
+				// Filtered events are never sent, so a failed send cannot be relied on to detect
+				// a disconnected client.
+				_ = tx.closed() => break,
+				result = rx.recv() => {
+					match result {
+						Ok(event) => {
+							if kind.is_some() && event.event.as_ref().map(event_kind) != kind {
+								continue;
+							}
+							let frame = encode_grpc_frame(&event.encode_to_vec());
+							if tx.send(Ok(frame)).await.is_err() {
+								break; // client disconnected
+							}
+						},
+						Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+							continue; // skip missed events, keep streaming
+						},
+						Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+							let _ = tx
+								.send(Err(GrpcStatus::new(
+									GRPC_STATUS_UNAVAILABLE,
+									"server shutting down",
+								)))
+								.await;
+							break;
+						},
+					}
+				}
+			}
+		}
+	});
+	grpc_response(GrpcBody::Stream { rx: mpsc_rx, done: false })
+}
+
+/// The kinds of events that can be subscribed to separately.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EventKind {
+	Channel,
+	Payment,
+	Forwarding,
+}
+
+/// Exhaustive so that every new event must be assigned a kind.
+fn event_kind(event: &event_envelope::Event) -> EventKind {
+	match event {
+		event_envelope::Event::ChannelStateChanged(_)
+		| event_envelope::Event::SpliceNegotiated(_)
+		| event_envelope::Event::SpliceNegotiationFailed(_) => EventKind::Channel,
+		event_envelope::Event::PaymentReceived(_)
+		| event_envelope::Event::PaymentSuccessful(_)
+		| event_envelope::Event::PaymentFailed(_)
+		| event_envelope::Event::PaymentClaimable(_) => EventKind::Payment,
+		event_envelope::Event::PaymentForwarded(_) => EventKind::Forwarding,
 	}
 }
 
@@ -920,5 +979,26 @@ mod tests {
 		let err = validate_request_body_len(Some(6), 5).unwrap_err();
 		assert_eq!(err.code, GRPC_STATUS_INVALID_ARGUMENT);
 		assert_eq!(err.message, "Request body length does not match content-length");
+	}
+
+	#[tokio::test]
+	async fn filtered_event_stream_stops_when_client_disconnects() {
+		let (event_sender, _) = broadcast::channel(16);
+		let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+		let response =
+			handle_grpc_event_stream(event_sender.clone(), shutdown_rx, Some(EventKind::Channel));
+		assert_eq!(event_sender.receiver_count(), 1);
+
+		// Dropping the response disconnects the client. Filtered events are never sent, so the
+		// stream task must notice the disconnect without relying on a failed send.
+		drop(response);
+		event_sender.send(EventEnvelope::default()).unwrap();
+		tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			while event_sender.receiver_count() > 0 {
+				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("event stream task did not stop after the client disconnected");
 	}
 }
