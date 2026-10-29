@@ -52,7 +52,8 @@ on macOS).
 
 Core node settings: which Bitcoin network to use, Lightning peer listening and announcement
 addresses, the gRPC bind address, node alias, optional Rapid Gossip Sync / pathfinding
-scores URLs, the async payments role, and zero-fee commitment channels.
+scores URLs, the async payments role, zero-fee commitment channels, and the per-channel
+anchor reserve.
 
 Set `async_payments_role = "client"` to ask peers to hold HTLCs where possible, allowing
 this node to go offline. Set `async_payments_role = "server"` to hold async payment HTLCs
@@ -63,6 +64,30 @@ Set `enable_zero_fee_commitments = true` to prefer zero-fee commitment channels,
 falling back to other channel types supported by the peer. Enabling this setting requires a chain
 source that supports Bitcoin Core's `submitpackage` RPC, and relays TRUC, P2A, and ephemeral
 dust. The default is `false`.
+
+Set `anchor_per_channel_reserve_sats` to the amount of on-chain funds, in satoshis, that LDK
+keeps available per anchor channel to fee-bump the commitment and closing transactions. The
+default is `25000`, matching LDK Node. The reserve scales with the number of anchor channels,
+reduces the spendable on-chain balance, is kept back from send-all transactions, and also applies
+to outbound channel opens. Lowering it on a node with existing anchor channels makes some of
+their previously reserved funds withdrawable.
+
+Inbound anchor channels are rejected while the node's spendable on-chain balance is below the
+required reserve, which blocks LSP-funded channels (such as LSPS1 purchases or LSPS2 JIT
+channels) on a wallet that has not been funded yet. Set the value to `0` to accept inbound
+anchor channels with zero on-chain balance while keeping LDK's fee-bump handling enabled for
+funds that arrive later. This differs from LDK Node's
+`trusted_peers_no_reserve` (not currently configurable in LDK Server), which additionally
+makes LDK rely on the peer to confirm channel closing transactions.
+
+> **Warning:** Anchor-channel HTLC claim transactions are signed with zero fee and need wallet
+> inputs to confirm. With no on-chain funds, in-flight HTLC value can be lost if the counterparty
+> claims via the other path first. A zero (or very low) reserve can also delay an urgent channel
+> close. If `enable_zero_fee_commitments = true` results in a zero-fee commitment, a zero reserve
+> on an empty wallet means a force-close cannot confirm at all until funds arrive.
+
+The same setting is available as `--node-anchor-per-channel-reserve-sats` or
+`LDK_SERVER_NODE_ANCHOR_PER_CHANNEL_RESERVE_SATS`.
 
 Set `forwarded_payment_tracking_mode = "detailed"` to store individual
 forwards. LDK Node retains these records for the current and previous one-hour buckets, then

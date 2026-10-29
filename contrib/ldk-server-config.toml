@@ -9,6 +9,13 @@ alias = "ldk_server"                          # Lightning node alias
 #rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"  # Optional: RGS URL for rapid gossip sync
 #async_payments_role = "client"               # Optional async payments role: "client" or "server"
 #enable_zero_fee_commitments = false          # Enable zero-fee commitment channels (default: false)
+#anchor_per_channel_reserve_sats = 25000      # On-chain sats reserved per anchor channel for fee-bumping (default: 25000)
+# WARNING: setting `anchor_per_channel_reserve_sats = 0` allows inbound anchor channels
+# (e.g. LSP-funded LSPS1/LSPS2 channels) with no on-chain balance. Anchor-channel HTLC
+# claim transactions are signed with zero fee and need wallet inputs to confirm. With
+# no on-chain funds, in-flight HTLC value can be lost if the counterparty claims via
+# the other path first. If enable_zero_fee_commitments uses a zero-fee commitment,
+# a zero reserve on an empty wallet means a force-close cannot confirm until funds arrive.
 
 # Forwarding history: "detailed" retains individual records for the current and previous hour,
 # then aggregates them into hourly channel-pair statistics and removes the individual records.

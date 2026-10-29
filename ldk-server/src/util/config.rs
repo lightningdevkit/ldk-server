@@ -17,7 +17,8 @@ use clap::Parser;
 use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Network;
 use ldk_node::config::{
-	AsyncPaymentsRole, ForwardedPaymentTrackingMode, HRNResolverConfig, HumanReadableNamesConfig,
+	AnchorChannelsConfig, AsyncPaymentsRole, ForwardedPaymentTrackingMode, HRNResolverConfig,
+	HumanReadableNamesConfig,
 };
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::gossip::NodeAlias;
@@ -78,6 +79,7 @@ pub struct Config {
 	pub probing_config: Option<ProbingConfig>,
 	pub async_payments_role: Option<AsyncPaymentsRole>,
 	pub enable_zero_fee_commitments: bool,
+	pub anchor_per_channel_reserve_sats: u64,
 	pub forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode,
 	pub metrics_enabled: bool,
 	pub poll_metrics_interval: Option<u64>,
@@ -173,6 +175,7 @@ struct ConfigBuilder {
 	probing: Option<ProbingTomlConfig>,
 	async_payments_role: Option<String>,
 	enable_zero_fee_commitments: Option<bool>,
+	anchor_per_channel_reserve_sats: Option<u64>,
 	forwarded_payment_tracking_mode: Option<String>,
 	metrics_enabled: Option<bool>,
 	poll_metrics_interval: Option<u64>,
@@ -199,6 +202,8 @@ impl ConfigBuilder {
 				node.async_payments_role.or(self.async_payments_role.clone());
 			self.enable_zero_fee_commitments =
 				node.enable_zero_fee_commitments.or(self.enable_zero_fee_commitments);
+			self.anchor_per_channel_reserve_sats =
+				node.anchor_per_channel_reserve_sats.or(self.anchor_per_channel_reserve_sats);
 			self.forwarded_payment_tracking_mode = node
 				.forwarded_payment_tracking_mode
 				.or(self.forwarded_payment_tracking_mode.clone());
@@ -353,6 +358,10 @@ impl ConfigBuilder {
 
 		if let Some(enable_zero_fee_commitments) = args.node_enable_zero_fee_commitments {
 			self.enable_zero_fee_commitments = Some(enable_zero_fee_commitments);
+		}
+
+		if let Some(anchor_per_channel_reserve_sats) = args.node_anchor_per_channel_reserve_sats {
+			self.anchor_per_channel_reserve_sats = Some(anchor_per_channel_reserve_sats);
 		}
 
 		if let Some(mode) = &args.node_forwarded_payment_tracking_mode {
@@ -738,6 +747,9 @@ impl ConfigBuilder {
 			probing_config,
 			async_payments_role,
 			enable_zero_fee_commitments: self.enable_zero_fee_commitments.unwrap_or(false),
+			anchor_per_channel_reserve_sats: self
+				.anchor_per_channel_reserve_sats
+				.unwrap_or(AnchorChannelsConfig::default().per_channel_reserve_sats),
 			forwarded_payment_tracking_mode,
 			metrics_enabled,
 			poll_metrics_interval,
@@ -778,6 +790,7 @@ struct NodeConfig {
 	pathfinding_scores_source_url: Option<String>,
 	async_payments_role: Option<String>,
 	enable_zero_fee_commitments: Option<bool>,
+	anchor_per_channel_reserve_sats: Option<u64>,
 	forwarded_payment_tracking_mode: Option<String>,
 	rgs_server_url: Option<String>,
 }
@@ -1320,6 +1333,13 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_NODE_ANCHOR_PER_CHANNEL_RESERVE_SATS",
+		help = "On-chain reserve in satoshis that LDK keeps available to fee-bump anchor channels. Defaults to 25000. Set to 0 to accept inbound anchor channels without any on-chain balance, at the risk of being unable to urgently close a channel while the wallet is unfunded."
+	)]
+	node_anchor_per_channel_reserve_sats: Option<u64>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_NODE_FORWARDED_PAYMENT_TRACKING_MODE",
 		value_parser = ["stats", "detailed"],
 		ignore_case = true,
@@ -1508,6 +1528,7 @@ mod tests {
 				rgs_server_url = "https://rapidsync.lightningdevkit.org/snapshot/v2/"
 				async_payments_role = "client"
 				enable_zero_fee_commitments = true
+				anchor_per_channel_reserve_sats = 50000
 
 				[tls]
 				cert_path = "/path/to/tls.crt"
@@ -1574,6 +1595,7 @@ mod tests {
 			pathfinding_scores_source_url: Some(String::from("https://example.com/")),
 			node_async_payments_role: Some(String::from("server")),
 			node_enable_zero_fee_commitments: Some(false),
+			node_anchor_per_channel_reserve_sats: Some(10000),
 			node_forwarded_payment_tracking_mode: None,
 			probing_strategy: None,
 			probing_top_node_count: None,
@@ -1616,6 +1638,7 @@ mod tests {
 			pathfinding_scores_source_url: None,
 			node_async_payments_role: None,
 			node_enable_zero_fee_commitments: None,
+			node_anchor_per_channel_reserve_sats: None,
 			node_forwarded_payment_tracking_mode: None,
 			probing_strategy: None,
 			probing_top_node_count: None,
@@ -1736,6 +1759,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Client),
 			enable_zero_fee_commitments: true,
+			anchor_per_channel_reserve_sats: 50000,
 			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
@@ -1764,6 +1788,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Client)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.anchor_per_channel_reserve_sats,
+			expected.anchor_per_channel_reserve_sats
+		);
 		assert_eq!(
 			config.forwarded_payment_tracking_mode,
 			expected.forwarded_payment_tracking_mode
@@ -2713,6 +2741,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
 			enable_zero_fee_commitments: false,
+			anchor_per_channel_reserve_sats: 10000,
 			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
@@ -2738,6 +2767,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.anchor_per_channel_reserve_sats,
+			expected.anchor_per_channel_reserve_sats
+		);
 		assert_eq!(
 			config.forwarded_payment_tracking_mode,
 			expected.forwarded_payment_tracking_mode
@@ -2845,6 +2878,7 @@ mod tests {
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
 			enable_zero_fee_commitments: false,
+			anchor_per_channel_reserve_sats: 10000,
 			forwarded_payment_tracking_mode: ForwardedPaymentTrackingMode::default(),
 			metrics_enabled: false,
 			poll_metrics_interval: None,
@@ -2874,6 +2908,10 @@ mod tests {
 		assert_eq!(config.pathfinding_scores_source_url, expected.pathfinding_scores_source_url);
 		assert!(matches!(config.async_payments_role, Some(AsyncPaymentsRole::Server)));
 		assert_eq!(config.enable_zero_fee_commitments, expected.enable_zero_fee_commitments);
+		assert_eq!(
+			config.anchor_per_channel_reserve_sats,
+			expected.anchor_per_channel_reserve_sats
+		);
 		assert_eq!(
 			config.forwarded_payment_tracking_mode,
 			expected.forwarded_payment_tracking_mode
@@ -3365,6 +3403,52 @@ mod tests {
 
 			assert_eq!(args_config.node_enable_zero_fee_commitments, Some(expected));
 		}
+	}
+
+	#[test]
+	fn test_accepts_anchor_per_channel_reserve_arg() {
+		for value in ["0", "25000"] {
+			let args_config = ArgsConfig::try_parse_from([
+				"ldk-server",
+				"--node-anchor-per-channel-reserve-sats",
+				value,
+			])
+			.unwrap();
+
+			assert_eq!(
+				args_config.node_anchor_per_channel_reserve_sats,
+				Some(value.parse::<u64>().unwrap())
+			);
+		}
+	}
+
+	#[test]
+	fn test_anchor_per_channel_reserve_defaults_to_25k_sats() {
+		let storage_path = std::env::temp_dir();
+		let config_file_name = "test_anchor_per_channel_reserve_defaults_to_25k_sats.toml";
+
+		let toml_config = format!(
+			r#"
+			[node]
+			network = "regtest"
+
+			[bitcoind]
+			rpc_address = "127.0.0.1:8332"
+			rpc_user = "bitcoind-testuser"
+			rpc_password = "bitcoind-testpassword"
+			{}
+			"#,
+			lsps2_service_config_for_feature()
+		);
+
+		fs::write(storage_path.join(config_file_name), toml_config).unwrap();
+
+		let mut args_config = empty_args_config();
+		args_config.config_file =
+			Some(storage_path.join(config_file_name).to_string_lossy().to_string());
+
+		let config = load_config(&args_config).unwrap();
+		assert_eq!(config.anchor_per_channel_reserve_sats, 25_000);
 	}
 
 	#[test]

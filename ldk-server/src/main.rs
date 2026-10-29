@@ -159,6 +159,8 @@ fn main() {
 	ldk_node_config.hrn_config = config_file.hrn_config;
 	ldk_node_config.anchor_channels_config.enable_zero_fee_commitments =
 		config_file.enable_zero_fee_commitments;
+	ldk_node_config.anchor_channels_config.per_channel_reserve_sats =
+		config_file.anchor_per_channel_reserve_sats;
 	// The server exposes receive-for-hash APIs, so unknown inbound BOLT11 HTLCs
 	// must emit PaymentClaimable instead of being failed back.
 	ldk_node_config.manually_handle_unknown_bolt11_payments = true;
