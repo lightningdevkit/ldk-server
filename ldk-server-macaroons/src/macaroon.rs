@@ -13,7 +13,8 @@
 //! Third-party caveats and other formats are rejected.
 //! Format: <https://github.com/go-macaroon/macaroon/blob/v2/marshal-v2.go>.
 
-use bitcoin_hashes::{cmp::fixed_time_eq, hmac, sha256, Hash, HashEngine};
+use bitcoin_hashes::cmp::fixed_time_eq;
+use bitcoin_hashes::{hmac, sha256, Hash, HashEngine};
 use hex_conservative::{DisplayHex, FromHex};
 
 /// Maximum binary token size. Hex transport uses twice this many bytes.
