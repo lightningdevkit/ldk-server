@@ -81,8 +81,9 @@ all the caller's restrictions. Revoking the caller's token does not revoke these
 Copies made with `derive-macaroon` share the original token's ID. Revoking that ID blocks
 all those copies. The server cannot list copies made locally.
 
-Revocation and expiry block new requests. Existing event streams stay open until the client
-disconnects or the server stops. Reconnecting requires a valid token.
+Revocation and expiry block new requests. They also end existing event streams: the server
+closes the stream with `UNAUTHENTICATED` ("Macaroon revoked" or "Macaroon expired") and does
+not send later events. Reconnecting requires a valid token.
 
 See [Macaroon Management](#macaroon-management) for the RPCs and
 [Operations](operations.md#macaroons) for storage and recovery.
@@ -111,7 +112,7 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | `messages:verify` | Verify message signatures |
 | `graph:read` | Read network graph data |
 | `utilities:read` | Decode invoices and offers |
-| `events:read` | Subscribe to the event stream |
+| `events:read` | Subscribe to the event streams |
 | `macaroons:manage` | Create, list, and revoke macaroons within your permissions |
 
 MCP provides token management through `create_macaroon`, `list_macaroons`, `revoke_macaroon`,
@@ -309,11 +310,18 @@ See [Pagination](#pagination) below for how to page through results.
 
 ### Event Streaming
 
-| RPC               | Description                                                 |
-|-------------------|-------------------------------------------------------------|
-| `SubscribeEvents` | **Server-streaming.** Subscribe to real-time payment and channel events |
+| RPC                         | Description                                                                 |
+|-----------------------------|-----------------------------------------------------------------------------|
+| `SubscribeEvents`           | **Server-streaming.** Subscribe to real-time payment and channel events     |
+| `SubscribeChannelEvents`    | **Server-streaming.** Subscribe to real-time channel events only            |
+| `SubscribePaymentEvents`    | **Server-streaming.** Subscribe to real-time payment events only            |
+| `SubscribeForwardingEvents` | **Server-streaming.** Subscribe to real-time payment forwarding events only |
 
-`SubscribeEvents` returns a stream of `EventEnvelope` messages. Each envelope contains one of:
+`SubscribeEvents` returns a stream of `EventEnvelope` messages. Each envelope contains one of the
+events below. `SubscribePaymentEvents` delivers only `PaymentReceived`, `PaymentSuccessful`,
+`PaymentFailed`, and `PaymentClaimable`. `SubscribeForwardingEvents` delivers only
+`PaymentForwarded`. `SubscribeChannelEvents` delivers only `ChannelStateChanged`,
+`SpliceNegotiated`, and `SpliceNegotiationFailed`.
 
 | Event               | When                                                                  |
 |---------------------|-----------------------------------------------------------------------|
@@ -327,7 +335,7 @@ See [Pagination](#pagination) below for how to page through results.
 | `SpliceNegotiationFailed` | A channel splice negotiation round failed                       |
 
 > [!WARNING]
-> `SubscribeEvents` is a best-effort stream of new events. Events are not persisted for
+> All event streams are best-effort streams of new events. Events are not persisted for
 > subscribers, cannot be replayed after reconnecting, and have no client acknowledgement.
 > Acceptance by the server's broadcast channel does not guarantee that a client received or
 > processed an event.
