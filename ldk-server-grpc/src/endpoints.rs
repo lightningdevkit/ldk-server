@@ -26,6 +26,7 @@ pub const BOLT11_RECEIVE_VIA_JIT_CHANNEL_FOR_HASH_PATH: &str = "Bolt11ReceiveVia
 pub const BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_FOR_HASH_PATH: &str =
 	"Bolt11ReceiveVariableAmountViaJitChannelForHash";
 pub const BOLT11_SEND_PATH: &str = "Bolt11Send";
+pub const BOLT11_SEND_PROBES_PATH: &str = "Bolt11SendProbes";
 pub const BOLT11_SEND_UNDERPAYING_PATH: &str = "Bolt11SendUnderpaying";
 pub const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
 pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
@@ -47,6 +48,7 @@ pub const LIST_PEERS_PATH: &str = "ListPeers";
 pub const CONNECT_PEER_PATH: &str = "ConnectPeer";
 pub const DISCONNECT_PEER_PATH: &str = "DisconnectPeer";
 pub const SPONTANEOUS_SEND_PATH: &str = "SpontaneousSend";
+pub const SPONTANEOUS_SEND_PROBES_PATH: &str = "SpontaneousSendProbes";
 pub const SIGN_MESSAGE_PATH: &str = "SignMessage";
 pub const VERIFY_SIGNATURE_PATH: &str = "VerifySignature";
 pub const EXPORT_PATHFINDING_SCORES_PATH: &str = "ExportPathfindingScores";

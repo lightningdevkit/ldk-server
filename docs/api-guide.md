@@ -101,7 +101,7 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | `invoices:create` | Create BOLT11/BOLT12 invoices and incoming refund requests |
 | `payments:read` | Read payments, forwarded payments, and forwarding statistics |
 | `payments:claim` | Claim or fail held BOLT11 payments |
-| `payments:send` | Send BOLT11, BOLT12, spontaneous, unified, and refund payments; splice out |
+| `payments:send` | Send BOLT11, BOLT12, spontaneous and unified payments and probes; splice out |
 | `channels:read` | List channels |
 | `channels:manage` | Open, configure, cooperatively close, splice funds into channels, or bump pending splice fees |
 | `channels:force_close` | Force-close channels |
@@ -187,7 +187,14 @@ total fee rate in sat/vB; omit it to use an automatic rate. The response contain
 |-------------------------|-------------------------------------------------------------------|
 | `Bolt11Receive`         | Create an invoice (fixed or variable amount) with automatic claim |
 | `Bolt11Send`            | Pay a BOLT11 invoice (with optional routing config)               |
+| `Bolt11SendProbes`      | Send preflight probes for a BOLT11 invoice                        |
 | `Bolt11SendUnderpaying` | Send part of the amount for a fixed-amount BOLT11 invoice         |
+
+Preflight probes send temporary HTLCs along the paths of the route that would be used to pay and
+update the scorer. They do not make a payment, but can temporarily lock channel liquidity. Probing
+is useful only if the probes have time to settle before the actual payment; otherwise, they may tie
+up liquidity the payment needs. For variable-amount invoices, provide `amount_msat` to probe using
+the intended amount.
 
 > [!NOTE]
 > `Bolt11SendUnderpaying` sends one part of a multi-part payment (MPP) for a fixed-amount
@@ -230,10 +237,11 @@ a channel just-in-time when the invoice is paid.
 
 ### Spontaneous and Unified Send
 
-| RPC               | Description                                                                    |
-|-------------------|--------------------------------------------------------------------------------|
-| `SpontaneousSend` | Send a keysend payment to a node ID                                            |
-| `UnifiedSend`     | Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer |
+| RPC                       | Description                                                                    |
+|---------------------------|--------------------------------------------------------------------------------|
+| `SpontaneousSend`         | Send a keysend payment to a node ID                                            |
+| `SpontaneousSendProbes`   | Send preflight probes for a spontaneous payment to a node ID                   |
+| `UnifiedSend`             | Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer |
 
 ### Channel Management
 

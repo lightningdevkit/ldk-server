@@ -29,11 +29,12 @@ use ldk_node::lightning_invoice::Bolt11Invoice;
 use ldk_server_client::error::LdkServerErrorCode::{InvalidRequestError, LightningError};
 use ldk_server_client::ldk_server_grpc::api::{
 	onchain_send_request, open_channel_request, Bolt11ClaimForIdRequest, Bolt11FailForIdRequest,
-	Bolt11ReceiveRequest, Bolt11SendRequest, Bolt12ReceiveRequest, BumpChannelFundingFeeRequest,
-	GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest, GetPaymentDetailsRequest,
-	ListChannelForwardingStatsRequest, ListChannelPairForwardingStatsRequest, ListChannelsRequest,
-	ListForwardedPaymentsRequest, OnchainBumpFeeRequest, OnchainReceiveRequest, OnchainSendRequest,
-	OpenChannelRequest,
+	Bolt11ReceiveRequest, Bolt11SendProbesRequest, Bolt11SendRequest, Bolt12ReceiveRequest,
+	BumpChannelFundingFeeRequest, GetChannelForwardingStatsRequest,
+	GetForwardedPaymentDetailsRequest, GetPaymentDetailsRequest, ListChannelForwardingStatsRequest,
+	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListForwardedPaymentsRequest,
+	OnchainBumpFeeRequest, OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest,
+	SpontaneousSendProbesRequest,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{
@@ -1154,6 +1155,66 @@ async fn test_cli_bolt11_send() {
 		panic!("expected PaymentReceived");
 	};
 	assert!(!received.payment.as_ref().unwrap().payment_id.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_payment_preflight_probes() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
+
+	let fixed_invoice = server_b
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: Some(10_000_000),
+			description: None,
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+	let variable_invoice = server_b
+		.client()
+		.bolt11_receive(Bolt11ReceiveRequest {
+			amount_msat: None,
+			description: None,
+			expiry_secs: 3600,
+		})
+		.await
+		.unwrap();
+	let payment_ids_before: Vec<_> =
+		list_payments(&server_a).await.into_iter().map(|payment| payment.payment_id).collect();
+
+	server_a
+		.client()
+		.bolt11_send_probes(Bolt11SendProbesRequest {
+			invoice: fixed_invoice.invoice,
+			amount_msat: None,
+			route_parameters: None,
+		})
+		.await
+		.unwrap();
+	server_a
+		.client()
+		.bolt11_send_probes(Bolt11SendProbesRequest {
+			invoice: variable_invoice.invoice,
+			amount_msat: Some(10_000_000),
+			route_parameters: None,
+		})
+		.await
+		.unwrap();
+	server_a
+		.client()
+		.spontaneous_send_probes(SpontaneousSendProbesRequest {
+			amount_msat: 100_000,
+			node_id: server_b.node_id().to_string(),
+		})
+		.await
+		.unwrap();
+
+	let payment_ids_after: Vec<_> =
+		list_payments(&server_a).await.into_iter().map(|payment| payment.payment_id).collect();
+	assert_eq!(payment_ids_after, payment_ids_before);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

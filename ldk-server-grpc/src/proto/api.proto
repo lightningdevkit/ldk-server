@@ -383,6 +383,22 @@ message Bolt11SendResponse {
   string payment_id = 1;
 }
 
+// Send temporary preflight HTLC probes along routes for a BOLT11 invoice. Probes train the scorer
+// and may temporarily lock channel liquidity.
+message Bolt11SendProbesRequest {
+  // A BOLT11 invoice to probe routes for.
+  string invoice = 1;
+
+  // Optional amount in millisatoshis to probe with. Set this for a variable-amount invoice.
+  optional uint64 amount_msat = 2;
+
+  // Configuration options for payment routing and pathfinding.
+  optional types.RouteParametersConfig route_parameters = 3;
+}
+
+// The response for Bolt11SendProbes. Probe outcomes are reflected in the scorer.
+message Bolt11SendProbesResponse {}
+
 // Send part of the amount for a fixed-amount BOLT11 invoice.
 // Other nodes must send partial payments for the same invoice until the combined amount equals the invoice amount.
 // Without those payments, the receiver holds the incomplete MPP payment and eventually fails it.
@@ -569,6 +585,19 @@ message SpontaneousSendResponse {
   // An identifier used to uniquely identify a payment in hex-encoded form.
   string payment_id = 1;
 }
+
+// Send temporary preflight HTLC probes along routes to the given node for a spontaneous payment.
+// Probes train the scorer and may temporarily lock channel liquidity.
+message SpontaneousSendProbesRequest {
+  // The amount in millisatoshis to probe with.
+  uint64 amount_msat = 1;
+
+  // The hex-encoded public key of the destination node.
+  string node_id = 2;
+}
+
+// The response for SpontaneousSendProbes. Probe outcomes are reflected in the scorer.
+message SpontaneousSendProbesResponse {}
 
 // Selects all available on-chain funds.
 message AllFunds {}
@@ -1273,6 +1302,8 @@ service LightningNode {
   rpc Bolt11ReceiveVariableAmountViaJitChannelForHash(Bolt11ReceiveVariableAmountViaJitChannelForHashRequest) returns (Bolt11ReceiveVariableAmountViaJitChannelForHashResponse);
   // Send a payment for a BOLT11 invoice.
   rpc Bolt11Send(Bolt11SendRequest) returns (Bolt11SendResponse);
+  // Send temporary preflight HTLC probes for a BOLT11 invoice, training the scorer.
+  rpc Bolt11SendProbes(Bolt11SendProbesRequest) returns (Bolt11SendProbesResponse);
   // Send part of the amount for a fixed-amount BOLT11 invoice.
   // Other nodes must send partial payments for the same invoice until the combined amount equals the invoice amount.
   rpc Bolt11SendUnderpaying(Bolt11SendUnderpayingRequest) returns (Bolt11SendUnderpayingResponse);
@@ -1288,6 +1319,8 @@ service LightningNode {
   rpc Bolt12CreatePayerProof(Bolt12CreatePayerProofRequest) returns (Bolt12CreatePayerProofResponse);
   // Send a spontaneous payment (keysend).
   rpc SpontaneousSend(SpontaneousSendRequest) returns (SpontaneousSendResponse);
+  // Send temporary preflight HTLC probes for a spontaneous payment, training the scorer.
+  rpc SpontaneousSendProbes(SpontaneousSendProbesRequest) returns (SpontaneousSendProbesResponse);
   // Create a new outbound channel.
   rpc OpenChannel(OpenChannelRequest) returns (OpenChannelResponse);
   // Splice funds into a channel.

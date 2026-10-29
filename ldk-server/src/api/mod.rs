@@ -57,6 +57,7 @@ pub(crate) mod onchain_bump_fee;
 pub(crate) mod onchain_receive;
 pub(crate) mod onchain_send;
 pub(crate) mod open_channel;
+pub(crate) mod payment_probes;
 pub(crate) mod sign_message;
 pub(crate) mod splice_channel;
 pub(crate) mod spontaneous_send;
