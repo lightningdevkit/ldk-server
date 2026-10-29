@@ -78,6 +78,8 @@ use types::{
 	CliPaginatedResponse, Preimage,
 };
 
+mod event_wait;
+mod open_channel_wait;
 mod pay_wait;
 mod types;
 
@@ -602,6 +604,24 @@ enum Commands {
 			help = "The difference in the CLTV value between incoming HTLCs and an outbound HTLC forwarded over the channel. This can be updated by using update-channel-config."
 		)]
 		cltv_expiry_delta: Option<u32>,
+		/// Wait for the counterparty to accept or reject the channel.
+		///
+		/// With no `--wait-timeout`, waits until the funding transaction is broadcast or the open
+		/// fails. Does not wait for the funding transaction to confirm.
+		#[arg(
+			long,
+			help = "Wait until the funding transaction is broadcast or the open fails. Does not wait for confirmations"
+		)]
+		wait: bool,
+		/// Optional timeout in seconds for `--wait`. Omit to wait indefinitely.
+		#[arg(
+			long,
+			value_name = "SECS",
+			requires = "wait",
+			value_parser = clap::value_parser!(u64).range(1..),
+			help = "Seconds to wait when --wait is set. Omit to wait until the open resolves (minimum: 1)"
+		)]
+		wait_timeout: Option<u64>,
 	},
 	#[command(
 		about = "Increase the channel balance by the given amount, funds will come from the node's on-chain wallet"
@@ -1352,6 +1372,8 @@ async fn main() {
 			forwarding_fee_proportional_millionths,
 			forwarding_fee_base_msat,
 			cltv_expiry_delta,
+			wait,
+			wait_timeout,
 		} => {
 			let amount = match channel_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
 				Some(amount_sats) => open_channel_request::Amount::ChannelAmountSats(amount_sats),
@@ -1370,19 +1392,23 @@ async fn main() {
 				));
 			}
 
-			handle_response_result::<_, OpenChannelResponse>(
-				client
-					.open_channel(OpenChannelRequest {
-						node_pubkey,
-						address,
-						amount: Some(amount),
-						push_to_counterparty_msat,
-						channel_config,
-						announce_channel,
-						disable_counterparty_reserve,
-					})
-					.await,
-			);
+			let request = OpenChannelRequest {
+				node_pubkey,
+				address,
+				amount: Some(amount),
+				push_to_counterparty_msat,
+				channel_config,
+				announce_channel,
+				disable_counterparty_reserve,
+			};
+			if wait {
+				let timeout = wait_timeout.map(std::time::Duration::from_secs);
+				open_channel_wait::open_channel_and_wait(&client, request, timeout).await;
+			} else {
+				handle_response_result::<_, OpenChannelResponse>(
+					client.open_channel(request).await,
+				);
+			}
 		},
 		Commands::SpliceIn { user_channel_id, counterparty_node_id, splice_amount } => {
 			let amount = match splice_amount.to_sat().unwrap_or_else(|e| handle_error_msg(e)) {
