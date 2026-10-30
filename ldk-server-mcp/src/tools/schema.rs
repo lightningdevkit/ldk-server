@@ -402,6 +402,24 @@ pub fn bolt11_send_schema() -> Value {
 	})
 }
 
+pub fn bolt11_send_probes_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"invoice": {
+				"type": "string",
+				"description": "A BOLT11 invoice to probe routes for"
+			},
+			"amount_msat": {
+				"type": "integer",
+				"description": "Optional amount in millisatoshis to probe with; set this for a variable-amount invoice"
+			},
+			"route_parameters": route_parameters_config_schema()
+		},
+		"required": ["invoice"]
+	})
+}
+
 pub fn bolt11_send_underpaying_schema() -> Value {
 	json!({
 		"type": "object",
@@ -577,6 +595,23 @@ pub fn spontaneous_send_schema() -> Value {
 			"preimage": {
 				"type": "string",
 				"description": "The hex-encoded 32-byte payment preimage"
+			}
+		},
+		"required": ["amount_msat", "node_id"]
+	})
+}
+
+pub fn spontaneous_send_probes_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"amount_msat": {
+				"type": "integer",
+				"description": "The amount in millisatoshis to probe with"
+			},
+			"node_id": {
+				"type": "string",
+				"description": "The hex-encoded public key of the destination node"
 			}
 		},
 		"required": ["amount_msat", "node_id"]

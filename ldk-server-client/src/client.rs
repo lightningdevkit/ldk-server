@@ -20,16 +20,17 @@ use ldk_server_grpc::api::{
 	Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelForHashRequest,
 	Bolt11ReceiveViaJitChannelForHashResponse, Bolt11ReceiveViaJitChannelRequest,
-	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
-	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
-	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
-	Bolt12SendRequest, Bolt12SendResponse, BumpChannelFundingFeeRequest,
-	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
-	ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest,
-	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
-	DisconnectPeerResponse, ExportPathfindingScoresRequest, ExportPathfindingScoresResponse,
-	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	Bolt11ReceiveViaJitChannelResponse, Bolt11SendProbesRequest, Bolt11SendProbesResponse,
+	Bolt11SendRequest, Bolt11SendResponse, Bolt11SendUnderpayingRequest,
+	Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest, Bolt12CreatePayerProofResponse,
+	Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest,
+	Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest,
+	Bolt12SendResponse, BumpChannelFundingFeeRequest, BumpChannelFundingFeeResponse,
+	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+	CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
 	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
 	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
 	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
@@ -45,28 +46,30 @@ use ldk_server_grpc::api::{
 	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
 	OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest,
 	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest,
-	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	SpontaneousSendProbesRequest, SpontaneousSendProbesResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
 	BOLT11_RECEIVE_PATH, BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_FOR_HASH_PATH,
 	BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_FOR_HASH_PATH, BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH,
-	BOLT11_SEND_PATH, BOLT11_SEND_UNDERPAYING_PATH, BOLT12_CREATE_PAYER_PROOF_PATH,
-	BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH, BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH,
-	BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, CREATE_MACAROON_PATH,
-	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
-	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
-	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
-	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
-	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX,
-	LIST_CHANNELS_PATH, LIST_CHANNEL_FORWARDING_STATS_PATH,
-	LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH,
-	LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
+	BOLT11_SEND_PATH, BOLT11_SEND_PROBES_PATH, BOLT11_SEND_UNDERPAYING_PATH,
+	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
+	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH,
+	CONNECT_PEER_PATH, CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH,
+	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
+	GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH, GET_FORWARDED_PAYMENT_DETAILS_PATH,
+	GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
+	GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
+	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
+	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
+	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
+	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
+	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
 	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
@@ -270,6 +273,13 @@ impl LdkServerClient {
 		self.grpc_unary(&request, BOLT11_SEND_PATH).await
 	}
 
+	/// Send temporary preflight HTLC probes for a BOLT11 invoice to train the scorer.
+	pub async fn bolt11_send_probes(
+		&self, request: Bolt11SendProbesRequest,
+	) -> Result<Bolt11SendProbesResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT11_SEND_PROBES_PATH).await
+	}
+
 	/// Send part of the amount for a fixed-amount BOLT11 invoice.
 	///
 	/// Other nodes must send partial payments for the same invoice until the combined amount equals
@@ -456,6 +466,13 @@ impl LdkServerClient {
 		&self, request: SpontaneousSendRequest,
 	) -> Result<SpontaneousSendResponse, LdkServerError> {
 		self.grpc_unary(&request, SPONTANEOUS_SEND_PATH).await
+	}
+
+	/// Send temporary preflight HTLC probes for a spontaneous payment to train the scorer.
+	pub async fn spontaneous_send_probes(
+		&self, request: SpontaneousSendProbesRequest,
+	) -> Result<SpontaneousSendProbesResponse, LdkServerError> {
+		self.grpc_unary(&request, SPONTANEOUS_SEND_PROBES_PATH).await
 	}
 
 	/// Send a payment given a BIP 21 URI or BIP 353 Human-Readable Name.

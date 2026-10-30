@@ -504,6 +504,31 @@ pub struct Bolt11SendResponse {
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
 }
+/// Send temporary preflight HTLC probes along routes for a BOLT11 invoice. Probes train the scorer
+/// and may temporarily lock channel liquidity.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11SendProbesRequest {
+	/// A BOLT11 invoice to probe routes for.
+	#[prost(string, tag = "1")]
+	pub invoice: ::prost::alloc::string::String,
+	/// Optional amount in millisatoshis to probe with. Set this for a variable-amount invoice.
+	#[prost(uint64, optional, tag = "2")]
+	pub amount_msat: ::core::option::Option<u64>,
+	/// Configuration options for payment routing and pathfinding.
+	#[prost(message, optional, tag = "3")]
+	pub route_parameters: ::core::option::Option<super::types::RouteParametersConfig>,
+}
+/// The response for Bolt11SendProbes. Probe outcomes are reflected in the scorer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt11SendProbesResponse {}
 /// Send part of the amount for a fixed-amount BOLT11 invoice.
 /// Other nodes must send partial payments for the same invoice until the combined amount equals the invoice amount.
 /// Without those payments, the receiver holds the incomplete MPP payment and eventually fails it.
@@ -750,6 +775,28 @@ pub struct SpontaneousSendResponse {
 	#[prost(string, tag = "1")]
 	pub payment_id: ::prost::alloc::string::String,
 }
+/// Send temporary preflight HTLC probes along routes to the given node for a spontaneous payment.
+/// Probes train the scorer and may temporarily lock channel liquidity.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpontaneousSendProbesRequest {
+	/// The amount in millisatoshis to probe with.
+	#[prost(uint64, tag = "1")]
+	pub amount_msat: u64,
+	/// The hex-encoded public key of the destination node.
+	#[prost(string, tag = "2")]
+	pub node_id: ::prost::alloc::string::String,
+}
+/// The response for SpontaneousSendProbes. Probe outcomes are reflected in the scorer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpontaneousSendProbesResponse {}
 /// Selects all available on-chain funds.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]

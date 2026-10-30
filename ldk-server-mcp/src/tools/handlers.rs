@@ -13,20 +13,20 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ClaimForIdRequest, Bolt11FailForIdRequest, Bolt11ReceiveForHashRequest,
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelForHashRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelRequest, Bolt11ReceiveViaJitChannelForHashRequest,
-	Bolt11ReceiveViaJitChannelRequest, Bolt11SendRequest, Bolt11SendUnderpayingRequest,
-	Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest, Bolt12ReceiveRequest,
-	Bolt12SendRefundRequest, Bolt12SendRequest, BumpChannelFundingFeeRequest, CloseChannelRequest,
-	ConnectPeerRequest, CreateMacaroonRequest, DecodeInvoiceRequest, DecodeOfferRequest,
-	DisconnectPeerRequest, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
-	GetBalancesRequest, GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest,
-	GetForwardedPaymentTrackingModeRequest, GetNodeInfoRequest, GetPaymentDetailsRequest,
-	GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest, GraphListChannelsRequest,
-	GraphListNodesRequest, ListChannelForwardingStatsRequest,
+	Bolt11ReceiveViaJitChannelRequest, Bolt11SendProbesRequest, Bolt11SendRequest,
+	Bolt11SendUnderpayingRequest, Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest,
+	Bolt12ReceiveRequest, Bolt12SendRefundRequest, Bolt12SendRequest, BumpChannelFundingFeeRequest,
+	CloseChannelRequest, ConnectPeerRequest, CreateMacaroonRequest, DecodeInvoiceRequest,
+	DecodeOfferRequest, DisconnectPeerRequest, ExportPathfindingScoresRequest,
+	ForceCloseChannelRequest, GetBalancesRequest, GetChannelForwardingStatsRequest,
+	GetForwardedPaymentDetailsRequest, GetForwardedPaymentTrackingModeRequest, GetNodeInfoRequest,
+	GetPaymentDetailsRequest, GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
+	GraphListChannelsRequest, GraphListNodesRequest, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListForwardedPaymentsRequest,
 	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, OnchainBumpFeeRequest,
 	OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest,
-	SignMessageRequest, SpliceInRequest, SpliceOutRequest, SpontaneousSendRequest,
-	UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
+	SignMessageRequest, SpliceInRequest, SpliceOutRequest, SpontaneousSendProbesRequest,
+	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
 };
 use ldk_server_client::ldk_server_grpc::types::RouteParametersConfig;
 use ldk_server_client::{
@@ -291,6 +291,17 @@ pub async fn handle_bolt11_send(client: &LdkServerClient, args: Value) -> Result
 	serialize_response(response)
 }
 
+pub async fn handle_bolt11_send_probes(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt11SendProbesRequest =
+		parse_request_with_route_parameters(args, |request: &mut Bolt11SendProbesRequest| {
+			&mut request.route_parameters
+		})?;
+	let response = client.bolt11_send_probes(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
 pub async fn handle_bolt11_send_underpaying(
 	client: &LdkServerClient, args: Value,
 ) -> Result<Value, McpError> {
@@ -357,6 +368,14 @@ pub async fn handle_spontaneous_send(
 			&mut request.route_parameters
 		})?;
 	let response = client.spontaneous_send(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_spontaneous_send_probes(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: SpontaneousSendProbesRequest = parse_request(args)?;
+	let response = client.spontaneous_send_probes(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

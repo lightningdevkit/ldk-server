@@ -35,22 +35,23 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveVariableAmountViaJitChannelRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelResponse, Bolt11ReceiveViaJitChannelForHashRequest,
 	Bolt11ReceiveViaJitChannelForHashResponse, Bolt11ReceiveViaJitChannelRequest,
-	Bolt11ReceiveViaJitChannelResponse, Bolt11SendRequest, Bolt11SendResponse,
-	Bolt11SendUnderpayingRequest, Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest,
-	Bolt12CreatePayerProofResponse, Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse,
-	Bolt12ReceiveRequest, Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse,
-	Bolt12SendRequest, Bolt12SendResponse, BumpChannelFundingFeeRequest,
-	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
-	ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest,
-	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
-	DisconnectPeerResponse, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
-	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
-	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
-	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
-	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
-	GetPermissionsRequest, GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse,
-	GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	Bolt11ReceiveViaJitChannelResponse, Bolt11SendProbesRequest, Bolt11SendProbesResponse,
+	Bolt11SendRequest, Bolt11SendResponse, Bolt11SendUnderpayingRequest,
+	Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest, Bolt12CreatePayerProofResponse,
+	Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest,
+	Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest,
+	Bolt12SendResponse, BumpChannelFundingFeeRequest, BumpChannelFundingFeeResponse,
+	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+	CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
+	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
+	GetBalancesRequest, GetBalancesResponse, GetChannelForwardingStatsRequest,
+	GetChannelForwardingStatsResponse, GetForwardedPaymentDetailsRequest,
+	GetForwardedPaymentDetailsResponse, GetForwardedPaymentTrackingModeRequest,
+	GetForwardedPaymentTrackingModeResponse, GetNodeInfoRequest, GetNodeInfoResponse,
+	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
+	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
+	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
 	GraphListNodesRequest, GraphListNodesResponse, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListMacaroonsResponse, ListPaymentsRequest,
@@ -58,9 +59,10 @@ use ldk_server_client::ldk_server_grpc::api::{
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
 	OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse,
 	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest,
-	UnifiedSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	SpliceOutResponse, SpontaneousSendProbesRequest, SpontaneousSendProbesResponse,
+	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
+	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
+	VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::permissions::MacaroonPreset;
 use ldk_server_client::ldk_server_grpc::types::{
@@ -311,6 +313,21 @@ enum Commands {
 		)]
 		max_channel_saturation_power_of_half: Option<u32>,
 	},
+	#[command(about = "Send temporary preflight HTLC probes for a BOLT11 invoice")]
+	Bolt11SendProbes {
+		#[arg(help = "A BOLT11 invoice to probe routes for")]
+		invoice: String,
+		#[arg(help = "Intended amount for a variable-amount invoice, e.g. 50sat")]
+		amount: Option<Amount>,
+		#[arg(long, help = "Maximum total routing fee, e.g. 50sat or 50000msat")]
+		max_total_routing_fee: Option<Amount>,
+		#[arg(long, help = "Maximum total CLTV delta for the route")]
+		max_total_cltv_expiry_delta: Option<u32>,
+		#[arg(long, help = "Maximum number of paths that may be probed")]
+		max_path_count: Option<u32>,
+		#[arg(long, help = "Maximum channel saturation power of one half")]
+		max_channel_saturation_power_of_half: Option<u32>,
+	},
 	#[command(
 		about = "Send part of a fixed-amount BOLT11 invoice. Other nodes must send partial payments for the same invoice until the combined amount equals the invoice amount"
 	)]
@@ -494,6 +511,13 @@ enum Commands {
 			help = "An optional hex-encoded 32-byte payment preimage. If provided, it will be used instead of generating a random one."
 		)]
 		preimage: Option<Preimage>,
+	},
+	#[command(about = "Send temporary preflight HTLC probes for a spontaneous payment")]
+	SpontaneousSendProbes {
+		#[arg(help = "The hex-encoded public key of the destination node")]
+		node_id: String,
+		#[arg(help = "The amount to probe with, e.g. 50sat or 50000msat")]
+		amount: Amount,
 	},
 	#[command(
 		about = "Pay a BIP 21 URI, BIP 353 Human-Readable Name, BOLT11 invoice, or BOLT12 offer"
@@ -1100,6 +1124,32 @@ async fn main() {
 					.await,
 			);
 		},
+		Commands::Bolt11SendProbes {
+			invoice,
+			amount,
+			max_total_routing_fee,
+			max_total_cltv_expiry_delta,
+			max_path_count,
+			max_channel_saturation_power_of_half,
+		} => {
+			let route_parameters = RouteParametersConfig {
+				max_total_routing_fee_msat: max_total_routing_fee.map(|amount| amount.to_msat()),
+				max_total_cltv_expiry_delta: max_total_cltv_expiry_delta
+					.unwrap_or(DEFAULT_MAX_TOTAL_CLTV_EXPIRY_DELTA),
+				max_path_count: max_path_count.unwrap_or(DEFAULT_MAX_PATH_COUNT),
+				max_channel_saturation_power_of_half: max_channel_saturation_power_of_half
+					.unwrap_or(DEFAULT_MAX_CHANNEL_SATURATION_POWER_OF_HALF),
+			};
+			handle_response_result::<_, Bolt11SendProbesResponse>(
+				client
+					.bolt11_send_probes(Bolt11SendProbesRequest {
+						invoice,
+						amount_msat: amount.map(|amount| amount.to_msat()),
+						route_parameters: Some(route_parameters),
+					})
+					.await,
+			);
+		},
 		Commands::Bolt11SendUnderpaying {
 			invoice,
 			amount,
@@ -1275,6 +1325,16 @@ async fn main() {
 						route_parameters: Some(route_parameters),
 						custom_tlvs: proto_custom_tlvs,
 						preimage: preimage.map(|p| p.to_hex_string()),
+					})
+					.await,
+			);
+		},
+		Commands::SpontaneousSendProbes { node_id, amount } => {
+			handle_response_result::<_, SpontaneousSendProbesResponse>(
+				client
+					.spontaneous_send_probes(SpontaneousSendProbesRequest {
+						amount_msat: amount.to_msat(),
+						node_id,
 					})
 					.await,
 			);
