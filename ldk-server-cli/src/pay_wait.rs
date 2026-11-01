@@ -12,9 +12,9 @@ use std::time::Duration;
 use ldk_server_client::client::{EventStream, LdkServerClient};
 use ldk_server_client::error::LdkServerError;
 use ldk_server_client::error::LdkServerErrorCode::InternalError;
-use ldk_server_client::ldk_server_grpc::api::unified_send_response;
 use ldk_server_client::ldk_server_grpc::api::{
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, UnifiedSendRequest, UnifiedSendResponse,
+	unified_send_response, GetPaymentDetailsRequest, GetPaymentDetailsResponse, UnifiedSendRequest,
+	UnifiedSendResponse,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 
