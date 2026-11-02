@@ -29,6 +29,11 @@ pub const BOLT11_SEND_PATH: &str = "Bolt11Send";
 pub const BOLT11_SEND_PROBES_PATH: &str = "Bolt11SendProbes";
 pub const BOLT11_SEND_UNDERPAYING_PATH: &str = "Bolt11SendUnderpaying";
 pub const BOLT12_RECEIVE_PATH: &str = "Bolt12Receive";
+pub const BOLT12_RECEIVE_ASYNC_PATH: &str = "Bolt12ReceiveAsync";
+pub const BOLT12_SET_PATHS_TO_STATIC_INVOICE_SERVER_PATH: &str =
+	"Bolt12SetPathsToStaticInvoiceServer";
+pub const BOLT12_BLINDED_PATHS_FOR_ASYNC_RECIPIENT_PATH: &str =
+	"Bolt12BlindedPathsForAsyncRecipient";
 pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
 pub const BOLT12_SEND_REFUND_PATH: &str = "Bolt12SendRefund";
 pub const BOLT12_RECEIVE_REFUND_PATH: &str = "Bolt12ReceiveRefund";
