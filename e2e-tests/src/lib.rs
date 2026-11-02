@@ -749,10 +749,11 @@ impl Drop for McpHandle {
 	}
 }
 
-/// Run a CLI command against the given server handle and return raw stdout as a string.
-pub fn run_cli_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
+/// Run a CLI command against the given server handle and return its output, whatever the exit
+/// status.
+pub fn run_cli_output(handle: &LdkServerHandle, args: &[&str]) -> std::process::Output {
 	let cli_path = cli_binary_path();
-	let output = Command::new(&cli_path)
+	Command::new(&cli_path)
 		.arg("--base-url")
 		.arg(handle.base_url())
 		.arg("--macaroon")
@@ -761,7 +762,12 @@ pub fn run_cli_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
 		.arg(handle.tls_cert_path.to_str().unwrap())
 		.args(args)
 		.output()
-		.unwrap_or_else(|e| panic!("Failed to run CLI at {:?}: {}", cli_path, e));
+		.unwrap_or_else(|e| panic!("Failed to run CLI at {:?}: {}", cli_path, e))
+}
+
+/// Run a CLI command against the given server handle and return raw stdout as a string.
+pub fn run_cli_raw(handle: &LdkServerHandle, args: &[&str]) -> String {
+	let output = run_cli_output(handle, args);
 
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
