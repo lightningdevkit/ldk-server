@@ -14,7 +14,6 @@ use ldk_server_client::ldk_server_grpc::api::{ListChannelsRequest, OpenChannelRe
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_client::ldk_server_grpc::events::{ChannelState, ChannelStateChanged};
 use ldk_server_client::ldk_server_grpc::types::Channel;
-use serde_json::json;
 
 use crate::event_wait::{wait_for_event, WaitOutcome, EXIT_WAIT_FAILED, EXIT_WAIT_TIMEOUT};
 use crate::{handle_error, print_response, sanitize_for_terminal};
@@ -51,21 +50,19 @@ pub(crate) async fn open_channel_and_wait(
 		.unwrap_or_else(|e| handle_error(e));
 
 	match outcome {
-		WaitOutcome::Matched(Outcome::Pending(event)) => print_response(&json!({
-			"user_channel_id": event.user_channel_id,
-			"channel_id": event.channel_id,
-			"funding_txo": event.funding_txo,
-		})),
+		WaitOutcome::Matched(Outcome::Pending(event)) => print_response(&event),
 		WaitOutcome::Matched(Outcome::Failed(event)) => {
 			let reason = event
 				.reason
-				.map(|reason| reason.message)
+				.as_ref()
+				.map(|reason| reason.message.as_str())
 				.filter(|message| !message.is_empty())
-				.unwrap_or_else(|| "no reason given".to_string());
+				.unwrap_or("no reason given");
 			eprintln!(
 				"{}",
 				sanitize_for_terminal(format!("Channel open {user_channel_id} failed: {reason}"))
 			);
+			print_response(&event);
 			std::process::exit(EXIT_WAIT_FAILED);
 		},
 		WaitOutcome::TimedOut => {
