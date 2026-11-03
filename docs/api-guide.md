@@ -230,10 +230,21 @@ a channel just-in-time when the invoice is paid.
 | RPC                      | Description                                                             |
 |--------------------------|-------------------------------------------------------------------------|
 | `Bolt12Receive`          | Create a BOLT12 offer (fixed or variable amount)                        |
+| `Bolt12ReceiveAsync`     | Retrieve the offer for receiving while this node is offline             |
+| `Bolt12SetPathsToStaticInvoiceServer` | Configure serialized blinded paths to a static invoice server |
+| `Bolt12BlindedPathsForAsyncRecipient` | Create serialized blinded paths for an async recipient         |
 | `Bolt12Send`             | Pay a BOLT12 offer (with optional quantity, payer note, routing config) |
 | `Bolt12SendRefund`       | Create a BOLT12 refund that this node will pay                          |
 | `Bolt12ReceiveRefund`    | Request an incoming payment for a BOLT12 refund                         |
 | `Bolt12CreatePayerProof` | Create a BOLT 12 payer proof from a successful payment                  |
+
+Async receive is experimental. `Bolt12ReceiveAsync` and `Bolt12SetPathsToStaticInvoiceServer`
+require the node's async-payments role to be set to `Client`; configure paths to a static
+invoice server before requesting an offer. `Bolt12ReceiveAsync` returns an offer only after the
+static invoice server has successfully completed building its static invoice.
+`Bolt12BlindedPathsForAsyncRecipient` requires the role to be set to `Server`.
+The blinded path fields use LDK's lightning serialization for `Vec<BlindedMessagePath>`; the CLI
+accepts and returns these byte values as hex, while gRPC transports them as bytes.
 
 ### Spontaneous and Unified Send
 

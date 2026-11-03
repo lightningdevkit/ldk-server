@@ -462,6 +462,38 @@ pub fn bolt12_receive_schema() -> Value {
 	})
 }
 
+pub fn bolt12_receive_async_schema() -> Value {
+	json!({ "type": "object", "properties": {}, "required": [] })
+}
+
+pub fn bolt12_set_paths_to_static_invoice_server_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"blinded_paths": {
+				"type": "array",
+				"items": {"type": "integer", "minimum": 0, "maximum": 255},
+				"description": "LDK lightning serialization of Vec<BlindedMessagePath>"
+			}
+		},
+		"required": ["blinded_paths"]
+	})
+}
+
+pub fn bolt12_blinded_paths_for_async_recipient_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"recipient_id": {
+				"type": "array",
+				"items": {"type": "integer", "minimum": 0, "maximum": 255},
+				"description": "Opaque recipient identifier bytes"
+			}
+		},
+		"required": ["recipient_id"]
+	})
+}
+
 pub fn bolt12_send_schema() -> Value {
 	json!({
 		"type": "object",

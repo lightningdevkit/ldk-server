@@ -605,6 +605,69 @@ pub struct Bolt12ReceiveResponse {
 	#[prost(string, tag = "2")]
 	pub offer_id: ::prost::alloc::string::String,
 }
+/// Retrieve an offer for receiving payments while this node is offline.
+/// Async payments support is experimental. The node must be configured as an async client, and
+/// paths to a static invoice server must have been set. An offer is returned only after the static
+/// invoice server has successfully completed building its static invoice.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12ReceiveAsyncRequest {}
+/// The offer generated for asynchronous payments.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12ReceiveAsyncResponse {
+	/// An offer for a payment within the Lightning Network.
+	#[prost(string, tag = "1")]
+	pub offer: ::prost::alloc::string::String,
+	/// The hex-encoded offer id.
+	#[prost(string, tag = "2")]
+	pub offer_id: ::prost::alloc::string::String,
+}
+/// Set the blinded message paths used to interact with a static invoice server.
+/// blinded_paths must be encoded using the LDK lightning serialization format for Vec<BlindedMessagePath>.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12SetPathsToStaticInvoiceServerRequest {
+	/// Serialized Vec<BlindedMessagePath>.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub blinded_paths: ::prost::bytes::Bytes,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12SetPathsToStaticInvoiceServerResponse {}
+/// Create blinded message paths for an asynchronous recipient.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12BlindedPathsForAsyncRecipientRequest {
+	/// Opaque recipient identifier used to derive the blinded paths.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub recipient_id: ::prost::bytes::Bytes,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bolt12BlindedPathsForAsyncRecipientResponse {
+	/// Serialized Vec<BlindedMessagePath> in the LDK lightning serialization format.
+	#[prost(bytes = "bytes", tag = "1")]
+	pub blinded_paths: ::prost::bytes::Bytes,
+}
 /// Send a payment for a BOLT12 offer.
 /// See more:
 /// - <https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send>
