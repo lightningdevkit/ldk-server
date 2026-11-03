@@ -288,14 +288,14 @@ pub fn build_tool_registry() -> ToolRegistry {
 		tool_spec(
 			"bolt12_receive_async",
 			BOLT12_RECEIVE_ASYNC_PATH,
-			"Retrieve the BOLT12 offer for receiving payments while this node is offline; requires async server configuration and static invoice server paths",
+			"Retrieve the BOLT12 offer for receiving payments while this node is offline; requires async client configuration, static invoice server paths, and successful static invoice construction",
 			schema::bolt12_receive_async_schema,
 			|client, args| Box::pin(handlers::handle_bolt12_receive_async(client, args)),
 		),
 		tool_spec(
 			"bolt12_set_paths_to_static_invoice_server",
 			BOLT12_SET_PATHS_TO_STATIC_INVOICE_SERVER_PATH,
-			"Set LDK-serialized blinded message paths used to communicate with a static invoice server",
+			"For an async client, set LDK-serialized blinded message paths used to communicate with a static invoice server",
 			schema::bolt12_set_paths_to_static_invoice_server_schema,
 			|client, args| {
 				Box::pin(handlers::handle_bolt12_set_paths_to_static_invoice_server(client, args))
@@ -304,7 +304,7 @@ pub fn build_tool_registry() -> ToolRegistry {
 		tool_spec(
 			"bolt12_blinded_paths_for_async_recipient",
 			BOLT12_BLINDED_PATHS_FOR_ASYNC_RECIPIENT_PATH,
-			"Create LDK-serialized blinded message paths for an asynchronous recipient",
+			"For an async server, create LDK-serialized blinded message paths for an asynchronous recipient",
 			schema::bolt12_blinded_paths_for_async_recipient_schema,
 			|client, args| {
 				Box::pin(handlers::handle_bolt12_blinded_paths_for_async_recipient(client, args))

@@ -461,8 +461,9 @@ message Bolt12ReceiveResponse {
 }
 
 // Retrieve an offer for receiving payments while this node is offline.
-// Async payments support is experimental and requires the node to be configured as an async server
-// and paths to a static invoice server to have been set.
+// Async payments support is experimental. The node must be configured as an async client, and
+// paths to a static invoice server must have been set. An offer is returned only after the static
+// invoice server has successfully completed building its static invoice.
 message Bolt12ReceiveAsyncRequest {}
 
 // The offer generated for asynchronous payments.

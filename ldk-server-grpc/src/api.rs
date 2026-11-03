@@ -606,8 +606,9 @@ pub struct Bolt12ReceiveResponse {
 	pub offer_id: ::prost::alloc::string::String,
 }
 /// Retrieve an offer for receiving payments while this node is offline.
-/// Async payments support is experimental and requires the node to be configured as an async server
-/// and paths to a static invoice server to have been set.
+/// Async payments support is experimental. The node must be configured as an async client, and
+/// paths to a static invoice server must have been set. An offer is returned only after the static
+/// invoice server has successfully completed building its static invoice.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "serde", serde(default))]
