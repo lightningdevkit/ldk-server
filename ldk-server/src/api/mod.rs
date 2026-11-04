@@ -170,6 +170,17 @@ pub(crate) fn build_route_parameters_config_from_proto(
 	}
 }
 
+pub(crate) fn with_default_max_routing_fee(
+	route_parameters: Option<RouteParametersConfig>, amount_msat: u64,
+) -> Option<RouteParametersConfig> {
+	route_parameters.map(|params| RouteParametersConfig {
+		max_total_routing_fee_msat: params
+			.max_total_routing_fee_msat
+			.or_else(|| Some((amount_msat / 100).saturating_add(50_000))),
+		..params
+	})
+}
+
 pub(crate) fn proto_to_node_custom_tlv(proto: &ProtoCustomTlvRecord) -> NodeCustomTlvRecord {
 	NodeCustomTlvRecord { type_num: proto.type_num, value: proto.value.to_vec() }
 }
@@ -196,6 +207,47 @@ mod tests {
 		for rate in [0, u64::MAX / 250 + 1, u64::MAX] {
 			assert_eq!(parse_fee_rate(Some(rate)).unwrap_err().error_code, InvalidRequestError);
 		}
+	}
+
+	#[test]
+	fn missing_routing_fee_limit_defaults_to_one_percent_plus_fifty_sats() {
+		let params = RouteParametersConfig {
+			max_total_routing_fee_msat: None,
+			max_total_cltv_expiry_delta: 144,
+			max_path_count: 3,
+			max_channel_saturation_power_of_half: 1,
+		};
+
+		let resolved = with_default_max_routing_fee(Some(params), 1_000_000).unwrap();
+		assert_eq!(resolved.max_total_routing_fee_msat, Some(10_000 + 50_000));
+		assert_eq!(resolved.max_total_cltv_expiry_delta, 144);
+		assert_eq!(resolved.max_path_count, 3);
+		assert_eq!(resolved.max_channel_saturation_power_of_half, 1);
+
+		let resolved = with_default_max_routing_fee(Some(params), 0).unwrap();
+		assert_eq!(resolved.max_total_routing_fee_msat, Some(50_000));
+
+		let resolved = with_default_max_routing_fee(Some(params), u64::MAX).unwrap();
+		assert_eq!(resolved.max_total_routing_fee_msat, Some(u64::MAX / 100 + 50_000));
+	}
+
+	#[test]
+	fn explicit_routing_fee_limit_is_kept() {
+		for limit in [0, 1_000, u64::MAX] {
+			let params = RouteParametersConfig {
+				max_total_routing_fee_msat: Some(limit),
+				max_total_cltv_expiry_delta: 1008,
+				max_path_count: 10,
+				max_channel_saturation_power_of_half: 2,
+			};
+			let resolved = with_default_max_routing_fee(Some(params), 1_000_000).unwrap();
+			assert_eq!(resolved.max_total_routing_fee_msat, Some(limit));
+		}
+	}
+
+	#[test]
+	fn absent_route_parameters_stay_absent() {
+		assert!(with_default_max_routing_fee(None, 1_000_000).is_none());
 	}
 
 	#[test]

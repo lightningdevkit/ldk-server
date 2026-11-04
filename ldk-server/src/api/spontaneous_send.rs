@@ -18,7 +18,10 @@ use ldk_server_grpc::api::{SpontaneousSendRequest, SpontaneousSendResponse};
 
 use crate::api::error::LdkServerError;
 use crate::api::error::LdkServerErrorCode::InvalidRequestError;
-use crate::api::{build_route_parameters_config_from_proto, proto_to_node_custom_tlv};
+use crate::api::{
+	build_route_parameters_config_from_proto, proto_to_node_custom_tlv,
+	with_default_max_routing_fee,
+};
 use crate::service::Context;
 
 pub(crate) async fn handle_spontaneous_send_request(
@@ -28,7 +31,10 @@ pub(crate) async fn handle_spontaneous_send_request(
 		LdkServerError::new(InvalidRequestError, "Invalid node_id provided.".to_string())
 	})?;
 
-	let route_parameters = build_route_parameters_config_from_proto(request.route_parameters)?;
+	let route_parameters = with_default_max_routing_fee(
+		build_route_parameters_config_from_proto(request.route_parameters)?,
+		request.amount_msat,
+	);
 
 	let preimage = request
 		.preimage
