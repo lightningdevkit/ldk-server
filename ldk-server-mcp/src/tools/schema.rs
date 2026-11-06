@@ -964,6 +964,19 @@ pub fn sign_message_schema() -> Value {
 	})
 }
 
+pub fn lnurl_auth_schema() -> Value {
+	json!({
+		"type": "object",
+		"properties": {
+			"lnurl": {
+				"type": "string",
+				"description": "Bech32-encoded LNURL-auth URL. Calling this sends an outbound request to the encoded URL."
+			}
+		},
+		"required": ["lnurl"]
+	})
+}
+
 pub fn verify_signature_schema() -> Value {
 	json!({
 		"type": "object",

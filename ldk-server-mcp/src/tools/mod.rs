@@ -31,10 +31,11 @@ use ldk_server_client::ldk_server_grpc::endpoints::{
 	GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH,
 	GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH, LIST_CHANNEL_FORWARDING_STATS_PATH,
 	LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH,
-	LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH,
-	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, UNIFIED_SEND_PATH,
-	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	LIST_PAYMENTS_PATH, LIST_PEERS_PATH, LNURL_AUTH_PATH, ONCHAIN_BUMP_FEE_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH,
+	SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	SPONTANEOUS_SEND_PROBES_PATH, UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH,
+	VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_client::ldk_server_grpc::permissions::{
 	method_authorization, MethodAuthorization, ADMIN_PERMISSION,
@@ -485,6 +486,13 @@ pub fn build_tool_registry() -> ToolRegistry {
 			"Sign a message with the node's secret key",
 			schema::sign_message_schema,
 			|client, args| Box::pin(handlers::handle_sign_message(client, args)),
+		),
+		tool_spec(
+			"lnurl_auth",
+			LNURL_AUTH_PATH,
+			"Authenticate with an LNURL-auth service. Sends an outbound request to the URL; requires the lnurl:auth permission",
+			schema::lnurl_auth_schema,
+			|client, args| Box::pin(handlers::handle_lnurl_auth(client, args)),
 		),
 		tool_spec(
 			"verify_signature",

@@ -17,7 +17,9 @@ use ldk_server_client::error::LdkServerErrorCode::{
 	AuthError, AuthorizationError, InvalidRequestError,
 };
 use ldk_server_client::macaroon::{derive_macaroon, Macaroon};
-use ldk_server_grpc::api::{GetNodeInfoRequest, GetPermissionsRequest, OnchainReceiveRequest};
+use ldk_server_grpc::api::{
+	GetNodeInfoRequest, GetPermissionsRequest, LnurlAuthRequest, OnchainReceiveRequest,
+};
 use ldk_server_grpc::events::event_envelope::Event;
 use ldk_server_grpc::events::ChannelState;
 
@@ -120,6 +122,40 @@ async fn test_macaroon_onchain_fee_bump_permissions() {
 			expected_error
 		);
 	}
+}
+
+#[tokio::test]
+async fn test_lnurl_auth_permission_and_invalid_input() {
+	let bitcoind = TestBitcoind::new();
+	let server = LdkServerHandle::start(&bitcoind).await;
+
+	let signing_macaroon =
+		run_cli(&server, &["create-macaroon", "signing", "--permissions", "messages:sign"]);
+	let signing_client =
+		client_with_macaroon(&server, signing_macaroon["token"].as_str().unwrap().to_string());
+	assert_eq!(
+		signing_client
+			.lnurl_auth(LnurlAuthRequest { lnurl: "not-an-lnurl".to_string() })
+			.await
+			.unwrap_err()
+			.error_code,
+		AuthorizationError,
+		"messages:sign must not grant permission to initiate LNURL-auth requests"
+	);
+
+	let auth_macaroon =
+		run_cli(&server, &["create-macaroon", "lnurl-auth", "--permissions", "lnurl:auth"]);
+	let auth_client =
+		client_with_macaroon(&server, auth_macaroon["token"].as_str().unwrap().to_string());
+	assert_eq!(
+		auth_client
+			.lnurl_auth(LnurlAuthRequest { lnurl: "not-an-lnurl".to_string() })
+			.await
+			.unwrap_err()
+			.error_code,
+		InvalidRequestError,
+		"an authorized malformed LNURL should reach validation and fail before any network request"
+	);
 }
 
 #[tokio::test]

@@ -42,14 +42,14 @@ use ldk_server_grpc::api::{
 	ListChannelPairForwardingStatsResponse, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListForwardedPaymentsResponse, ListMacaroonsRequest,
 	ListMacaroonsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
-	ListPeersResponse, OnchainBumpFeeRequest, OnchainBumpFeeResponse, OnchainReceiveRequest,
-	OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse, OpenChannelRequest,
-	OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest,
-	SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
-	SpontaneousSendProbesRequest, SpontaneousSendProbesResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ListPeersResponse, LnurlAuthRequest, LnurlAuthResponse, OnchainBumpFeeRequest,
+	OnchainBumpFeeResponse, OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest,
+	OnchainSendResponse, OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest,
+	RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse, SpliceInRequest,
+	SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendProbesRequest,
+	SpontaneousSendProbesResponse, SpontaneousSendRequest, SpontaneousSendResponse,
+	SubscribeEventsRequest, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_grpc::endpoints::{
 	BOLT11_CLAIM_FOR_ID_PATH, BOLT11_FAIL_FOR_ID_PATH, BOLT11_RECEIVE_FOR_HASH_PATH,
@@ -67,8 +67,8 @@ use ldk_server_grpc::endpoints::{
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
 	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
-	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
-	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	LNURL_AUTH_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH,
+	OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
 	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
@@ -501,6 +501,13 @@ impl LdkServerClient {
 		&self, request: SignMessageRequest,
 	) -> Result<SignMessageResponse, LdkServerError> {
 		self.grpc_unary(&request, SIGN_MESSAGE_PATH).await
+	}
+
+	/// Authenticate with an LNURL-auth service using the node's domain-specific key.
+	pub async fn lnurl_auth(
+		&self, request: LnurlAuthRequest,
+	) -> Result<LnurlAuthResponse, LdkServerError> {
+		self.grpc_unary(&request, LNURL_AUTH_PATH).await
 	}
 
 	/// Verify a signature against a message and public key.

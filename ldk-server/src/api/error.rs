@@ -101,9 +101,8 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidBlindedPaths
 			| NodeError::InvalidPayerProof
 			| NodeError::PayerProofCreationFailed
-			| NodeError::AsyncPaymentServicesDisabled => {
-				(error.to_string(), LdkServerErrorCode::InvalidRequestError)
-			},
+			| NodeError::AsyncPaymentServicesDisabled
+			| NodeError::InvalidLnurl => (error.to_string(), LdkServerErrorCode::InvalidRequestError),
 			NodeError::ConnectionFailed
 			| NodeError::InvoiceCreationFailed
 			| NodeError::InvoiceRequestCreationFailed
@@ -138,7 +137,6 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidScriptPubKey
 			| NodeError::LnurlAuthFailed
 			| NodeError::LnurlAuthTimeout
-			| NodeError::InvalidLnurl
 			| NodeError::ChainSourceNotSupported
 			| NodeError::TxSyncTimeout => (error.to_string(), LdkServerErrorCode::InternalServerError),
 		};

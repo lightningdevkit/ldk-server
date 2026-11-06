@@ -32,8 +32,8 @@ use ldk_server_grpc::endpoints::{
 	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, LIST_CHANNELS_PATH,
 	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
 	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
-	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
-	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
+	LNURL_AUTH_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH,
+	OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
 	SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
 	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
@@ -88,6 +88,7 @@ use crate::api::list_channels::handle_list_channels_request;
 use crate::api::list_forwarded_payments::handle_list_forwarded_payments_request;
 use crate::api::list_payments::handle_list_payments_request;
 use crate::api::list_peers::handle_list_peers_request;
+use crate::api::lnurl_auth::handle_lnurl_auth_request;
 use crate::api::macaroons::{
 	handle_create_macaroon_request, handle_get_permissions_request, handle_list_macaroons_request,
 	handle_revoke_macaroon_request,
@@ -428,6 +429,9 @@ impl Service<Request<Incoming>> for NodeService {
 				},
 				SIGN_MESSAGE_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_sign_message_request).await
+				},
+				LNURL_AUTH_PATH => {
+					handle_grpc_unary(context, body_bytes, handle_lnurl_auth_request).await
 				},
 				VERIFY_SIGNATURE_PATH => {
 					handle_grpc_unary(context, body_bytes, handle_verify_signature_request).await
