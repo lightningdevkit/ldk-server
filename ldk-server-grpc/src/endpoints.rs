@@ -50,6 +50,7 @@ pub const DISCONNECT_PEER_PATH: &str = "DisconnectPeer";
 pub const SPONTANEOUS_SEND_PATH: &str = "SpontaneousSend";
 pub const SPONTANEOUS_SEND_PROBES_PATH: &str = "SpontaneousSendProbes";
 pub const SIGN_MESSAGE_PATH: &str = "SignMessage";
+pub const LNURL_AUTH_PATH: &str = "LnurlAuth";
 pub const VERIFY_SIGNATURE_PATH: &str = "VerifySignature";
 pub const EXPORT_PATHFINDING_SCORES_PATH: &str = "ExportPathfindingScores";
 pub const UNIFIED_SEND_PATH: &str = "UnifiedSend";

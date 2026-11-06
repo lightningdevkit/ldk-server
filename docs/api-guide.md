@@ -108,6 +108,7 @@ RPCs with no permission mapping return `UNIMPLEMENTED`, even for admin tokens.
 | `peers:read` | List peers |
 | `peers:manage` | Connect or disconnect peers |
 | `messages:sign` | Sign messages and create BOLT12 payer proofs |
+| `lnurl:auth` | Authenticate with an LNURL-auth service |
 | `messages:verify` | Verify message signatures |
 | `graph:read` | Read network graph data |
 | `utilities:read` | Decode invoices and offers |
@@ -296,7 +297,12 @@ See [Pagination](#pagination) below for how to page through results.
 | RPC               | Description                                         |
 |-------------------|-----------------------------------------------------|
 | `SignMessage`     | Sign a message with the node's private key          |
+| `LnurlAuth`       | Authenticate with an LNURL-auth service             |
 | `VerifySignature` | Verify a signature against a message and public key |
+
+`LnurlAuth` sends an outbound request to the URL encoded in the supplied LNURL. LDK Node requires
+HTTPS except for localhost URLs and does not follow redirects for the authentication request. Grant
+the `lnurl:auth` permission only to callers trusted to initiate that request.
 
 ### Network Graph
 
