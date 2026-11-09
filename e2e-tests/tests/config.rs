@@ -8,7 +8,8 @@
 // licenses.
 
 use e2e_tests::{
-	start_expect_failure, ChainSource, LdkServerHandle, TestBitcoind, TestConfigBuilder,
+	reserve_port, start_expect_failure, ChainSource, LdkServerHandle, TestBitcoind,
+	TestConfigBuilder,
 };
 use ldk_server_grpc::api::GetNodeInfoRequest;
 
@@ -96,6 +97,17 @@ async fn test_config_with_tls_hosts() {
 	.await;
 	let info = server.client().get_node_info(GetNodeInfoRequest {}).await.unwrap();
 	assert!(info.current_best_block.is_some());
+}
+
+#[test]
+fn test_config_fail_grpc_address_in_use() {
+	let bitcoind = TestBitcoind::new();
+	let blocker = reserve_port();
+	let address = blocker.local_addr().unwrap().to_string();
+	let stderr = start_expect_failure(&bitcoind, |params| {
+		TestConfigBuilder::new(params).grpc_service_address(&address).build()
+	});
+	assert!(stderr.contains("Failed to bind gRPC service address"), "Unexpected stderr: {stderr}");
 }
 
 #[test]

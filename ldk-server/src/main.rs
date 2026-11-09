@@ -38,7 +38,7 @@ use log::{debug, error, info, warn};
 use prost::Message;
 use tokio::net::TcpListener;
 use tokio::select;
-use tokio::signal::unix::SignalKind;
+use tokio::signal::unix::{Signal, SignalKind};
 use tokio::sync::broadcast;
 
 use crate::api::node_to_proto_custom_tlv;
@@ -322,6 +322,30 @@ fn main() {
 	let (event_sender, _) = broadcast::channel::<EventEnvelope>(1024);
 	let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
+	// Set up everything that can fail locally before the node starts, so that a failure never
+	// leaves a running node behind, and handle signals from the start.
+	let server_config =
+		match get_or_generate_tls_config(config_file.tls_config, storage_dir.to_str().unwrap()) {
+			Ok(config) => config,
+			Err(e) => {
+				error!("Failed to set up TLS: {e}");
+				std::process::exit(-1);
+			},
+		};
+	let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+
+	let grpc_listener = match runtime.block_on(TcpListener::bind(config_file.grpc_service_addr)) {
+		Ok(listener) => listener,
+		Err(e) => {
+			error!("Failed to bind gRPC service address {}: {e}", config_file.grpc_service_addr);
+			std::process::exit(-1);
+		},
+	};
+
+	let mut sighup_stream = register_signal(&runtime, SignalKind::hangup());
+	let mut sigterm_stream = register_signal(&runtime, SignalKind::terminate());
+	let mut sigint_stream = register_signal(&runtime, SignalKind::interrupt());
+
 	info!("Starting ldk-server version {FULL_VERSION}");
 	match node.start() {
 		Ok(()) => {},
@@ -343,22 +367,6 @@ fn main() {
 	}
 
 	runtime.block_on(async {
-		// Register SIGHUP handler for log rotation
-		let mut sighup_stream = match tokio::signal::unix::signal(SignalKind::hangup()) {
-			Ok(stream) => stream,
-			Err(e) => {
-				error!("Failed to register SIGHUP handler: {e}");
-				std::process::exit(-1);
-			}
-		};
-
-		let mut sigterm_stream = match tokio::signal::unix::signal(SignalKind::terminate()) {
-			Ok(stream) => stream,
-			Err(e) => {
-				error!("Failed to register for SIGTERM stream: {e}");
-				std::process::exit(-1);
-			}
-		};
 		let event_node = Arc::clone(&node);
 		let mut ready_channel_ids: HashSet<ChannelId> = event_node
 			.list_channels()
@@ -398,21 +406,6 @@ fn main() {
 			None
 		};
 
-		let grpc_listener = TcpListener::bind(config_file.grpc_service_addr)
-			.await
-			.expect("Failed to bind listening port");
-
-		let server_config = match get_or_generate_tls_config(
-			config_file.tls_config,
-			storage_dir.to_str().unwrap(),
-		) {
-			Ok(config) => config,
-			Err(e) => {
-				error!("Failed to set up TLS: {e}");
-				std::process::exit(-1);
-			}
-		};
-		let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
 		info!("gRPC service listening on {}", config_file.grpc_service_addr);
 
 		systemd::notify_ready();
@@ -753,7 +746,7 @@ fn main() {
 						Err(e) => error!("Failed to accept connection: {}", e),
 					}
 				}
-				_ = tokio::signal::ctrl_c() => {
+				_ = sigint_stream.recv() => {
 					info!("Received CTRL-C, shutting down..");
 					let _ = shutdown_tx.send(true);
 					break;
@@ -777,6 +770,16 @@ fn main() {
 	node.stop().expect("Shutdown should always succeed.");
 	info!("Shutdown complete..");
 	log::logger().flush();
+}
+
+fn register_signal(runtime: &tokio::runtime::Runtime, kind: SignalKind) -> Signal {
+	match runtime.block_on(async { tokio::signal::unix::signal(kind) }) {
+		Ok(signal) => signal,
+		Err(e) => {
+			error!("Failed to register signal handler for {kind:?}: {e}");
+			std::process::exit(-1);
+		},
+	}
 }
 
 fn ensure_no_unsupported_storage_migration(
