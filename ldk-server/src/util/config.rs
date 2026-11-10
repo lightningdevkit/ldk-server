@@ -418,6 +418,14 @@ impl ConfigBuilder {
 			self.tor_proxy_address = Some(tor_proxy_address.clone());
 		}
 
+		if let Some(log_level) = &args.log_level {
+			self.log_level = Some(log_level.clone());
+		}
+
+		if let Some(log_file) = &args.log_file {
+			self.log_file_path = Some(log_file.clone());
+		}
+
 		if let Some(log_max_size_mb) = args.log_max_size_mb {
 			self.log_max_size_mb = Some(log_max_size_mb);
 		}
@@ -1207,6 +1215,20 @@ pub struct ArgsConfig {
 
 	#[arg(
 		long,
+		env = "LDK_SERVER_LOG_LEVEL",
+		help = "The log level (Error, Warn, Info, Debug, Trace). Defaults to Debug."
+	)]
+	log_level: Option<String>,
+
+	#[arg(
+		long,
+		env = "LDK_SERVER_LOG_FILE",
+		help = "The path of the log file. Defaults to `ldk-server.log` in the network's storage directory."
+	)]
+	log_file: Option<String>,
+
+	#[arg(
+		long,
 		env = "LDK_SERVER_LOG_MAX_SIZE_MB",
 		help = "The maximum size of the log file in MB before rotation. Defaults to 50MB."
 	)]
@@ -1609,6 +1631,8 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			log_level: Some(String::from("info")),
+			log_file: Some(String::from("/tmp_cli/ldk-server.log")),
 			log_to_file: Some(true),
 			log_max_size_mb: Some(50),
 			log_rotation_interval_hours: Some(24),
@@ -1652,6 +1676,8 @@ mod tests {
 			metrics_username: None,
 			metrics_password: None,
 			tor_proxy_address: None,
+			log_level: None,
+			log_file: None,
 			log_to_file: Some(true),
 			log_max_size_mb: None,
 			log_rotation_interval_hours: None,
@@ -2735,8 +2761,8 @@ mod tests {
 			rgs_server_url: None,
 			lsps_client_config: None,
 			lsps2_service_config: None,
-			log_level: LevelFilter::Trace,
-			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			log_level: LevelFilter::Info,
+			log_file_path: Some("/tmp_cli/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
@@ -2781,6 +2807,8 @@ mod tests {
 		assert_eq!(config.log_rotation_interval_secs, expected.log_rotation_interval_secs);
 		assert_eq!(config.log_max_files, expected.log_max_files);
 		assert_eq!(config.log_to_file, expected.log_to_file);
+		assert_eq!(config.log_level, expected.log_level);
+		assert_eq!(config.log_file_path, expected.log_file_path);
 	}
 
 	#[test]
@@ -2872,8 +2900,8 @@ mod tests {
 				client_trusts_lsp: true,
 				disable_client_reserve: false,
 			}),
-			log_level: LevelFilter::Trace,
-			log_file_path: Some("/var/log/ldk-server.log".to_string()),
+			log_level: LevelFilter::Info,
+			log_file_path: Some("/tmp_cli/ldk-server.log".to_string()),
 			pathfinding_scores_source_url: Some("https://example.com/".to_string()),
 			probing_config: None,
 			async_payments_role: Some(AsyncPaymentsRole::Server),
@@ -2918,6 +2946,18 @@ mod tests {
 		);
 		assert_eq!(config.metrics_enabled, expected.metrics_enabled);
 		assert_eq!(config.tor_config, expected.tor_config);
+		assert_eq!(config.log_level, expected.log_level);
+		assert_eq!(config.log_file_path, expected.log_file_path);
+	}
+
+	#[test]
+	#[cfg(not(feature = "experimental-lsps2-support"))]
+	fn test_invalid_log_level_in_args_config() {
+		let mut args_config = default_args_config();
+		args_config.log_level = Some(String::from("verbose"));
+		let err = load_config(&args_config).unwrap_err();
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().starts_with("Invalid log level configured"));
 	}
 
 	#[test]
