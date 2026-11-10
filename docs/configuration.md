@@ -185,6 +185,9 @@ logging to file, set `max_size_mb` and `rotation_interval_hours` params to `0`.
 The server will also reopen the log file on `SIGHUP` for compatibility with external 
 tools like `logrotate`.
 
+`level` and `file` are also available as `--log-level` / `LDK_SERVER_LOG_LEVEL` and
+`--log-file` / `LDK_SERVER_LOG_FILE`.
+
 ### `[tls]`
 
 TLS certificate and key paths, plus additional hostnames/IPs for the certificate's Subject
