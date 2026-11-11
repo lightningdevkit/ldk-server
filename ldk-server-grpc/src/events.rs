@@ -238,6 +238,10 @@ pub struct PaymentFailed {
 	/// recover it as LDK Node does not currently persist the failure reason in
 	/// `PaymentDetails`.
 	#[prost(enumeration = "PaymentFailureReason", optional, tag = "3")]
+	#[cfg_attr(
+		feature = "serde",
+		serde(serialize_with = "crate::serde_utils::serialize_payment_failure_reason")
+	)]
 	pub reason: ::core::option::Option<i32>,
 }
 /// PaymentClaimable indicates a payment has arrived and is waiting to be manually claimed or failed.

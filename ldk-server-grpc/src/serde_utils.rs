@@ -34,6 +34,27 @@ macro_rules! stringify_enum_serializer {
 	};
 }
 
+/// Generates a serde serializer for an optional proto enum field (or null).
+macro_rules! stringify_opt_enum_serializer {
+	($fn_name:ident, $enum_type:ty) => {
+		pub fn $fn_name<S>(value: &Option<i32>, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			match value {
+				Some(value) => {
+					let name = match <$enum_type>::from_i32(*value) {
+						Some(v) => v.as_str_name(),
+						None => "UNKNOWN",
+					};
+					serializer.serialize_some(name)
+				},
+				None => serializer.serialize_none(),
+			}
+		}
+	};
+}
+
 stringify_enum_serializer!(
 	serialize_forwarded_payment_tracking_mode,
 	crate::types::ForwardedPaymentTrackingMode
@@ -43,6 +64,10 @@ stringify_enum_serializer!(serialize_payment_status, crate::types::PaymentStatus
 stringify_enum_serializer!(serialize_balance_source, crate::types::BalanceSource);
 stringify_enum_serializer!(serialize_network, crate::types::Network);
 stringify_enum_serializer!(serialize_channel_direction, crate::types::ChannelDirection);
+stringify_opt_enum_serializer!(
+	serialize_payment_failure_reason,
+	crate::events::PaymentFailureReason
+);
 
 /// Serializes `Option<prost::bytes::Bytes>` as a hex string (or null).
 pub fn serialize_opt_bytes_hex<S>(
@@ -60,5 +85,32 @@ where
 			serializer.serialize_some(&hex)
 		},
 		None => serializer.serialize_none(),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use serde_json::json;
+
+	use crate::events::{PaymentFailed, PaymentFailureReason};
+
+	#[test]
+	fn payment_failure_reason_json() {
+		for (reason, expected) in [
+			(None, json!(null)),
+			(
+				Some(PaymentFailureReason::Unspecified as i32),
+				json!("PAYMENT_FAILURE_REASON_UNSPECIFIED"),
+			),
+			(
+				Some(PaymentFailureReason::RecipientRejected as i32),
+				json!("PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED"),
+			),
+			(Some(-1), json!("UNKNOWN")),
+			(Some(i32::MAX), json!("UNKNOWN")),
+		] {
+			let event = PaymentFailed { reason, ..Default::default() };
+			assert_eq!(serde_json::to_value(event).unwrap()["reason"], expected);
+		}
 	}
 }

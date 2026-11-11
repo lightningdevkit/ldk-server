@@ -2255,6 +2255,7 @@ async fn test_hodl_invoice_fail() {
 	let output = payer.wait_with_output().unwrap();
 	assert_eq!(output.status.code(), Some(2), "{}", String::from_utf8_lossy(&output.stderr));
 	let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+	assert_eq!(receipt["reason"], "PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED");
 	assert_eq!(receipt, serde_json::to_value(failed).unwrap());
 }
 

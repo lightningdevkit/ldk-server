@@ -71,6 +71,10 @@ fn generate_protos() {
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_payment_status\"))]",
 		)
 		.field_attribute(
+			"events.PaymentFailed.reason",
+			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_payment_failure_reason\"))]",
+		)
+		.field_attribute(
 			"types.ClaimableAwaitingConfirmations.source",
 			"#[cfg_attr(feature = \"serde\", serde(serialize_with = \"crate::serde_utils::serialize_balance_source\"))]",
 		)
