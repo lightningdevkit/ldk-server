@@ -255,6 +255,12 @@ impl TestConfigBuilder {
 		self
 	}
 
+	/// Set the gRPC service address.
+	pub fn grpc_service_address(mut self, address: &str) -> Self {
+		self.grpc_service_address = address.to_string();
+		self
+	}
+
 	/// Set the node alias, or `None` to omit it entirely.
 	pub fn alias(mut self, alias: Option<&str>) -> Self {
 		self.alias = alias.map(str::to_string);
@@ -596,7 +602,7 @@ pub fn start_expect_failure(
 }
 /// Allocate distinct ports outside the default Linux/macOS ephemeral ranges.
 /// Allocate each port only once per test process, so stopped servers can restart.
-fn reserve_port() -> TcpListener {
+pub fn reserve_port() -> TcpListener {
 	static NEXT_PORT: AtomicU32 = AtomicU32::new(10_000);
 	loop {
 		let port = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
