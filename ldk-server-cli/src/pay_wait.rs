@@ -39,7 +39,7 @@ fn lightning_payment_id(response: &UnifiedSendResponse) -> Option<&str> {
 pub(crate) async fn pay_and_wait(
 	client: &LdkServerClient, request: UnifiedSendRequest, timeout: Option<Duration>,
 ) {
-	let mut events = client.subscribe_events().await.unwrap_or_else(|e| handle_error(e));
+	let mut events = client.subscribe_payment_events().await.unwrap_or_else(|e| handle_error(e));
 
 	let response = client.unified_send(request).await.unwrap_or_else(|e| handle_error(e));
 
