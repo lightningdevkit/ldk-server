@@ -17,6 +17,7 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GetPaymentDetailsRequest, GetPaymentDetailsResponse, UnifiedSendRequest, UnifiedSendResponse,
 };
 use ldk_server_client::ldk_server_grpc::events::event_envelope::Event;
+use ldk_server_client::ldk_server_grpc::events::{PaymentFailed, PaymentSuccessful};
 
 use crate::{handle_error, handle_response_result, print_response, sanitize_for_terminal};
 
@@ -31,17 +32,13 @@ fn lightning_payment_id(response: &UnifiedSendResponse) -> Option<&str> {
 	}
 }
 
-fn exit_with_payment(code: i32, message: &str, payment: &GetPaymentDetailsResponse) -> ! {
-	eprintln!("{}", sanitize_for_terminal(message.to_string()));
-	print_response(payment);
-	std::process::exit(code);
-}
-
 /// Subscribe before paying, then wait for `PaymentSuccessful` / `PaymentFailed`.
 ///
 /// The event stream is live-only, so the subscription is opened before `unified_send`.
 /// A dropped stream is an error; it is not replayed. `timeout` of `None` waits until
 /// the payment finishes. On-chain results are printed immediately.
+/// Success prints the full event, including the inputs needed for BOLT12 payer proofs.
+/// Failure prints the full event, including the failure reason.
 /// Exit codes: 0 succeeded, 2 failed, 3 timed out.
 pub(crate) async fn pay_and_wait(
 	client: &LdkServerClient, request: UnifiedSendRequest, timeout: Option<Duration>,
@@ -66,11 +63,9 @@ pub(crate) async fn pay_and_wait(
 	match wait_for_terminal_event(client, &mut events, &payment_id, timeout).await {
 		Ok(payment) => print_response(&payment),
 		Err(WaitError::Failed(payment)) => {
-			exit_with_payment(
-				EXIT_PAYMENT_FAILED,
-				&format!("Payment {payment_id} failed"),
-				&payment,
-			);
+			eprintln!("{}", sanitize_for_terminal(format!("Payment {payment_id} failed")));
+			print_response(&payment);
+			std::process::exit(EXIT_PAYMENT_FAILED);
 		},
 		Err(WaitError::TimedOut(payment)) => {
 			let secs = timeout.map(|timeout| timeout.as_secs()).unwrap_or(0);
@@ -90,14 +85,14 @@ pub(crate) async fn pay_and_wait(
 }
 
 enum WaitError {
-	Failed(GetPaymentDetailsResponse),
+	Failed(PaymentFailed),
 	TimedOut(Option<GetPaymentDetailsResponse>),
 	Transport(LdkServerError),
 }
 
 async fn wait_for_terminal_event(
 	client: &LdkServerClient, events: &mut EventStream, payment_id: &str, timeout: Option<Duration>,
-) -> Result<GetPaymentDetailsResponse, WaitError> {
+) -> Result<PaymentSuccessful, WaitError> {
 	let deadline = timeout.map(|timeout| tokio::time::Instant::now() + timeout);
 
 	match next_matching_event(events, payment_id, deadline).await? {
@@ -116,7 +111,7 @@ async fn wait_for_terminal_event(
 /// `Ok(None)` means the stream ended without a matching terminal event.
 async fn next_matching_event(
 	events: &mut EventStream, payment_id: &str, deadline: Option<tokio::time::Instant>,
-) -> Result<Option<Result<GetPaymentDetailsResponse, WaitError>>, WaitError> {
+) -> Result<Option<Result<PaymentSuccessful, WaitError>>, WaitError> {
 	loop {
 		let next = events.next_message();
 		let message = match deadline {
@@ -136,12 +131,10 @@ async fn next_matching_event(
 		match message {
 			Some(Ok(envelope)) => match envelope.event {
 				Some(Event::PaymentSuccessful(event)) if event.payment_id == payment_id => {
-					return Ok(Some(Ok(GetPaymentDetailsResponse { payment: event.payment })));
+					return Ok(Some(Ok(event)));
 				},
 				Some(Event::PaymentFailed(event)) if event.payment_id == payment_id => {
-					return Ok(Some(Err(WaitError::Failed(GetPaymentDetailsResponse {
-						payment: event.payment,
-					}))));
+					return Ok(Some(Err(WaitError::Failed(event))));
 				},
 				_ => {},
 			},

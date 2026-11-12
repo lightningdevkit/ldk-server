@@ -383,6 +383,21 @@ optional invoice fields that the proof discloses. Payment history APIs cannot re
 inputs required to create a proof if this event is missed. Save these values before processing
 other events.
 
+With the CLI, `pay --wait` subscribes before sending and prints the full `PaymentSuccessful`
+event on success. Save its JSON output to retain the proof inputs:
+
+```bash
+ldk-server-cli pay --wait "$OFFER" > payment-receipt.json
+ldk-server-cli bolt12-create-payer-proof \
+  "$(jq -r '.payment_id' payment-receipt.json)" \
+  "$(jq -r '.payment_preimage' payment-receipt.json)" \
+  "$(jq -r '.bolt12_invoice' payment-receipt.json)" \
+  --include-offer-description --include-invoice-amount
+```
+
+Run proof creation against the same node that made the payment. The receipt file is saved by
+shell redirection; the CLI does not automatically store it.
+
 The `bolt12_invoice` field is absent for static-invoice payments. These asynchronous payments
 cannot produce payer proofs.
 

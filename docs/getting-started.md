@@ -131,6 +131,24 @@ ldk-server-cli bolt11-receive --amount 50000sat
 ldk-server-cli bolt11-receive --amount 50000000msat  # same as above
 ```
 
+### Waiting for Payments
+
+Use `pay --wait` to wait for a Lightning payment to complete:
+
+```bash
+ldk-server-cli pay --wait --wait-timeout 30 "$INVOICE_OR_OFFER"
+```
+
+For both BOLT11 and BOLT12, stdout contains the full shared `PaymentSuccessful` or
+`PaymentFailed` event. Success includes the payment preimage and, for standard BOLT12
+payments, the invoice needed to create a payer proof. Failure includes the failure reason
+if known. Progress messages go to stderr, so you can redirect stdout to save the result as JSON.
+
+The exit code is 0 on success, 2 on payment failure, or 3 on timeout. On timeout, stdout
+contains the latest payment details if available; the payment may still complete later.
+On-chain payments return a transaction ID immediately, without waiting for confirmation.
+Without `--wait`, `pay` returns the payment ID or transaction ID immediately.
+
 ### Shell Completions
 
 Generate completions for your shell:

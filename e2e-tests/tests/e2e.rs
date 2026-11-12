@@ -8,6 +8,7 @@
 // licenses.
 
 use std::collections::HashMap;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -1276,20 +1277,36 @@ async fn test_cli_pay() {
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
-	// Pay a BOLT11 invoice via unified `pay` command
-	let invoice_resp = server_b
-		.client()
-		.bolt11_receive(Bolt11ReceiveRequest {
-			amount_msat: Some(10_000_000),
-			description: Some(Bolt11InvoiceDescription {
-				kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
-			}),
-			expiry_secs: 3600,
-		})
-		.await
-		.unwrap();
-	let output = run_cli(&server_a, &["pay", &invoice_resp.invoice]);
-	assert!(output.get("bolt11_payment_id").is_some());
+	// Pay BOLT11 invoices with and without waiting for completion.
+	for wait in [false, true] {
+		let invoice_resp = server_b
+			.client()
+			.bolt11_receive(Bolt11ReceiveRequest {
+				amount_msat: Some(10_000_000),
+				description: Some(Bolt11InvoiceDescription {
+					kind: Some(bolt11_invoice_description::Kind::Direct("test".to_string())),
+				}),
+				expiry_secs: 3600,
+			})
+			.await
+			.unwrap();
+		if wait {
+			let output = run_cli(
+				&server_a,
+				&["pay", "--wait", "--wait-timeout", "30", &invoice_resp.invoice],
+			);
+			assert_eq!(output["payment_id"], output["payment"]["payment_id"]);
+			assert_eq!(output["payment"]["status"], "SUCCEEDED");
+			let preimage =
+				Vec::<u8>::from_hex(output["payment_preimage"].as_str().unwrap()).unwrap();
+			let invoice = Bolt11Invoice::from_str(&invoice_resp.invoice).unwrap();
+			assert_eq!(sha256::Hash::hash(&preimage).to_byte_array(), invoice.payment_hash().0);
+			assert!(output["bolt12_invoice"].is_null());
+		} else {
+			let output = run_cli(&server_a, &["pay", &invoice_resp.invoice]);
+			assert!(output.get("bolt11_payment_id").is_some());
+		}
+	}
 
 	// Pay a BOLT12 offer via unified `pay` command
 	let offer_resp = server_b
@@ -1385,8 +1402,6 @@ async fn test_cli_bolt12_create_payer_proof() {
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
 
-	let mut events_a = server_a.client().subscribe_events().await.unwrap();
-
 	setup_funded_channel(&bitcoind, &server_a, &server_b, 100_000).await;
 
 	let offer_resp = server_b
@@ -1400,17 +1415,13 @@ async fn test_cli_bolt12_create_payer_proof() {
 		.await
 		.unwrap();
 
-	let send_output = run_cli(&server_a, &["bolt12-send", &offer_resp.offer]);
+	let send_output =
+		run_cli(&server_a, &["pay", "--wait", "--wait-timeout", "30", &offer_resp.offer]);
 	let send_payment_id = send_output["payment_id"].as_str().unwrap();
 	assert!(!send_payment_id.is_empty());
-
-	let event_a = wait_for_event(&mut events_a, |e| matches!(e, Event::PaymentSuccessful(_))).await;
-	let Some(Event::PaymentSuccessful(successful)) = &event_a.event else {
-		panic!("expected PaymentSuccessful");
-	};
-	assert_eq!(successful.payment_id, send_payment_id);
-	let payment_preimage = successful.payment_preimage.as_ref().expect("preimage");
-	let invoice = successful.bolt12_invoice.as_ref().expect("bolt12 invoice");
+	assert_eq!(send_output["payment"]["payment_id"].as_str().unwrap(), send_payment_id);
+	let payment_preimage = send_output["payment_preimage"].as_str().expect("preimage");
+	let invoice = send_output["bolt12_invoice"].as_str().expect("bolt12 invoice");
 
 	let proof_output = run_cli(
 		&server_a,
@@ -2204,8 +2215,15 @@ async fn test_hodl_invoice_fail() {
 	);
 	let invoice = invoice_resp["invoice"].as_str().unwrap();
 
-	// Pay the hodl invoice from A
-	run_cli(&server_a, &["bolt11-send", invoice]);
+	// Keep `pay --wait` running while B decides whether to accept the payment.
+	let payer = Command::new(e2e_tests::cli_binary_path())
+		.arg("--config")
+		.arg(&server_a.config_path)
+		.args(["pay", "--wait", "--wait-timeout", "30", invoice])
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.unwrap();
 
 	// Verify PaymentClaimable event on B
 	let event_b = wait_for_event(&mut events_b, |e| matches!(e, Event::PaymentClaimable(_))).await;
@@ -2232,6 +2250,13 @@ async fn test_hodl_invoice_fail() {
 	};
 	assert!(!failed.payment.as_ref().unwrap().payment_id.is_empty());
 	assert_eq!(failed.reason, Some(PaymentFailureReason::RecipientRejected as i32));
+
+	// The CLI must preserve the same failure details as the event API.
+	let output = payer.wait_with_output().unwrap();
+	assert_eq!(output.status.code(), Some(2), "{}", String::from_utf8_lossy(&output.stderr));
+	let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+	assert_eq!(receipt["reason"], "PAYMENT_FAILURE_REASON_RECIPIENT_REJECTED");
+	assert_eq!(receipt, serde_json::to_value(failed).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
