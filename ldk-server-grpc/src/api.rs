@@ -1301,6 +1301,25 @@ pub struct SignMessageResponse {
 	#[prost(string, tag = "1")]
 	pub signature: ::prost::alloc::string::String,
 }
+/// Authenticate with an LNURL-auth service.
+/// This sends an outbound request to the URL encoded in lnurl. LDK Node requires HTTPS except for
+/// localhost URLs and does not follow redirects for the authentication request.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LnurlAuthRequest {
+	/// A bech32-encoded LNURL-auth URL.
+	#[prost(string, tag = "1")]
+	pub lnurl: ::prost::alloc::string::String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LnurlAuthResponse {}
 /// Verify a signature against a message and public key.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

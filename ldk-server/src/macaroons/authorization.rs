@@ -68,6 +68,7 @@ mod tests {
 			("DisconnectPeer", Some("peers:manage")),
 			("ListPeers", Some("peers:read")),
 			("SignMessage", Some("messages:sign")),
+			("LnurlAuth", Some("lnurl:auth")),
 			("VerifySignature", Some("messages:verify")),
 			("ExportPathfindingScores", Some("node:read")),
 			("UnifiedSend", Some("payments:send")),

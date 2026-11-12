@@ -23,10 +23,11 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GetPaymentDetailsRequest, GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
 	GraphListChannelsRequest, GraphListNodesRequest, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListForwardedPaymentsRequest,
-	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, OnchainBumpFeeRequest,
-	OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest,
-	SignMessageRequest, SpliceInRequest, SpliceOutRequest, SpontaneousSendProbesRequest,
-	SpontaneousSendRequest, UnifiedSendRequest, UpdateChannelConfigRequest, VerifySignatureRequest,
+	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, LnurlAuthRequest,
+	OnchainBumpFeeRequest, OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest,
+	RevokeMacaroonRequest, SignMessageRequest, SpliceInRequest, SpliceOutRequest,
+	SpontaneousSendProbesRequest, SpontaneousSendRequest, UnifiedSendRequest,
+	UpdateChannelConfigRequest, VerifySignatureRequest,
 };
 use ldk_server_client::ldk_server_grpc::types::RouteParametersConfig;
 use ldk_server_client::{
@@ -556,6 +557,12 @@ pub async fn handle_sign_message(client: &LdkServerClient, args: Value) -> Resul
 	let SignMessageArgs { message } = parse_request(args)?;
 	let request = SignMessageRequest { message: message.into_bytes().into() };
 	let response = client.sign_message(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_lnurl_auth(client: &LdkServerClient, args: Value) -> Result<Value, McpError> {
+	let request: LnurlAuthRequest = parse_request(args)?;
+	let response = client.lnurl_auth(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

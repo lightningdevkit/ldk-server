@@ -55,14 +55,14 @@ use ldk_server_client::ldk_server_grpc::api::{
 	GraphListNodesRequest, GraphListNodesResponse, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListMacaroonsResponse, ListPaymentsRequest,
-	ListPeersRequest, ListPeersResponse, OnchainBumpFeeRequest, OnchainBumpFeeResponse,
-	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, RevokeMacaroonRequest, RevokeMacaroonResponse,
-	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
-	SpliceOutResponse, SpontaneousSendProbesRequest, SpontaneousSendProbesResponse,
-	SpontaneousSendRequest, SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse,
-	UpdateChannelConfigRequest, UpdateChannelConfigResponse, VerifySignatureRequest,
-	VerifySignatureResponse,
+	ListPeersRequest, ListPeersResponse, LnurlAuthRequest, LnurlAuthResponse,
+	OnchainBumpFeeRequest, OnchainBumpFeeResponse, OnchainReceiveRequest, OnchainReceiveResponse,
+	OnchainSendRequest, OnchainSendResponse, OpenChannelRequest, OpenChannelResponse,
+	RevokeMacaroonRequest, RevokeMacaroonResponse, SignMessageRequest, SignMessageResponse,
+	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	SpontaneousSendProbesRequest, SpontaneousSendProbesResponse, SpontaneousSendRequest,
+	SpontaneousSendResponse, UnifiedSendRequest, UnifiedSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_grpc::permissions::MacaroonPreset;
 use ldk_server_client::ldk_server_grpc::types::{
@@ -801,6 +801,11 @@ enum Commands {
 	SignMessage {
 		#[arg(help = "The message to sign")]
 		message: String,
+	},
+	#[command(about = "Authenticate with an LNURL-auth service (makes an outbound request)")]
+	LnurlAuth {
+		#[arg(help = "The bech32-encoded LNURL-auth URL")]
+		lnurl: String,
 	},
 	#[command(about = "Verify a signature against a message and public key")]
 	VerifySignature {
@@ -1661,6 +1666,11 @@ async fn main() {
 				client
 					.sign_message(SignMessageRequest { message: message.into_bytes().into() })
 					.await,
+			);
+		},
+		Commands::LnurlAuth { lnurl } => {
+			handle_response_result::<_, LnurlAuthResponse>(
+				client.lnurl_auth(LnurlAuthRequest { lnurl }).await,
 			);
 		},
 		Commands::VerifySignature { message, signature, public_key } => {

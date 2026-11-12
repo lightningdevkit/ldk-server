@@ -918,6 +918,16 @@ message SignMessageResponse {
   string signature = 1;
 }
 
+// Authenticate with an LNURL-auth service.
+// This sends an outbound request to the URL encoded in lnurl. LDK Node requires HTTPS except for
+// localhost URLs and does not follow redirects for the authentication request.
+message LnurlAuthRequest {
+  // A bech32-encoded LNURL-auth URL.
+  string lnurl = 1;
+}
+
+message LnurlAuthResponse {}
+
 // Verify a signature against a message and public key.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.verify_signature
 message VerifySignatureRequest {
@@ -1367,6 +1377,8 @@ service LightningNode {
   rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
   // Sign a message with the node's secret key.
   rpc SignMessage(SignMessageRequest) returns (SignMessageResponse);
+  // Authenticate with the LNURL-auth service encoded in the supplied URL.
+  rpc LnurlAuth(LnurlAuthRequest) returns (LnurlAuthResponse);
   // Verify a signature against a message and public key.
   rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
   // Export the pathfinding scores used by the router.
