@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use e2e_tests::{
 	assert_replacement, close_channel, find_available_port, list_payments, mine_and_sync,
-	payment_for_tx, run_cli, run_cli_raw, run_cli_with_config, send_bolt11_payment,
+	payment_for_tx, run_cli, run_cli_output, run_cli_raw, run_cli_with_config, send_bolt11_payment,
 	setup_funded_channel, splice_txid, wait_for_channels, wait_for_event, wait_for_gossip,
 	wait_for_onchain_balance, wait_for_settled_balance, wait_for_transaction,
 	wait_for_usable_channel, wait_for_wallet_sync, LdkServerConfig, LdkServerHandle, TestBitcoind,
@@ -677,7 +677,7 @@ async fn test_cli_list_peers() {
 
 // === CLI tests: Group 4 — Two-node with channel ===
 
-async fn open_channel_via_cli(channel_amount: &str) {
+async fn open_channel_via_cli(channel_amount: &str, extra_args: &[&str]) -> serde_json::Value {
 	let bitcoind = TestBitcoind::new();
 	let server_a = LdkServerHandle::start(&bitcoind).await;
 	let server_b = LdkServerHandle::start(&bitcoind).await;
@@ -693,21 +693,77 @@ async fn open_channel_via_cli(channel_amount: &str) {
 
 	// Open channel via CLI
 	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
-	let output = run_cli(
-		&server_a,
-		&["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"],
-	);
+	let mut args =
+		vec!["open-channel", server_b.node_id(), &addr, channel_amount, "--announce-channel"];
+	args.extend(extra_args);
+	let output = run_cli(&server_a, &args);
 	assert!(!output["user_channel_id"].as_str().unwrap().is_empty());
+	output
 }
 
 #[tokio::test]
 async fn test_cli_open_channel() {
-	open_channel_via_cli("100000sat").await;
+	open_channel_via_cli("100000sat", &[]).await;
 }
 
 #[tokio::test]
 async fn test_cli_open_channel_with_all() {
-	open_channel_via_cli("all").await;
+	open_channel_via_cli("all", &[]).await;
+}
+
+#[tokio::test]
+async fn test_cli_open_channel_with_wait() {
+	let output = open_channel_via_cli("100000sat", &["--wait", "--wait-timeout", "60"]).await;
+
+	// `--wait` prints the `ChannelStateChanged` event once the funding transaction is broadcast.
+	assert!(!output["channel_id"].as_str().unwrap().is_empty());
+	let funding_txo = output["funding_txo"].as_str().unwrap();
+	let (txid, vout) = funding_txo.split_once(':').unwrap();
+	assert_eq!(txid.len(), 64);
+	vout.parse::<u32>().unwrap();
+}
+
+#[tokio::test]
+async fn test_cli_open_channel_with_wait_rejected() {
+	let bitcoind = TestBitcoind::new();
+	let server_a = LdkServerHandle::start(&bitcoind).await;
+	let server_b = LdkServerHandle::start(&bitcoind).await;
+
+	// Only fund server_a. ldk-node rejects inbound anchor channels when it lacks the on-chain
+	// reserve, so server_b turns the open down.
+	let addr_a = server_a.client().onchain_receive(OnchainReceiveRequest {}).await.unwrap().address;
+	bitcoind.fund_address(&addr_a, 1.0);
+	mine_and_sync(&bitcoind, &[&server_a, &server_b], 6).await;
+	wait_for_onchain_balance(server_a.client(), Duration::from_secs(30)).await;
+
+	let addr = format!("127.0.0.1:{}", server_b.p2p_port);
+	let output = run_cli_output(
+		&server_a,
+		&[
+			"open-channel",
+			server_b.node_id(),
+			&addr,
+			"100000sat",
+			// `--disable-counterparty-reserve` keeps the rejection visible. Without it, LDK retries the
+			// rejected open as a non-anchor channel, which needs no on-chain anchor reserve, and server_b
+			// accepts. LDK won't make a channel with no channel reserve non-anchor, so the open fails.
+			"--disable-counterparty-reserve",
+			"--wait",
+			"--wait-timeout",
+			"60",
+		],
+	);
+	let stdout = String::from_utf8(output.stdout).unwrap();
+	let stderr = String::from_utf8(output.stderr).unwrap();
+	// Check that the CLI exits with code 2 (`EXIT_WAIT_FAILED`), meaning the open failed.
+	assert_eq!(output.status.code(), Some(2), "stdout: {stdout}\nstderr: {stderr}");
+
+	// The `ChannelStateChanged` event is printed to stdout so scripts can read the reason.
+	let event: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+	assert!(!event["user_channel_id"].as_str().unwrap().is_empty());
+	let message = event["reason"]["message"].as_str().unwrap();
+	assert!(message.contains("Channel request rejected"), "unexpected reason: {message}");
+	assert!(stderr.contains("Channel request rejected"), "stderr: {stderr}");
 }
 
 #[tokio::test]
