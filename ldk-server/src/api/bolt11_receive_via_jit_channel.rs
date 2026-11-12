@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use hex::FromHex;
 use ldk_node::lightning_types::payment::PaymentHash;
 use ldk_server_grpc::api::{
@@ -22,6 +21,7 @@ use ldk_server_grpc::api::{
 };
 
 use crate::api::error::LdkServerError;
+use crate::api::error::LdkServerErrorCode::InvalidRequestError;
 use crate::service::Context;
 use crate::util::proto_adapter::proto_to_bolt11_description;
 

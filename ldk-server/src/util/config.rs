@@ -595,9 +595,9 @@ impl ConfigBuilder {
 
 		let log_max_size_bytes =
 			self.log_max_size_mb.unwrap_or(DEFAULT_LOG_MAX_SIZE_MB) * 1024 * 1024;
-		let log_rotation_interval_secs =
-			self.log_rotation_interval_hours.unwrap_or(DEFAULT_LOG_ROTATION_INTERVAL_HOURS)
-				* 60 * 60;
+		let log_rotation_interval_hours =
+			self.log_rotation_interval_hours.unwrap_or(DEFAULT_LOG_ROTATION_INTERVAL_HOURS);
+		let log_rotation_interval_secs = log_rotation_interval_hours * 60 * 60;
 		let log_max_files = self.log_max_files.unwrap_or(DEFAULT_LOG_MAX_FILES);
 		let log_to_file = self.log_to_file.unwrap_or(true);
 
@@ -2375,7 +2375,7 @@ mod tests {
 			r#"
 			[node]
 			network = "regtest"
-			
+
 			[bitcoind]
 			rpc_address = "127.0.0.1:8332"
 			rpc_user = "bitcoind-testuser"
