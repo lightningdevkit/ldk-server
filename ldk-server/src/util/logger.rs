@@ -265,8 +265,14 @@ fn open_log_file(log_file_path: &Path) -> Result<File, io::Error> {
 	OpenOptions::new().create(true).append(true).mode(0o600).open(log_file_path)
 }
 
+/// Returns the directory containing the log file. A bare file name such as `ldk-server.log` has an
+/// empty parent, which refers to the current working directory.
+fn log_file_dir(log_file_path: &Path) -> Option<&Path> {
+	log_file_path.parent().map(|p| if p.as_os_str().is_empty() { Path::new(".") } else { p })
+}
+
 fn cleanup_old_logs(log_file_path: &Path, max_files: usize) -> io::Result<()> {
-	let parent = log_file_path.parent().ok_or_else(|| {
+	let parent = log_file_dir(log_file_path).ok_or_else(|| {
 		io::Error::new(io::ErrorKind::InvalidInput, "Log file path has no parent directory")
 	})?;
 
@@ -343,5 +349,13 @@ mod tests {
 		let mode = fs::metadata(&path).unwrap().permissions().mode();
 		assert_eq!(mode & 0o077, 0);
 		fs::remove_dir_all(dir).unwrap();
+	}
+
+	#[test]
+	fn log_file_dir_handles_bare_file_name() {
+		assert_eq!(log_file_dir(Path::new("ldk-server.log")), Some(Path::new(".")));
+		assert_eq!(log_file_dir(Path::new("logs/ldk-server.log")), Some(Path::new("logs")));
+		assert_eq!(log_file_dir(Path::new("/var/log/ldk-server.log")), Some(Path::new("/var/log")));
+		assert_eq!(log_file_dir(Path::new("/")), None);
 	}
 }
