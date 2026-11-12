@@ -22,15 +22,18 @@ use ldk_server_grpc::api::{
 	Bolt11ReceiveViaJitChannelForHashResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendProbesRequest, Bolt11SendProbesResponse,
 	Bolt11SendRequest, Bolt11SendResponse, Bolt11SendUnderpayingRequest,
-	Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest, Bolt12CreatePayerProofResponse,
+	Bolt11SendUnderpayingResponse, Bolt12BlindedPathsForAsyncRecipientRequest,
+	Bolt12BlindedPathsForAsyncRecipientResponse, Bolt12CreatePayerProofRequest,
+	Bolt12CreatePayerProofResponse, Bolt12ReceiveAsyncRequest, Bolt12ReceiveAsyncResponse,
 	Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest,
 	Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest,
-	Bolt12SendResponse, BumpChannelFundingFeeRequest, BumpChannelFundingFeeResponse,
-	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ExportPathfindingScoresResponse, ForceCloseChannelRequest,
-	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	Bolt12SendResponse, Bolt12SetPathsToStaticInvoiceServerRequest,
+	Bolt12SetPathsToStaticInvoiceServerResponse, BumpChannelFundingFeeRequest,
+	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest,
+	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
+	DisconnectPeerResponse, ExportPathfindingScoresRequest, ExportPathfindingScoresResponse,
+	ForceCloseChannelRequest, ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
 	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
 	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
 	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
@@ -57,20 +60,21 @@ use ldk_server_grpc::endpoints::{
 	BOLT11_RECEIVE_VARIABLE_AMOUNT_VIA_JIT_CHANNEL_PATH,
 	BOLT11_RECEIVE_VIA_JIT_CHANNEL_FOR_HASH_PATH, BOLT11_RECEIVE_VIA_JIT_CHANNEL_PATH,
 	BOLT11_SEND_PATH, BOLT11_SEND_PROBES_PATH, BOLT11_SEND_UNDERPAYING_PATH,
-	BOLT12_CREATE_PAYER_PROOF_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH,
-	BOLT12_SEND_PATH, BOLT12_SEND_REFUND_PATH, BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH,
-	CONNECT_PEER_PATH, CREATE_MACAROON_PATH, DECODE_INVOICE_PATH, DECODE_OFFER_PATH,
-	DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH, FORCE_CLOSE_CHANNEL_PATH,
-	GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH, GET_FORWARDED_PAYMENT_DETAILS_PATH,
-	GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH, GET_NODE_INFO_PATH,
-	GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH,
-	GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX, LIST_CHANNELS_PATH,
-	LIST_CHANNEL_FORWARDING_STATS_PATH, LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH,
-	LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
-	ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH,
-	REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH,
-	SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, SUBSCRIBE_EVENTS_PATH, UNIFIED_SEND_PATH,
-	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	BOLT12_BLINDED_PATHS_FOR_ASYNC_RECIPIENT_PATH, BOLT12_CREATE_PAYER_PROOF_PATH,
+	BOLT12_RECEIVE_ASYNC_PATH, BOLT12_RECEIVE_PATH, BOLT12_RECEIVE_REFUND_PATH, BOLT12_SEND_PATH,
+	BOLT12_SEND_REFUND_PATH, BOLT12_SET_PATHS_TO_STATIC_INVOICE_SERVER_PATH,
+	BUMP_CHANNEL_FUNDING_FEE_PATH, CLOSE_CHANNEL_PATH, CONNECT_PEER_PATH, CREATE_MACAROON_PATH,
+	DECODE_INVOICE_PATH, DECODE_OFFER_PATH, DISCONNECT_PEER_PATH, EXPORT_PATHFINDING_SCORES_PATH,
+	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_CHANNEL_FORWARDING_STATS_PATH,
+	GET_FORWARDED_PAYMENT_DETAILS_PATH, GET_FORWARDED_PAYMENT_TRACKING_MODE_PATH, GET_METRICS_PATH,
+	GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH, GET_PERMISSIONS_PATH, GRAPH_GET_CHANNEL_PATH,
+	GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH, GRPC_SERVICE_PREFIX,
+	LIST_CHANNELS_PATH, LIST_CHANNEL_FORWARDING_STATS_PATH,
+	LIST_CHANNEL_PAIR_FORWARDING_STATS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_MACAROONS_PATH,
+	LIST_PAYMENTS_PATH, LIST_PEERS_PATH, ONCHAIN_BUMP_FEE_PATH, ONCHAIN_RECEIVE_PATH,
+	ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, REVOKE_MACAROON_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
+	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, SPONTANEOUS_SEND_PROBES_PATH, SUBSCRIBE_EVENTS_PATH,
+	UNIFIED_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_grpc::events::EventEnvelope;
 use ldk_server_grpc::grpc::{
@@ -296,6 +300,27 @@ impl LdkServerClient {
 		&self, request: Bolt12ReceiveRequest,
 	) -> Result<Bolt12ReceiveResponse, LdkServerError> {
 		self.grpc_unary(&request, BOLT12_RECEIVE_PATH).await
+	}
+
+	/// Retrieve the BOLT12 offer for receiving payments while this node is offline.
+	pub async fn bolt12_receive_async(
+		&self, request: Bolt12ReceiveAsyncRequest,
+	) -> Result<Bolt12ReceiveAsyncResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT12_RECEIVE_ASYNC_PATH).await
+	}
+
+	/// Set the blinded paths used to interact with a static invoice server.
+	pub async fn bolt12_set_paths_to_static_invoice_server(
+		&self, request: Bolt12SetPathsToStaticInvoiceServerRequest,
+	) -> Result<Bolt12SetPathsToStaticInvoiceServerResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT12_SET_PATHS_TO_STATIC_INVOICE_SERVER_PATH).await
+	}
+
+	/// Create blinded message paths for an asynchronous recipient.
+	pub async fn bolt12_blinded_paths_for_async_recipient(
+		&self, request: Bolt12BlindedPathsForAsyncRecipientRequest,
+	) -> Result<Bolt12BlindedPathsForAsyncRecipientResponse, LdkServerError> {
+		self.grpc_unary(&request, BOLT12_BLINDED_PATHS_FOR_ASYNC_RECIPIENT_PATH).await
 	}
 
 	/// Send a payment for a BOLT12 offer.

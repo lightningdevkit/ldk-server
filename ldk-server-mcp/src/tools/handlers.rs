@@ -14,14 +14,16 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveRequest, Bolt11ReceiveVariableAmountViaJitChannelForHashRequest,
 	Bolt11ReceiveVariableAmountViaJitChannelRequest, Bolt11ReceiveViaJitChannelForHashRequest,
 	Bolt11ReceiveViaJitChannelRequest, Bolt11SendProbesRequest, Bolt11SendRequest,
-	Bolt11SendUnderpayingRequest, Bolt12CreatePayerProofRequest, Bolt12ReceiveRefundRequest,
-	Bolt12ReceiveRequest, Bolt12SendRefundRequest, Bolt12SendRequest, BumpChannelFundingFeeRequest,
-	CloseChannelRequest, ConnectPeerRequest, CreateMacaroonRequest, DecodeInvoiceRequest,
-	DecodeOfferRequest, DisconnectPeerRequest, ExportPathfindingScoresRequest,
-	ForceCloseChannelRequest, GetBalancesRequest, GetChannelForwardingStatsRequest,
-	GetForwardedPaymentDetailsRequest, GetForwardedPaymentTrackingModeRequest, GetNodeInfoRequest,
-	GetPaymentDetailsRequest, GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest,
-	GraphListChannelsRequest, GraphListNodesRequest, ListChannelForwardingStatsRequest,
+	Bolt11SendUnderpayingRequest, Bolt12BlindedPathsForAsyncRecipientRequest,
+	Bolt12CreatePayerProofRequest, Bolt12ReceiveAsyncRequest, Bolt12ReceiveRefundRequest,
+	Bolt12ReceiveRequest, Bolt12SendRefundRequest, Bolt12SendRequest,
+	Bolt12SetPathsToStaticInvoiceServerRequest, BumpChannelFundingFeeRequest, CloseChannelRequest,
+	ConnectPeerRequest, CreateMacaroonRequest, DecodeInvoiceRequest, DecodeOfferRequest,
+	DisconnectPeerRequest, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
+	GetBalancesRequest, GetChannelForwardingStatsRequest, GetForwardedPaymentDetailsRequest,
+	GetForwardedPaymentTrackingModeRequest, GetNodeInfoRequest, GetPaymentDetailsRequest,
+	GetPermissionsRequest, GraphGetChannelRequest, GraphGetNodeRequest, GraphListChannelsRequest,
+	GraphListNodesRequest, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListForwardedPaymentsRequest,
 	ListMacaroonsRequest, ListPaymentsRequest, ListPeersRequest, OnchainBumpFeeRequest,
 	OnchainReceiveRequest, OnchainSendRequest, OpenChannelRequest, RevokeMacaroonRequest,
@@ -318,6 +320,32 @@ pub async fn handle_bolt12_receive(
 ) -> Result<Value, McpError> {
 	let request: Bolt12ReceiveRequest = parse_request(args)?;
 	let response = client.bolt12_receive(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt12_receive_async(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt12ReceiveAsyncRequest = parse_request(args)?;
+	let response = client.bolt12_receive_async(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt12_set_paths_to_static_invoice_server(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt12SetPathsToStaticInvoiceServerRequest = parse_request(args)?;
+	let response =
+		client.bolt12_set_paths_to_static_invoice_server(request).await.map_err(McpError::from)?;
+	serialize_response(response)
+}
+
+pub async fn handle_bolt12_blinded_paths_for_async_recipient(
+	client: &LdkServerClient, args: Value,
+) -> Result<Value, McpError> {
+	let request: Bolt12BlindedPathsForAsyncRecipientRequest = parse_request(args)?;
+	let response =
+		client.bolt12_blinded_paths_for_async_recipient(request).await.map_err(McpError::from)?;
 	serialize_response(response)
 }
 

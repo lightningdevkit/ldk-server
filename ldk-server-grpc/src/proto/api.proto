@@ -460,6 +460,45 @@ message Bolt12ReceiveResponse {
   string offer_id = 2;
 }
 
+// Retrieve an offer for receiving payments while this node is offline.
+// Async payments support is experimental. The node must be configured as an async client, and
+// paths to a static invoice server must have been set. An offer is returned only after the static
+// invoice server has successfully completed building its static invoice.
+message Bolt12ReceiveAsyncRequest {}
+
+// The offer generated for asynchronous payments.
+message Bolt12ReceiveAsyncResponse {
+
+  // An offer for a payment within the Lightning Network.
+  string offer = 1;
+
+  // The hex-encoded offer id.
+  string offer_id = 2;
+}
+
+// Set the blinded message paths used to interact with a static invoice server.
+// blinded_paths must be encoded using the LDK lightning serialization format for Vec<BlindedMessagePath>.
+message Bolt12SetPathsToStaticInvoiceServerRequest {
+
+  // Serialized Vec<BlindedMessagePath>.
+  bytes blinded_paths = 1;
+}
+
+message Bolt12SetPathsToStaticInvoiceServerResponse {}
+
+// Create blinded message paths for an asynchronous recipient.
+message Bolt12BlindedPathsForAsyncRecipientRequest {
+
+  // Opaque recipient identifier used to derive the blinded paths.
+  bytes recipient_id = 1;
+}
+
+message Bolt12BlindedPathsForAsyncRecipientResponse {
+
+  // Serialized Vec<BlindedMessagePath> in the LDK lightning serialization format.
+  bytes blinded_paths = 1;
+}
+
 // Send a payment for a BOLT12 offer.
 // See more:
 // - https://docs.rs/ldk-node/latest/ldk_node/payment/struct.Bolt12Payment.html#method.send
@@ -1309,6 +1348,9 @@ service LightningNode {
   rpc Bolt11SendUnderpaying(Bolt11SendUnderpayingRequest) returns (Bolt11SendUnderpayingResponse);
   // Return a BOLT12 offer.
   rpc Bolt12Receive(Bolt12ReceiveRequest) returns (Bolt12ReceiveResponse);
+  rpc Bolt12ReceiveAsync(Bolt12ReceiveAsyncRequest) returns (Bolt12ReceiveAsyncResponse);
+  rpc Bolt12SetPathsToStaticInvoiceServer(Bolt12SetPathsToStaticInvoiceServerRequest) returns (Bolt12SetPathsToStaticInvoiceServerResponse);
+  rpc Bolt12BlindedPathsForAsyncRecipient(Bolt12BlindedPathsForAsyncRecipientRequest) returns (Bolt12BlindedPathsForAsyncRecipientResponse);
   // Send a payment for a BOLT12 offer.
   rpc Bolt12Send(Bolt12SendRequest) returns (Bolt12SendResponse);
   // Return a BOLT12 refund that this node will pay.

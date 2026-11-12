@@ -37,21 +37,24 @@ use ldk_server_client::ldk_server_grpc::api::{
 	Bolt11ReceiveViaJitChannelForHashResponse, Bolt11ReceiveViaJitChannelRequest,
 	Bolt11ReceiveViaJitChannelResponse, Bolt11SendProbesRequest, Bolt11SendProbesResponse,
 	Bolt11SendRequest, Bolt11SendResponse, Bolt11SendUnderpayingRequest,
-	Bolt11SendUnderpayingResponse, Bolt12CreatePayerProofRequest, Bolt12CreatePayerProofResponse,
+	Bolt11SendUnderpayingResponse, Bolt12BlindedPathsForAsyncRecipientRequest,
+	Bolt12BlindedPathsForAsyncRecipientResponse, Bolt12CreatePayerProofRequest,
+	Bolt12CreatePayerProofResponse, Bolt12ReceiveAsyncRequest, Bolt12ReceiveAsyncResponse,
 	Bolt12ReceiveRefundRequest, Bolt12ReceiveRefundResponse, Bolt12ReceiveRequest,
 	Bolt12ReceiveResponse, Bolt12SendRefundRequest, Bolt12SendRefundResponse, Bolt12SendRequest,
-	Bolt12SendResponse, BumpChannelFundingFeeRequest, BumpChannelFundingFeeResponse,
-	CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-	CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-	DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest, DisconnectPeerResponse,
-	ExportPathfindingScoresRequest, ForceCloseChannelRequest, ForceCloseChannelResponse,
-	GetBalancesRequest, GetBalancesResponse, GetChannelForwardingStatsRequest,
-	GetChannelForwardingStatsResponse, GetForwardedPaymentDetailsRequest,
-	GetForwardedPaymentDetailsResponse, GetForwardedPaymentTrackingModeRequest,
-	GetForwardedPaymentTrackingModeResponse, GetNodeInfoRequest, GetNodeInfoResponse,
-	GetPaymentDetailsRequest, GetPaymentDetailsResponse, GetPermissionsRequest,
-	GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse, GraphGetNodeRequest,
-	GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
+	Bolt12SendResponse, Bolt12SetPathsToStaticInvoiceServerRequest,
+	Bolt12SetPathsToStaticInvoiceServerResponse, BumpChannelFundingFeeRequest,
+	BumpChannelFundingFeeResponse, CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest,
+	ConnectPeerResponse, CreateMacaroonRequest, CreateMacaroonResponse, DecodeInvoiceRequest,
+	DecodeInvoiceResponse, DecodeOfferRequest, DecodeOfferResponse, DisconnectPeerRequest,
+	DisconnectPeerResponse, ExportPathfindingScoresRequest, ForceCloseChannelRequest,
+	ForceCloseChannelResponse, GetBalancesRequest, GetBalancesResponse,
+	GetChannelForwardingStatsRequest, GetChannelForwardingStatsResponse,
+	GetForwardedPaymentDetailsRequest, GetForwardedPaymentDetailsResponse,
+	GetForwardedPaymentTrackingModeRequest, GetForwardedPaymentTrackingModeResponse,
+	GetNodeInfoRequest, GetNodeInfoResponse, GetPaymentDetailsRequest, GetPaymentDetailsResponse,
+	GetPermissionsRequest, GetPermissionsResponse, GraphGetChannelRequest, GraphGetChannelResponse,
+	GraphGetNodeRequest, GraphGetNodeResponse, GraphListChannelsRequest, GraphListChannelsResponse,
 	GraphListNodesRequest, GraphListNodesResponse, ListChannelForwardingStatsRequest,
 	ListChannelPairForwardingStatsRequest, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListMacaroonsRequest, ListMacaroonsResponse, ListPaymentsRequest,
@@ -386,6 +389,18 @@ enum Commands {
 			help = "Maximum number of items a payer may buy per payment. Only for fixed-amount offers"
 		)]
 		quantity: Option<u64>,
+	},
+	#[command(about = "Retrieve the BOLT12 offer for receiving while this node is offline")]
+	Bolt12ReceiveAsync,
+	#[command(about = "Set serialized blinded message paths for the static invoice server")]
+	Bolt12SetPathsToStaticInvoiceServer {
+		#[arg(help = "Hex-encoded LDK serialization of Vec<BlindedMessagePath>")]
+		blinded_paths: String,
+	},
+	#[command(about = "Create blinded message paths for an asynchronous recipient")]
+	Bolt12BlindedPathsForAsyncRecipient {
+		#[arg(help = "Hex-encoded opaque recipient identifier")]
+		recipient_id: String,
 	},
 	#[command(about = "Send a payment for a BOLT12 offer")]
 	Bolt12Send {
@@ -1208,6 +1223,37 @@ async fn main() {
 						expiry_secs,
 						quantity,
 					})
+					.await,
+			);
+		},
+		Commands::Bolt12ReceiveAsync => {
+			handle_response_result::<_, Bolt12ReceiveAsyncResponse>(
+				client.bolt12_receive_async(Bolt12ReceiveAsyncRequest {}).await,
+			);
+		},
+		Commands::Bolt12SetPathsToStaticInvoiceServer { blinded_paths } => {
+			let blinded_paths = Vec::<u8>::from_hex(&blinded_paths)
+				.unwrap_or_else(|e| handle_error_msg(format!("invalid blinded_paths hex: {e}")));
+			handle_response_result::<_, Bolt12SetPathsToStaticInvoiceServerResponse>(
+				client
+					.bolt12_set_paths_to_static_invoice_server(
+						Bolt12SetPathsToStaticInvoiceServerRequest {
+							blinded_paths: blinded_paths.into(),
+						},
+					)
+					.await,
+			);
+		},
+		Commands::Bolt12BlindedPathsForAsyncRecipient { recipient_id } => {
+			let recipient_id = Vec::<u8>::from_hex(&recipient_id)
+				.unwrap_or_else(|e| handle_error_msg(format!("invalid recipient_id hex: {e}")));
+			handle_response_result::<_, Bolt12BlindedPathsForAsyncRecipientResponse>(
+				client
+					.bolt12_blinded_paths_for_async_recipient(
+						Bolt12BlindedPathsForAsyncRecipientRequest {
+							recipient_id: recipient_id.into(),
+						},
+					)
 					.await,
 			);
 		},
